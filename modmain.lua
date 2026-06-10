@@ -10,9 +10,27 @@ PrefabFiles = {
     "kei",
     "kei_items",
     "kei_data_recorder",
+    "kei_protocol_container",
 }
 
-Assets = {}
+Assets = {
+    Asset("ANIM", "anim/kei.zip"),
+    Asset("ANIM", "anim/ghost_kei_build.zip"),
+    Asset("ANIM", "anim/player_idles_kei.zip"),
+
+    Asset("ATLAS", "bigportraits/kei.xml"),
+    Asset("ATLAS", "images/names_kei.xml"),
+    Asset("ATLAS", "images/names_gold_kei.xml"),
+    Asset("ATLAS", "images/avatars/avatar_kei.xml"),
+    Asset("ATLAS", "images/avatars/avatar_ghost_kei.xml"),
+    Asset("ATLAS", "images/avatars/self_inspect_kei.xml"),
+    Asset("ATLAS", "images/map_icons/kei.xml"),
+    Asset("ATLAS", "images/saveslot_portraits/kei.xml"),
+    Asset("ATLAS", "images/selectscreen_portraits/kei.xml"),
+    Asset("ATLAS", "images/selectscreen_portraits/kei_silho.xml"),
+}
+
+AddMinimapAtlas("images/map_icons/kei.xml")
 
 -- Kei 的三项核心资源：电量、稳定性、机体完整度。
 TUNING.KEI_MAX_POWER = 120
@@ -32,11 +50,24 @@ TUNING.KEI_PROTOCOL_DRAIN_AMOUNT = 2
 TUNING.KEI_PROTOCOL_SLOT_MAX = 7
 TUNING.KEI_RECORDER_RANGE = 18
 
+-- 头部 / 身体解析协议使用的隐藏虚拟装备槽。
+for i = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+    EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(i)] = "kei_protocol_" .. tostring(i)
+end
+
+-- Kei 专用协议容器：复用 WX-78 扩展存储单元 UI，但只允许协议 CD 放入。
+local containers = require("containers")
+containers.params.kei_protocol_container = deepcopy(containers.params.wx78_inventorycontainer)
+containers.params.kei_protocol_container.itemtestfn = function(container, item, slot)
+    return item ~= nil and item:HasTag("kei_protocol_cd")
+end
+containers.params.kei_protocol_container.priorityfn = nil
+
 -- 字符串、动作和配方分文件维护，避免入口文件继续膨胀。
 modimport("scripts/kei_strings.lua")
-modimport("scripts/kei_frontend.lua")
+modimport("scripts/kei_assets.lua")
 modimport("scripts/kei_actions.lua")
 modimport("scripts/kei_recipes.lua")
 
--- 注册可选角色。贴图资源未完成前，实际外观在 prefab 内临时沿用 Wendy。
+-- 注册可选角色。
 AddModCharacter("kei", "FEMALE")

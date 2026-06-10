@@ -2,11 +2,14 @@ local MakePlayerCharacter = require("prefabs/player_common")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
-    Asset("ANIM", "anim/player_idles_wendy.zip"),
+    Asset("ANIM", "anim/kei.zip"),
+    Asset("ANIM", "anim/ghost_kei_build.zip"),
+    Asset("ANIM", "anim/player_idles_kei.zip"),
 }
 
 local prefabs = {
     "kei_battery",
+    "kei_protocol_container",
 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
@@ -19,9 +22,9 @@ local start_inv = {
 }
 
 local function ConfigureVisuals(inst)
-    -- 角色专属动画资源尚未制作时，先用 Wendy 的 build 和小地图图标占位。
-    inst.AnimState:SetBuild("wendy")
-    inst.MiniMapEntity:SetIcon("wendy.png")
+    -- 使用 Kei 自己的角色 build；角色 id、文件名和资源 build 统一为小写 kei。
+    inst.AnimState:SetBuild("kei")
+    inst.MiniMapEntity:SetIcon("kei.tex")
 end
 
 local function common_postinit(inst)
@@ -56,7 +59,11 @@ local function UpdateIntegrityState(inst)
         return
     end
 
-    if hunger.current <= 0 then
+    local current_power = hunger.current or 0
+    local current_integrity = health.currenthealth or health.maxhealth or 0
+    local max_integrity = health.maxhealth or TUNING.KEI_MAX_INTEGRITY
+
+    if current_power <= 0 then
         -- 电量耗尽后移动速度几乎归零，移动中还会持续损伤完整度。
         inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_no_power", 0.1)
         if inst.sg ~= nil and inst.sg:HasStateTag("moving") then
@@ -66,8 +73,8 @@ local function UpdateIntegrityState(inst)
         inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_no_power")
     end
 
-    local low_threshold = health.maxhealth / 6
-    if health.current <= low_threshold then
+    local low_threshold = max_integrity / 6
+    if current_integrity <= low_threshold then
         -- 完整度过低时进入危险状态：减速、缓慢恶化，并周期性提示玩家。
         inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_low_integrity", 0.5)
         health:DoDelta(-1, true, "kei_low_integrity")
@@ -79,7 +86,7 @@ local function UpdateIntegrityState(inst)
         inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_low_integrity")
     end
 
-    if health.current > health.maxhealth * 5 / 6 and health.current < health.maxhealth then
+    if current_integrity > max_integrity * 5 / 6 and current_integrity < max_integrity then
         -- 高完整度区间允许机体自我修复，作为设计里的恢复特性。
         health:DoDelta(1, true, "kei_self_repair")
     end

@@ -3,35 +3,117 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.unlocked_slots = 1
     self.active = {}
     self.active_combat = {}
+    self.virtual_equips = {}
 
-    -- 每秒重新扫描背包前若干格，便于玩家直接拖动 CD 后立即生效。
-    self._scan_task = inst:DoPeriodicTask(1, function()
+    inst:DoTaskInTime(0, function()
+        self:EnsureProtocolContainers()
         self:Refresh()
     end)
-    -- 协议不是免费常驻：按周期扣除电量或稳定性。
+
+    self._scan_task = inst:DoPeriodicTask(1, function()
+        self:EnsureProtocolContainers()
+        self:Refresh()
+    end)
+
     self._drain_task = inst:DoPeriodicTask(TUNING.KEI_PROTOCOL_DRAIN_PERIOD, function()
         self:DrainProtocols()
     end)
 
-    -- 战斗协议需要在 Kei 命中目标时触发。
     inst:ListenForEvent("onhitother", function(_, data)
         self:OnHitOther(data)
     end)
 end)
 
 local function IsProtocol(item)
-    -- 协议 CD 通过标签和 kei_protocol_data 双重判断，避免误读普通物品。
     return item ~= nil and item:HasTag("kei_protocol_cd") and item.kei_protocol_data ~= nil
 end
 
+local function IsProtocolContainer(item)
+    return item ~= nil and item.prefab == "kei_protocol_container"
+end
+
+local function HiddenEquipSlot(slot)
+    return EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(slot)]
+end
+
 local function ProtocolNeedsPower(data)
-    -- 战斗协议与护甲类解析协议消耗电量。
     return data.kind == "combat" or data.slot == "head" or data.slot == "body"
 end
 
 local function ProtocolNeedsStability(data)
-    -- 武器 / 手部解析协议消耗稳定性。
     return data.slot == "hands"
+end
+
+local function ReturnItemToOwner(owner, item)
+    if owner ~= nil and owner.components.inventory ~= nil then
+        if owner.components.inventory:GiveItem(item, nil, owner:GetPosition()) then
+            return
+        end
+    end
+    if owner ~= nil then
+        item.Transform:SetPosition(owner.Transform:GetWorldPosition())
+    end
+end
+
+function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
+    container:AddTag("kei_protocol_slot")
+    container.kei_protocol_slot_index = slot
+
+    if container.components.inventoryitem ~= nil then
+        container.components.inventoryitem.islockedinslot = true
+        container.components.inventoryitem.canbepickedup = false
+    end
+
+    if container.components.container ~= nil then
+        local stored = container.components.container:GetItemInSlot(1)
+        if stored ~= nil and not IsProtocol(stored) then
+            stored = container.components.container:RemoveItem(stored, true)
+            if stored ~= nil then
+                ReturnItemToOwner(self.inst, stored)
+            end
+        end
+        if container.SetPowered ~= nil then
+            container:SetPowered(slot <= self.unlocked_slots)
+        else
+            container.components.container.canbeopened = slot <= self.unlocked_slots
+        end
+    end
+end
+
+function KeiProtocolSlots:EnsureProtocolContainers()
+    local inventory = self.inst.components.inventory
+    if inventory == nil then
+        return
+    end
+
+    for slot = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+        local current = inventory:GetItemInSlot(slot)
+
+        if IsProtocolContainer(current) then
+            self:ConfigureProtocolContainer(current, slot)
+        else
+            local displaced = current ~= nil and inventory:RemoveItem(current, true) or nil
+            local container = SpawnPrefab("kei_protocol_container")
+            if container ~= nil then
+                self:ConfigureProtocolContainer(container, slot)
+                inventory:GiveItem(container, slot)
+
+                if displaced ~= nil then
+                    if IsProtocol(displaced)
+                        and slot <= self.unlocked_slots
+                        and container.components.container ~= nil
+                        and container.components.container:GetItemInSlot(1) == nil
+                    then
+                        container.components.container:GiveItem(displaced, 1)
+                    else
+                        ReturnItemToOwner(self.inst, displaced)
+                    end
+                end
+            elseif displaced ~= nil then
+                ReturnItemToOwner(self.inst, displaced)
+            end
+        end
+    end
 end
 
 function KeiProtocolSlots:OnRemoveFromEntity()
@@ -39,18 +121,17 @@ function KeiProtocolSlots:OnRemoveFromEntity()
 end
 
 function KeiProtocolSlots:UnlockTier(tier)
-    -- 解锁顺序固定为 1/3/5/7 格，重复使用低阶模块不会消耗。
     local target_slots = ({ 3, 5, 7 })[tier]
     if target_slots == nil or target_slots <= self.unlocked_slots then
         return false
     end
     self.unlocked_slots = math.min(target_slots, TUNING.KEI_PROTOCOL_SLOT_MAX)
+    self:EnsureProtocolContainers()
     self:Refresh()
     return true
 end
 
 function KeiProtocolSlots:CanRun(data)
-    -- 对应资源见底时，该协议会被扫描逻辑临时跳过。
     if ProtocolNeedsPower(data) and self.inst.components.hunger ~= nil and self.inst.components.hunger.current <= 0 then
         return false
     end
@@ -61,27 +142,124 @@ function KeiProtocolSlots:CanRun(data)
 end
 
 function KeiProtocolSlots:GetProtocolSlotItems()
-    -- 只读取背包物品栏前 7 格，并且只启用已经解锁的格子。
     local items = {}
     local inventory = self.inst.components.inventory
     if inventory == nil then
         return items
     end
-    for i = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
-        local item = inventory.itemslots[i]
-        if IsProtocol(item) and i <= self.unlocked_slots and self:CanRun(item.kei_protocol_data) then
-            table.insert(items, {
-                item = item,
-                slot = i,
-                data = item.kei_protocol_data,
-            })
+
+    for slot = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+        local container = inventory:GetItemInSlot(slot)
+        if IsProtocolContainer(container) and container.components.container ~= nil then
+            local item = container.components.container:GetItemInSlot(1)
+            if IsProtocol(item) and slot <= self.unlocked_slots and self:CanRun(item.kei_protocol_data) then
+                table.insert(items, {
+                    item = item,
+                    slot = slot,
+                    data = item.kei_protocol_data,
+                })
+            end
         end
     end
+
     return items
 end
 
+local function CleanVirtualEquipment(item, equipslot)
+    item.persists = false
+    item:AddTag("kei_virtual_equipment")
+    item:AddTag("NOCLICK")
+    item:RemoveTag("heavy")
+
+    if item.components.equippable ~= nil then
+        item.components.equippable.restrictedtag = nil
+        item.components.equippable.equipslot = equipslot
+    end
+
+    if item.components.container ~= nil then
+        item:RemoveComponent("container")
+    end
+
+    if item.components.inventoryitem ~= nil then
+        item.components.inventoryitem.canbepickedup = false
+        item.components.inventoryitem.cangoincontainer = false
+    end
+
+    if item.components.fueled ~= nil then
+        item.components.fueled:StopConsuming()
+    end
+
+    if item.components.perishable ~= nil then
+        item:RemoveComponent("perishable")
+    end
+end
+
+function KeiProtocolSlots:RemoveVirtualEquip(slot)
+    local virtual = self.virtual_equips[slot]
+    if virtual == nil then
+        return
+    end
+
+    local equipslot = HiddenEquipSlot(slot)
+    local inventory = self.inst.components.inventory
+    if inventory ~= nil and equipslot ~= nil and inventory:GetEquippedItem(equipslot) == virtual then
+        inventory:Unequip(equipslot, true, true)
+    end
+
+    if virtual:IsValid() then
+        virtual:Remove()
+    end
+    self.virtual_equips[slot] = nil
+end
+
+function KeiProtocolSlots:ApplyVirtualEquip(entry)
+    local data = entry.data
+    local slot = entry.slot
+    local equipslot = HiddenEquipSlot(slot)
+    local inventory = self.inst.components.inventory
+
+    if data.source == nil or equipslot == nil or inventory == nil then
+        self:RemoveVirtualEquip(slot)
+        return
+    end
+
+    local current = self.virtual_equips[slot]
+    if current ~= nil and current:IsValid() and current.kei_source_prefab == data.source then
+        return
+    end
+
+    self:RemoveVirtualEquip(slot)
+
+    local virtual = SpawnPrefab(data.source)
+    if virtual == nil or virtual.components.equippable == nil then
+        if virtual ~= nil then
+            virtual:Remove()
+        end
+        return
+    end
+
+    virtual.kei_source_prefab = data.source
+    CleanVirtualEquipment(virtual, equipslot)
+
+    inventory:Equip(virtual, nil, true)
+    if inventory:GetEquippedItem(equipslot) == virtual then
+        self.virtual_equips[slot] = virtual
+    else
+        virtual:Remove()
+    end
+end
+
+function KeiProtocolSlots:ClearVirtualEquips(keep)
+    for slot in pairs(self.virtual_equips) do
+        if keep == nil or not keep[slot] then
+            self:RemoveVirtualEquip(slot)
+        end
+    end
+end
+
 function KeiProtocolSlots:ClearModifiers()
-    -- 移除本组件加过的所有外部倍率，防止卸载或刷新后残留。
+    self:ClearVirtualEquips()
+
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
     end
@@ -97,25 +275,23 @@ function KeiProtocolSlots:ClearModifiers()
 end
 
 function KeiProtocolSlots:Refresh()
-    -- 每次刷新都从当前背包状态重新计算，避免记录增量带来的脏状态。
     local items = self:GetProtocolSlotItems()
     local combat = {}
-    local armor_absorb = 0
     local damage_mult = 1
     local speed_mult = 1
     local planar_bonus = 0
+    local desired_virtuals = {}
 
     self.active = items
 
     for _, entry in ipairs(items) do
         local data = entry.data
         if data.kind == "combat" and data.protocol ~= nil then
-            -- 战斗协议只记录开关，具体效果在命中事件里执行。
             combat[data.protocol] = true
         elseif data.kind == "analysis" then
-            -- 解析协议可以叠加或取最大值，取值规则集中放在这里。
             if data.slot == "head" or data.slot == "body" then
-                armor_absorb = math.max(armor_absorb, data.absorb or 0)
+                desired_virtuals[entry.slot] = true
+                self:ApplyVirtualEquip(entry)
             elseif data.slot == "hands" then
                 damage_mult = damage_mult * (data.damage_mult or 1)
                 speed_mult = speed_mult * (data.speed_mult or 1)
@@ -124,14 +300,13 @@ function KeiProtocolSlots:Refresh()
         end
     end
 
+    self:ClearVirtualEquips(desired_virtuals)
     self.active_combat = combat
 
     if self.inst.components.health ~= nil then
-        -- 护甲解析使用 health 的外部吸收修正。
-        self.inst.components.health.externalabsorbmodifiers:SetModifier(self.inst, armor_absorb, "kei_analysis_armor")
+        self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
     end
     if self.inst.components.combat ~= nil then
-        -- 手部解析的攻击倍率挂在 combat 外部伤害倍率上。
         self.inst.components.combat.externaldamagemultipliers:SetModifier(self.inst, damage_mult, "kei_analysis_hands")
     end
     if planar_bonus > 0 then
@@ -143,13 +318,11 @@ function KeiProtocolSlots:Refresh()
         self.inst.components.planardamage:RemoveBonus(self.inst, "kei_analysis_hands")
     end
     if self.inst.components.locomotor ~= nil then
-        -- 手部解析里可能包含武器或装备带来的移动倍率。
         self.inst.components.locomotor:SetExternalSpeedMultiplier(self.inst, "kei_analysis_hands", speed_mult)
     end
 end
 
 function KeiProtocolSlots:DrainProtocols()
-    -- 按当前 active 列表汇总消耗，避免重复扫描背包和扣费不同步。
     local power_cost = 0
     local stability_cost = 0
 
@@ -176,7 +349,6 @@ local AREA_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "playerghost" }
 local AREA_MUST_TAGS = { "_combat" }
 
 function KeiProtocolSlots:DoBeargerPulse(target, weapon)
-    -- 熊獾协议：命中目标周围小范围溅射。_doing_aoe 防止溅射再次触发溅射。
     if self._doing_aoe or target == nil or target.components.combat == nil then
         return
     end
@@ -198,20 +370,17 @@ function KeiProtocolSlots:DoBeargerPulse(target, weapon)
 end
 
 function KeiProtocolSlots:OnHitOther(data)
-    -- 三类巨兽战斗协议都从同一个命中事件入口分发。
     local target = data ~= nil and data.target or nil
     if target == nil or not target:IsValid() then
         return
     end
 
     if self.active_combat.deerclops and target.components.freezable ~= nil then
-        -- 独眼巨鹿协议：为目标叠加寒冷值。
         target.components.freezable:AddColdness(1)
         target.components.freezable:SpawnShatterFX()
     end
 
     if self.active_combat.dragonfly and target.components.burnable ~= nil and not target.components.burnable:IsBurning() then
-        -- 龙蝇协议：用 controlled_burner 标签模拟可控点燃，减少误伤行为。
         local had_tag = self.inst:HasTag("controlled_burner")
         if not had_tag then
             self.inst:AddTag("controlled_burner")
@@ -223,13 +392,11 @@ function KeiProtocolSlots:OnHitOther(data)
     end
 
     if self.active_combat.bearger then
-        -- 熊獾协议：命中后追加一次范围伤害。
         self:DoBeargerPulse(target, data.weapon)
     end
 end
 
 function KeiProtocolSlots:OnSave()
-    -- 协议 CD 本身由背包保存，这里只需要保存已解锁槽位数。
     return {
         unlocked_slots = self.unlocked_slots,
     }
@@ -239,8 +406,8 @@ function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
         self.unlocked_slots = math.clamp(data.unlocked_slots, 1, TUNING.KEI_PROTOCOL_SLOT_MAX)
     end
-    -- 等角色背包恢复完成后再刷新，否则读不到存档里的 CD。
     self.inst:DoTaskInTime(0, function()
+        self:EnsureProtocolContainers()
         self:Refresh()
     end)
 end

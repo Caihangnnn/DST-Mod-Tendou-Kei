@@ -27,42 +27,43 @@ local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
 end
 
-local function FindRecorderAndTarget(doer)
-    -- 绑定空白 CD 时，寻找附近空闲记录仪以及记录仪范围内最近的有效巨兽。
-    local x, y, z = doer.Transform:GetWorldPosition()
+local function IsValidRecordTarget(target)
+    return target ~= nil
+        and target:IsValid()
+        and VALID_RECORD_TARGETS[target.prefab]
+        and target:HasTag("epic")
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and not target:HasTag("INLIMBO")
+end
+
+local function FindRecorderForTarget(target)
+    -- 手持空白 CD 点巨兽时，寻找能覆盖该巨兽的空闲记录仪。
+    if not IsValidRecordTarget(target) then
+        return nil
+    end
+    local x, y, z = target.Transform:GetWorldPosition()
     local recorders = TheSim:FindEntities(x, y, z, TUNING.KEI_RECORDER_RANGE, { "kei_data_recorder" }, { "burnt" })
     local best_recorder = nil
-    local best_target = nil
     local best_dsq = nil
 
     for _, recorder in ipairs(recorders) do
-        if recorder.kei_state == "idle" then
-            local rx, ry, rz = recorder.Transform:GetWorldPosition()
-            local targets = TheSim:FindEntities(rx, ry, rz, TUNING.KEI_RECORDER_RANGE, { "epic", "_combat" }, { "INLIMBO", "playerghost" })
-            for _, target in ipairs(targets) do
-                if VALID_RECORD_TARGETS[target.prefab]
-                    and target.components.health ~= nil
-                    and not target.components.health:IsDead()
-                then
-                    local dsq = doer:GetDistanceSqToInst(target)
-                    if best_dsq == nil or dsq < best_dsq then
-                        best_dsq = dsq
-                        best_recorder = recorder
-                        best_target = target
-                    end
-                end
+        if recorder.kei_state == "idle"
+            and recorder:GetDistanceSqToInst(target) <= TUNING.KEI_RECORDER_RANGE * TUNING.KEI_RECORDER_RANGE
+        then
+            local dsq = recorder:GetDistanceSqToInst(target)
+            if best_dsq == nil or dsq < best_dsq then
+                best_dsq = dsq
+                best_recorder = recorder
             end
         end
     end
 
-    return best_recorder, best_target
+    return best_recorder
 end
 
 -- 右键电池：把电池转化为 Kei 的电量，也就是 hunger 组件。
-local charge_action = Action({ mount_valid = true })
-charge_action.id = "KEI_CHARGE"
-charge_action.str = "充电"
-charge_action.fn = function(act)
+local charge_action = AddAction("KEI_CHARGE", "充电", function(act)
     if not IsKei(act.doer) or act.invobject == nil then
         return false
     end
@@ -72,16 +73,13 @@ charge_action.fn = function(act)
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_CHARGED")
     return true
-end
-AddAction(charge_action)
+end)
+charge_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
 
 -- 右键修理工具：恢复机体完整度，也就是 health 组件。
-local repair_action = Action({ mount_valid = true })
-repair_action.id = "KEI_REPAIR"
-repair_action.str = "修复"
-repair_action.fn = function(act)
+local repair_action = AddAction("KEI_REPAIR", "修复", function(act)
     if not IsKei(act.doer) or act.invobject == nil then
         return false
     end
@@ -91,16 +89,13 @@ repair_action.fn = function(act)
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_REPAIRED")
     return true
-end
-AddAction(repair_action)
+end)
+repair_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 
 -- 使用 Mk1/Mk2/Mk3 模块扩展协议槽数量：1 -> 3 -> 5 -> 7。
-local unlock_action = Action({ mount_valid = true })
-unlock_action.id = "KEI_UNLOCK_PROTOCOL"
-unlock_action.str = "扩展协议槽"
-unlock_action.fn = function(act)
+local unlock_action = AddAction("KEI_UNLOCK_PROTOCOL", "扩展协议槽", function(act)
     if not IsKei(act.doer) or act.invobject == nil or act.doer.components.kei_protocolslots == nil then
         return false
     end
@@ -114,75 +109,64 @@ unlock_action.fn = function(act)
         return true
     end
     return false
-end
-AddAction(unlock_action)
+end)
+unlock_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
 
 -- 空白 CD 先绑定目标，之后才能提交给数据记录仪开始记录。
-local bind_cd_action = Action({ mount_valid = true })
-bind_cd_action.id = "KEI_BIND_CD"
-bind_cd_action.str = "绑定样本"
-bind_cd_action.fn = function(act)
+local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
     if not IsKei(act.doer) or act.invobject == nil or not act.invobject:HasTag("kei_blank_cd") then
         return false
     end
-    local recorder, target = FindRecorderAndTarget(act.doer)
-    if recorder == nil then
-        Say(act.doer, "ANNOUNCE_KEI_NO_RECORDER")
+    local target = act.target
+    if not IsValidRecordTarget(target) then
+        Say(act.doer, "ANNOUNCE_KEI_NO_TARGET")
         return false
     end
-    if target == nil then
-        Say(act.doer, "ANNOUNCE_KEI_NO_TARGET")
+    local recorder = FindRecorderForTarget(target)
+    if recorder == nil then
+        Say(act.doer, "ANNOUNCE_KEI_NO_RECORDER")
         return false
     end
     act.invobject:SetBoundTarget(target)
     Say(act.doer, "ANNOUNCE_KEI_BOUND")
     return true
-end
-AddAction(bind_cd_action)
+end)
+bind_cd_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
 
 -- 把已绑定目标的空白 CD 交给数据记录仪。
-local submit_cd_action = Action({ mount_valid = true })
-submit_cd_action.id = "KEI_SUBMIT_CD"
-submit_cd_action.str = "提交记录"
-submit_cd_action.fn = function(act)
+local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act)
     if not IsKei(act.doer) or act.target == nil or act.invobject == nil or act.target.StartKeiRecording == nil then
         return false
     end
     return act.target:StartKeiRecording(act.invobject, act.doer)
-end
-AddAction(submit_cd_action)
+end)
+submit_cd_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
 
 -- 记录中途取消会返还一张空白 CD，记录仪回到 idle。
-local stop_record_action = Action({ mount_valid = true })
-stop_record_action.id = "KEI_STOP_RECORD"
-stop_record_action.str = "停止记录"
-stop_record_action.fn = function(act)
+local stop_record_action = AddAction("KEI_STOP_RECORD", "停止记录", function(act)
     if not IsKei(act.doer) or act.target == nil or act.target.StopKeiRecording == nil then
         return false
     end
     return act.target:StopKeiRecording(act.doer)
-end
-AddAction(stop_record_action)
+end)
+stop_record_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
 
 -- 巨兽死亡后，从记录仪收获对应的战斗协议 CD。
-local harvest_action = Action({ mount_valid = true })
-harvest_action.id = "KEI_HARVEST_RECORD"
-harvest_action.str = "收获数据"
-harvest_action.fn = function(act)
+local harvest_action = AddAction("KEI_HARVEST_RECORD", "收获数据", function(act)
     if not IsKei(act.doer) or act.target == nil or act.target.HarvestKeiData == nil then
         return false
     end
     return act.target:HarvestKeiData(act.doer)
-end
-AddAction(harvest_action)
+end)
+harvest_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
 
@@ -237,10 +221,7 @@ local function AnalyzeEquipment(tool, target, doer)
 end
 
 -- 用解析工具点装备，生成可插入协议槽的解析 CD。
-local analyze_action = Action({ mount_valid = true })
-analyze_action.id = "KEI_ANALYZE_EQUIP"
-analyze_action.str = "解析装备"
-analyze_action.fn = function(act)
+local analyze_action = AddAction("KEI_ANALYZE_EQUIP", "解析装备", function(act)
     if not IsKei(act.doer) or act.invobject == nil or act.target == nil then
         return false
     end
@@ -250,8 +231,8 @@ analyze_action.fn = function(act)
     Say(act.doer, "ANNOUNCE_KEI_ANALYSIS_FAILED")
     ConsumeOne(act.invobject)
     return false
-end
-AddAction(analyze_action)
+end)
+analyze_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
 
@@ -266,8 +247,6 @@ AddComponentAction("INVENTORY", "inventoryitem", function(inst, doer, actions, r
         table.insert(actions, ACTIONS.KEI_REPAIR)
     elseif inst:HasTag("kei_protocol_unlocker") then
         table.insert(actions, ACTIONS.KEI_UNLOCK_PROTOCOL)
-    elseif inst:HasTag("kei_blank_cd") and inst.kei_bound_prefab == nil then
-        table.insert(actions, ACTIONS.KEI_BIND_CD)
     end
 end)
 
@@ -278,6 +257,8 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
     end
     if inst:HasTag("kei_blank_cd") and target:HasTag("kei_data_recorder") then
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)
+    elseif inst:HasTag("kei_blank_cd") and inst.kei_bound_prefab == nil and target:HasTag("epic") then
+        table.insert(actions, ACTIONS.KEI_BIND_CD)
     elseif inst:HasTag("kei_analysis_tool") and target.replica.equippable ~= nil then
         table.insert(actions, ACTIONS.KEI_ANALYZE_EQUIP)
     end

@@ -1,0 +1,5 @@
+-- Kei 的前端头像资源已统一为小写 kei；这里只保留角色按钮的展示微调。
+local KEI_PREFAB = "kei"
+
+CHARACTER_BUTTON_OFFSET[KEI_PREFAB] = -45
+CHARACTER_BUTTON_SCALE[KEI_PREFAB] = CHARACTER_BUTTON_SCALE.default
