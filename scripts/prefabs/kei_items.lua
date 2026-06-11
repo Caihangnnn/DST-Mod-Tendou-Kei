@@ -6,6 +6,16 @@ local function ConsumeOne(inst)
     end
 end
 
+local function MakeKeiDeviceEdible(inst)
+    inst:AddTag("quickeat")
+
+    inst:AddComponent("edible")
+    inst.components.edible.foodtype = FOODTYPE.KEI_DEVICE
+    inst.components.edible.healthvalue = 0
+    inst.components.edible.hungervalue = 0
+    inst.components.edible.sanityvalue = 0
+end
+
 -- 多个简单道具都只需要动画、背包、堆叠和标签，因此抽成一个 prefab 工厂。
 local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, postmaster)
     local assets = {
@@ -291,7 +301,7 @@ local function MakeProtocolUnlocker(name, tier)
         "wx_chips",
         "chips",
         "stacksize",
-        { "kei_protocol_unlocker" },
+        { "kei_protocol_unlocker", "kei_protocol_mk" .. tostring(tier) },
         "wx78module_stacksize",
         function(inst)
             inst.kei_unlock_tier = tier
@@ -300,8 +310,8 @@ local function MakeProtocolUnlocker(name, tier)
 end
 
 -- 这些道具未指定贴图的部分，统一使用设计要求的 wagstaff_item_2 或原版近似图标占位。
-return MakeSimpleInventoryItem("kei_battery", "transistor", "transistor", "idle", { "kei_battery" }, "transistor"),
-    MakeSimpleInventoryItem("kei_repair_tool", "sewing_tape", "tape", "idle", { "kei_repair_tool" }, "sewing_tape"),
+return MakeSimpleInventoryItem("kei_battery", "transistor", "transistor", "idle", { "kei_battery" }, "transistor", MakeKeiDeviceEdible),
+    MakeSimpleInventoryItem("kei_repair_tool", "sewing_tape", "tape", "idle", { "kei_repair_tool" }, "sewing_tape", MakeKeiDeviceEdible),
     MakeSimpleInventoryItem("kei_analysis_tool", "wagstaff_tools", "wagstaff_tools_all", "radio", { "kei_analysis_tool" }, "wagstaff_tool_5"),
     MakeBlankCD(),
     MakeCombatCD(),

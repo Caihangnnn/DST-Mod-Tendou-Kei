@@ -130,28 +130,6 @@ repair_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 
--- 使用 Mk1/Mk2/Mk3 模块扩展协议槽数量：1 -> 3 -> 5 -> 7。
-local unlock_action = AddAction("KEI_UNLOCK_PROTOCOL", "扩展协议槽", function(act)
-    if not IsKei(act.doer) or act.invobject == nil or act.doer.components.kei_protocolslots == nil then
-        return false
-    end
-    local tier = act.invobject.kei_unlock_tier
-    if tier == nil then
-        return false
-    end
-    if act.doer.components.kei_protocolslots:UnlockTier(tier) then
-        ConsumeOne(act.invobject)
-        Say(act.doer, "ANNOUNCE_KEI_PROTOCOL_UNLOCK")
-        return true
-    end
-    return false
-end)
-unlock_action.mount_valid = true
-unlock_action.rmb = true
-unlock_action.priority = 2
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
-
 -- 空白 CD 先绑定目标，之后才能提交给数据记录仪开始记录。
 local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
     if not IsKei(act.doer) or act.invobject == nil or not act.invobject:HasTag("kei_blank_cd") then
@@ -211,6 +189,18 @@ harvest_action.mount_valid = true
 harvest_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
+
+-- 未激活的数据记录器可以空手右键收回为部署包。
+local packup_record_action = AddAction("KEI_PACKUP_RECORDER", "收回", function(act)
+    if not IsKei(act.doer) or act.target == nil or act.target.PackUpKeiRecorder == nil then
+        return false
+    end
+    return act.target:PackUpKeiRecorder(act.doer)
+end)
+packup_record_action.mount_valid = true
+packup_record_action.rmb = true
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
 
 local function AnalyzeEquipment(tool, target, doer)
     -- 只解析可装备物品；容器类物品即使可检查也不生成协议。
@@ -279,20 +269,6 @@ analyze_action.mount_valid = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
 
--- INVENTORY：右键背包物品时添加 Kei 专属动作。
-AddComponentAction("INVENTORY", "inventoryitem", function(inst, doer, actions, right)
-    if not right or not IsKei(doer) then
-        return
-    end
-    if inst:HasTag("kei_battery") then
-        table.insert(actions, ACTIONS.KEI_CHARGE)
-    elseif inst:HasTag("kei_repair_tool") then
-        table.insert(actions, ACTIONS.KEI_REPAIR)
-    elseif inst:HasTag("kei_protocol_unlocker") then
-        table.insert(actions, ACTIONS.KEI_UNLOCK_PROTOCOL)
-    end
-end)
-
 -- USEITEM：拿着某个物品点另一个目标时添加动作，例如 CD -> 记录仪、解析工具 -> 装备。
 AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, actions, right)
     if not right or not IsKei(doer) or target == nil then
@@ -317,5 +293,10 @@ AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
         table.insert(actions, ACTIONS.KEI_STOP_RECORD)
     elseif state == RECORDER_STATE.complete then
         table.insert(actions, ACTIONS.KEI_HARVEST_RECORD)
+    elseif state == RECORDER_STATE.idle then
+        local activeitem = doer.replica.inventory ~= nil and doer.replica.inventory:GetActiveItem() or nil
+        if activeitem == nil and not inst:HasTag("NOCLICK") then
+            table.insert(actions, ACTIONS.KEI_PACKUP_RECORDER)
+        end
     end
 end)

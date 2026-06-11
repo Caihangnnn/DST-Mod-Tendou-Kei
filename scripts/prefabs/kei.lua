@@ -32,11 +32,40 @@ local function common_postinit(inst)
     inst:AddTag("kei")
     inst:AddTag("electricdamageimmune")
     inst:AddTag("batteryuser")
+    inst:AddTag(FOODTYPE.KEI_DEVICE .. "_eater")
+
+    inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
+
     ConfigureVisuals(inst)
+end
+
+local function HandleKeiDeviceEat(inst, food)
+    if food:HasTag("kei_battery") then
+        if inst.components.hunger ~= nil then
+            inst.components.hunger:DoDelta(TUNING.KEI_BATTERY_POWER)
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_CHARGED)
+        end
+        return true
+    elseif food:HasTag("kei_repair_tool") then
+        if inst.components.health ~= nil and not inst.components.health:IsDead() then
+            inst.components.health:DoDelta(TUNING.KEI_REPAIR_VALUE, nil, "kei_repair_tool")
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_REPAIRED)
+        end
+        return true
+    end
+    return false
 end
 
 local function OnEat(inst, food)
     if food ~= nil and food.components.edible ~= nil then
+        if food.components.edible.foodtype == FOODTYPE.KEI_DEVICE and HandleKeiDeviceEat(inst, food) then
+            return
+        end
+
         -- 饥饿值在原组件中会先完整结算，这里再扣回 80%，等价于只吸收 20%。
         local hunger = food.components.edible:GetHunger(inst) or 0
         local full = hunger
@@ -127,6 +156,9 @@ local function master_postinit(inst)
         -- 禁用食物回血和回理智，仅保留食物转换为电量的路径。
         inst.components.eater:SetAbsorptionModifiers(0, 1, 0)
         inst.components.eater:SetCanEatGears()
+        table.insert(inst.components.eater.caneat, FOODTYPE.KEI_DEVICE)
+        table.insert(inst.components.eater.preferseating, FOODTYPE.KEI_DEVICE)
+        inst.components.eater.cacheedibletags = nil
         inst.components.eater:SetOnEatFn(OnEat)
     end
 

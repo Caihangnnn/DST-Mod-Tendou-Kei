@@ -5,6 +5,8 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.active_combat = {}
     self.virtual_equips = {}
 
+    self:SyncUnlockedSlots()
+
     inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
         self:Refresh()
@@ -67,6 +69,20 @@ local function GetInitialSlots()
     return TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1
 end
 
+local function GetTierTargetSlots(tier)
+    if tier == nil then
+        return nil
+    end
+    return math.min(GetInitialSlots() + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2), GetMaxSlots())
+end
+
+local function GetTierPreviousSlots(tier)
+    if tier == nil then
+        return nil
+    end
+    return math.min(GetInitialSlots() + (tier - 1) * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2), GetMaxSlots())
+end
+
 local function RemoveProtocolContainer(owner, inventory, container)
     if container.components.container ~= nil then
         local stored = container.components.container:GetItemInSlot(1)
@@ -82,6 +98,12 @@ local function RemoveProtocolContainer(owner, inventory, container)
     end
     if container:IsValid() then
         container:Remove()
+    end
+end
+
+function KeiProtocolSlots:SyncUnlockedSlots()
+    if self.inst._kei_unlocked_protocol_slots ~= nil then
+        self.inst._kei_unlocked_protocol_slots:set(self.unlocked_slots)
     end
 end
 
@@ -118,6 +140,7 @@ function KeiProtocolSlots:EnsureProtocolContainers()
 
     local max_slots = GetMaxSlots()
     self.unlocked_slots = math.clamp(self.unlocked_slots, GetInitialSlots(), max_slots)
+    self:SyncUnlockedSlots()
 
     for slot = 1, max_slots do
         local current = inventory:GetItemInSlot(slot)
@@ -160,16 +183,21 @@ function KeiProtocolSlots:OnRemoveFromEntity()
     self:ClearModifiers()
 end
 
+function KeiProtocolSlots:CanUnlockTier(tier)
+    local target_slots = GetTierTargetSlots(tier)
+    local previous_slots = GetTierPreviousSlots(tier)
+    return target_slots ~= nil and previous_slots ~= nil
+        and target_slots > self.unlocked_slots
+        and self.unlocked_slots == previous_slots
+end
+
 function KeiProtocolSlots:UnlockTier(tier)
-    if tier == nil then
+    if not self:CanUnlockTier(tier) then
+        self:SyncUnlockedSlots()
         return false
     end
-    local target_slots = GetInitialSlots() + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2)
-    target_slots = math.min(target_slots, GetMaxSlots())
-    if target_slots <= self.unlocked_slots then
-        return false
-    end
-    self.unlocked_slots = target_slots
+    self.unlocked_slots = GetTierTargetSlots(tier)
+    self:SyncUnlockedSlots()
     self:EnsureProtocolContainers()
     self:Refresh()
     return true
@@ -218,6 +246,7 @@ local function CleanVirtualEquipment(item, equipslot)
     if item.components.equippable ~= nil then
         item.components.equippable.restrictedtag = nil
         item.components.equippable.equipslot = equipslot
+        item.components.equippable:SetPreventUnequipping(true)
     end
 
     if item.components.container ~= nil then
@@ -247,6 +276,7 @@ function KeiProtocolSlots:RemoveVirtualEquip(slot)
     local equipslot = HiddenEquipSlot(slot)
     local inventory = self.inst.components.inventory
     if inventory ~= nil and equipslot ~= nil and inventory:GetEquippedItem(equipslot) == virtual then
+        virtual.kei_allow_virtual_drop = true
         inventory:Unequip(equipslot, true, true)
     end
 
@@ -268,7 +298,11 @@ function KeiProtocolSlots:ApplyVirtualEquip(entry)
     end
 
     local current = self.virtual_equips[slot]
-    if current ~= nil and current:IsValid() and current.kei_source_prefab == data.source then
+    if current ~= nil
+        and current:IsValid()
+        and current.kei_source_prefab == data.source
+        and inventory:GetEquippedItem(equipslot) == current
+    then
         return
     end
 
@@ -450,6 +484,7 @@ function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
         self.unlocked_slots = math.clamp(data.unlocked_slots, GetInitialSlots(), GetMaxSlots())
     end
+    self:SyncUnlockedSlots()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
         self:Refresh()

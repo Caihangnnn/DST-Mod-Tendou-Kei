@@ -250,6 +250,62 @@ local function HarvestKeiData(inst, doer)
     return true
 end
 
+local function GiveRecorderKit(doer, x, y, z)
+    local kit = SpawnPrefab("kei_data_recorder_item")
+    if kit == nil then
+        return false
+    end
+    if doer ~= nil and doer.components.inventory ~= nil then
+        doer.components.inventory:GiveItem(kit, nil, Vector3(x, y, z))
+    else
+        kit.Transform:SetPosition(x, y, z)
+    end
+    return true
+end
+
+local function FinishPackUp(inst)
+    if inst.kei_packup_task ~= nil then
+        inst.kei_packup_task:Cancel()
+        inst.kei_packup_task = nil
+    end
+    if inst.kei_packup_finish_fn ~= nil then
+        inst:RemoveEventCallback("animqueueover", inst.kei_packup_finish_fn)
+        inst.kei_packup_finish_fn = nil
+    end
+    if inst:IsValid() then
+        inst:Remove()
+    end
+end
+
+local function PlayPackUpAnimation(inst)
+    inst.AnimState:PlayAnimation("activate")
+    inst.AnimState:PushAnimation("deactivated", false)
+
+    inst.kei_packup_finish_fn = FinishPackUp
+    inst:ListenForEvent("animqueueover", inst.kei_packup_finish_fn)
+    inst.kei_packup_task = inst:DoTaskInTime(2, inst.kei_packup_finish_fn)
+end
+
+local function PackUpKeiRecorder(inst, doer)
+    if inst.kei_state ~= "idle" or inst.kei_packing_up then
+        return false
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    if not GiveRecorderKit(doer, x, y, z) then
+        return false
+    end
+
+    inst.kei_packing_up = true
+    inst.persists = false
+    inst:AddTag("NOCLICK")
+    ClearForceField(inst)
+    ClearTargetListener(inst)
+    PlayPackUpAnimation(inst)
+
+    return true
+end
+
 local function OnHammered(inst)
     inst.components.workable:SetWorkLeft(999999)
     inst:PushEvent("workinghit")
@@ -332,6 +388,7 @@ local function recorder_fn()
     inst.StartKeiRecording = StartKeiRecording
     inst.StopKeiRecording = StopKeiRecording
     inst.HarvestKeiData = HarvestKeiData
+    inst.PackUpKeiRecorder = PackUpKeiRecorder
 
     inst:ListenForEvent("onbuilt", OnBuilt)
 
@@ -359,7 +416,7 @@ return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_c
         { "kei_data_recorder_item" },
         nil,
         { deploymode = DEPLOYMODE.DEFAULT, deployspacing = DEPLOYSPACING.DEFAULT },
-        TUNING.STACK_SIZE_SMALLITEM,
+        nil,
         kit_postinit
     ),
     MakePlacer("kei_data_recorder_item_placer", "wagpunk_fence", "wagpunk_cagewall", "idle_off", false, nil, nil, nil, nil, "eight")

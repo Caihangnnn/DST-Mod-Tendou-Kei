@@ -30,6 +30,53 @@ local function kei_config(tex, extra)
     return cfg
 end
 
+local function protocol_unlock_tier(recipe)
+    local name = type(recipe) == "table" and recipe.name or recipe
+    return name ~= nil and tonumber(string.match(name, "^kei_protocol_mk(%d)$")) or nil
+end
+
+local function protocol_tier_target_slots(tier)
+    return math.min(
+        (TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1) + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2),
+        TUNING.KEI_PROTOCOL_SLOT_MAX or 7
+    )
+end
+
+local function protocol_tier_previous_slots(tier)
+    return math.min(
+        (TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1) + (tier - 1) * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2),
+        TUNING.KEI_PROTOCOL_SLOT_MAX or 7
+    )
+end
+
+local function get_unlocked_protocol_slots(builder)
+    if builder == nil then
+        return 0
+    elseif builder.components ~= nil and builder.components.kei_protocolslots ~= nil then
+        return builder.components.kei_protocolslots.unlocked_slots or 0
+    elseif builder._kei_unlocked_protocol_slots ~= nil then
+        return builder._kei_unlocked_protocol_slots:value()
+    end
+    return TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1
+end
+
+local function can_build_protocol_unlock(recipe, builder)
+    if builder == nil or not builder:HasTag("kei") then
+        return false
+    end
+    local tier = protocol_unlock_tier(recipe)
+    if tier == nil then
+        return false
+    end
+    local unlocked_slots = get_unlocked_protocol_slots(builder)
+    if unlocked_slots >= protocol_tier_target_slots(tier) then
+        return false, "KEI_PROTOCOL_ALREADY_UNLOCKED"
+    elseif unlocked_slots ~= protocol_tier_previous_slots(tier) then
+        return false, "KEI_PROTOCOL_NEED_PREVIOUS"
+    end
+    return true
+end
+
 -- 同时挂到角色专属栏和 Kei 自己的协议栏。
 local filters = { "CHARACTER", KEI_FILTER }
 
@@ -84,7 +131,9 @@ for i = 1, 3 do
         "kei_protocol_mk" .. tostring(i),
         { Ingredient("goldnugget", 10) },
         TECH.NONE,
-        kei_config("wx78module_stacksize.tex"),
+        kei_config("wx78module_stacksize.tex", {
+            canbuild = can_build_protocol_unlock,
+        }),
         filters
     )
 end
