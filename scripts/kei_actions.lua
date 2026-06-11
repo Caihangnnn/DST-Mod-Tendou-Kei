@@ -4,6 +4,12 @@ local VALID_RECORD_TARGETS = {
     dragonfly = true,
 }
 
+local ANALYSIS_BLACKLIST = {
+    armorwagpunk = true,
+    batnosehat = true,
+    wagpunkhat = true,
+}
+
 local RECORDER_STATE = {
     idle = 0,
     recording = 1,
@@ -31,8 +37,14 @@ local function ConsumeOne(item)
         return
     end
     if item.components.stackable ~= nil then
-        item.components.stackable:Get():Remove()
+        local one = item.components.stackable:Get()
+        if one ~= nil then
+            one:Remove()
+        end
     else
+        if item.components.inventoryitem ~= nil and item.components.inventoryitem.owner ~= nil then
+            item.components.inventoryitem:RemoveFromOwner(true)
+        end
         item:Remove()
     end
 end
@@ -56,6 +68,10 @@ local function IsValidRecordTarget(target)
         and target.components.health ~= nil
         and not target.components.health:IsDead()
         and not target:HasTag("INLIMBO")
+end
+
+local function IsAnalysisBlacklisted(target)
+    return target ~= nil and ANALYSIS_BLACKLIST[target.prefab]
 end
 
 local function GetPrefabDisplayName(prefab)
@@ -203,6 +219,10 @@ AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, 
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
 
 local function AnalyzeEquipment(tool, target, doer)
+    if IsAnalysisBlacklisted(target) then
+        return false
+    end
+
     -- 只解析可装备物品；容器类物品即使可检查也不生成协议。
     if target.components.container ~= nil then
         return false
@@ -249,6 +269,9 @@ local function AnalyzeEquipment(tool, target, doer)
         cd.Transform:SetPosition(doer.Transform:GetWorldPosition())
     end
     ConsumeOne(tool)
+    if TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT then
+        ConsumeOne(target)
+    end
     Say(doer, "ANNOUNCE_KEI_ANALYSIS_DONE")
     return true
 end
@@ -278,7 +301,7 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)
     elseif inst:HasTag("kei_blank_cd") and inst.kei_bound_prefab == nil and target:HasTag("epic") then
         table.insert(actions, ACTIONS.KEI_BIND_CD)
-    elseif inst:HasTag("kei_analysis_tool") and target.replica.equippable ~= nil then
+    elseif inst:HasTag("kei_analysis_tool") and target.replica.equippable ~= nil and not IsAnalysisBlacklisted(target) then
         table.insert(actions, ACTIONS.KEI_ANALYZE_EQUIP)
     end
 end)

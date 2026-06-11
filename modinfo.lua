@@ -39,4 +39,22 @@ configuration_options = {
         },
         default = "7_2",
     },
+    {
+        name = "KEI_ANALYSIS_CONSUME_EQUIPMENT",
+        label = "解析装备消耗",
+        hover = "设置装备解析成功后，是否消耗被解析的原装备。",
+        options = {
+            {
+                description = "不消耗",
+                hover = "解析成功后保留原装备。",
+                data = false,
+            },
+            {
+                description = "消耗",
+                hover = "解析成功后消耗被解析的原装备。",
+                data = true,
+            },
+        },
+        default = false,
+    },
 }

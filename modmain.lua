@@ -40,6 +40,7 @@ local protocol_slot_settings = {
     ["4_1"] = { max = 4, step = 1 },
 }
 local protocol_slot_setting = protocol_slot_settings[protocol_slot_mode] or protocol_slot_settings["7_2"]
+TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 
 -- Kei 的三项核心资源：电量、稳定性、机体完整度。
 TUNING.KEI_MAX_POWER = 120 -- 最大电量上限
@@ -61,11 +62,28 @@ TUNING.KEI_PROTOCOL_SLOT_INITIAL = 1 -- 初始拥有的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_setting.max -- 协议槽位的最大数量（根据配置）
 TUNING.KEI_PROTOCOL_UNLOCK_STEP = protocol_slot_setting.step -- 每次解锁的协议槽位数（根据配置）
 TUNING.KEI_RECORDER_RANGE = 35 -- 数据记录器的作用范围
+TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE = 10 -- 独眼巨鹿协议防止过冷时的最低体温
+TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE = 60 -- 龙蝇协议防止过热时的最高体温
 
 -- 头部 / 身体解析协议使用的隐藏虚拟装备槽。
 for i = 1, TUNING.KEI_PROTOCOL_SLOT_HARD_MAX do
     EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(i)] = "kei_protocol_" .. tostring(i)
 end
+
+AddComponentPostInit("temperature", function(self)
+    local old_SetTemperature = self.SetTemperature
+
+    function self:SetTemperature(value, ...)
+        if self.inst:HasTag("kei_nooverheat") then
+            value = math.min(value, TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE)
+        end
+        if self.inst:HasTag("kei_nofreezing") then
+            value = math.max(value, TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE)
+        end
+
+        return old_SetTemperature(self, value, ...)
+    end
+end)
 
 -- Kei 专用协议容器：复用 WX-78 扩展存储单元 UI，但只允许协议 CD 放入。
 local containers = require("containers")

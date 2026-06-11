@@ -338,8 +338,13 @@ end
 function KeiProtocolSlots:ClearModifiers()
     self:ClearVirtualEquips()
 
+    self.inst:RemoveTag("kei_nofreezing")
+    self.inst:RemoveTag("kei_nooverheat")
+    self:DisableFreezeImmunity()
+
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
+        self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
     end
     if self.inst.components.combat ~= nil then
         self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, "kei_analysis_hands")
@@ -349,6 +354,69 @@ function KeiProtocolSlots:ClearModifiers()
     end
     if self.inst.components.locomotor ~= nil then
         self.inst.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, "kei_analysis_hands")
+    end
+end
+
+local function FreezeImmuneRedirect()
+    return true
+end
+
+function KeiProtocolSlots:EnableFreezeImmunity()
+    local freezable = self.inst.components.freezable
+    if freezable == nil or self._kei_freeze_immune then
+        return
+    end
+
+    self._kei_old_freeze_redirectfn = freezable.redirectfn
+    freezable:SetRedirectFn(FreezeImmuneRedirect)
+    if freezable:IsFrozen() then
+        freezable:Unfreeze()
+    end
+    freezable.coldness = 0
+    freezable:UpdateTint()
+    self._kei_freeze_immune = true
+end
+
+function KeiProtocolSlots:DisableFreezeImmunity()
+    local freezable = self.inst.components.freezable
+    if freezable == nil or not self._kei_freeze_immune then
+        return
+    end
+
+    freezable:SetRedirectFn(self._kei_old_freeze_redirectfn)
+    self._kei_old_freeze_redirectfn = nil
+    self._kei_freeze_immune = nil
+end
+
+function KeiProtocolSlots:RefreshTemperatureProtocols()
+    if self.active_combat.deerclops then
+        self.inst:AddTag("kei_nofreezing")
+        self:EnableFreezeImmunity()
+        if self.inst.components.temperature ~= nil
+            and self.inst.components.temperature:GetCurrent() < TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE
+        then
+            self.inst.components.temperature:SetTemperature(TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE)
+        end
+    else
+        self.inst:RemoveTag("kei_nofreezing")
+        self:DisableFreezeImmunity()
+    end
+
+    if self.active_combat.dragonfly then
+        self.inst:AddTag("kei_nooverheat")
+        if self.inst.components.temperature ~= nil
+            and self.inst.components.temperature:GetCurrent() > TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE
+        then
+            self.inst.components.temperature:SetTemperature(TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE)
+        end
+        if self.inst.components.health ~= nil then
+            self.inst.components.health.externalfiredamagemultipliers:SetModifier(self.inst, 0)
+        end
+    else
+        self.inst:RemoveTag("kei_nooverheat")
+        if self.inst.components.health ~= nil then
+            self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
+        end
     end
 end
 
@@ -380,6 +448,7 @@ function KeiProtocolSlots:Refresh()
 
     self:ClearVirtualEquips(desired_virtuals)
     self.active_combat = combat
+    self:RefreshTemperatureProtocols()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
