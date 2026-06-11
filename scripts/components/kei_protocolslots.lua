@@ -55,6 +55,36 @@ local function ReturnItemToOwner(owner, item)
     end
 end
 
+local function GetMaxSlots()
+    return TUNING.KEI_PROTOCOL_SLOT_MAX or 7
+end
+
+local function GetHardMaxSlots()
+    return TUNING.KEI_PROTOCOL_SLOT_HARD_MAX or 7
+end
+
+local function GetInitialSlots()
+    return TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1
+end
+
+local function RemoveProtocolContainer(owner, inventory, container)
+    if container.components.container ~= nil then
+        local stored = container.components.container:GetItemInSlot(1)
+        if stored ~= nil then
+            stored = container.components.container:RemoveItem(stored, true)
+            if stored ~= nil then
+                ReturnItemToOwner(owner, stored)
+            end
+        end
+    end
+    if inventory ~= nil then
+        inventory:RemoveItem(container, true)
+    end
+    if container:IsValid() then
+        container:Remove()
+    end
+end
+
 function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
     container:AddTag("kei_protocol_slot")
     container.kei_protocol_slot_index = slot
@@ -86,7 +116,10 @@ function KeiProtocolSlots:EnsureProtocolContainers()
         return
     end
 
-    for slot = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+    local max_slots = GetMaxSlots()
+    self.unlocked_slots = math.clamp(self.unlocked_slots, GetInitialSlots(), max_slots)
+
+    for slot = 1, max_slots do
         local current = inventory:GetItemInSlot(slot)
 
         if IsProtocolContainer(current) then
@@ -114,6 +147,13 @@ function KeiProtocolSlots:EnsureProtocolContainers()
             end
         end
     end
+
+    for slot = max_slots + 1, GetHardMaxSlots() do
+        local current = inventory:GetItemInSlot(slot)
+        if IsProtocolContainer(current) then
+            RemoveProtocolContainer(self.inst, inventory, current)
+        end
+    end
 end
 
 function KeiProtocolSlots:OnRemoveFromEntity()
@@ -121,11 +161,15 @@ function KeiProtocolSlots:OnRemoveFromEntity()
 end
 
 function KeiProtocolSlots:UnlockTier(tier)
-    local target_slots = ({ 3, 5, 7 })[tier]
-    if target_slots == nil or target_slots <= self.unlocked_slots then
+    if tier == nil then
         return false
     end
-    self.unlocked_slots = math.min(target_slots, TUNING.KEI_PROTOCOL_SLOT_MAX)
+    local target_slots = GetInitialSlots() + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2)
+    target_slots = math.min(target_slots, GetMaxSlots())
+    if target_slots <= self.unlocked_slots then
+        return false
+    end
+    self.unlocked_slots = target_slots
     self:EnsureProtocolContainers()
     self:Refresh()
     return true
@@ -148,7 +192,7 @@ function KeiProtocolSlots:GetProtocolSlotItems()
         return items
     end
 
-    for slot = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+    for slot = 1, GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil then
             local item = container.components.container:GetItemInSlot(1)
@@ -404,7 +448,7 @@ end
 
 function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
-        self.unlocked_slots = math.clamp(data.unlocked_slots, 1, TUNING.KEI_PROTOCOL_SLOT_MAX)
+        self.unlocked_slots = math.clamp(data.unlocked_slots, GetInitialSlots(), GetMaxSlots())
     end
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()

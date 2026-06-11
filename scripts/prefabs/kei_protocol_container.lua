@@ -1,14 +1,18 @@
 local assets =
 {
     Asset("ANIM", "anim/wx78_inventorycontainer.zip"),
+    Asset("INV_IMAGE", "wx78_inventorycontainer"),
     Asset("INV_IMAGE", "wx78_inventorycontainer_open"),
     Asset("INV_IMAGE", "wx78_inventorycontainer_powered"),
     Asset("ANIM", "anim/ui_wx78_inventorycontainer_1x1.zip"),
 }
 
+local RefreshIcon
+
 local function OnPutInInventory(inst)
     inst:RemoveTag("no_container_store")
     inst.components.inventoryitem.islockedinslot = true
+    RefreshIcon(inst)
 end
 
 local function OnDropped(inst)
@@ -19,7 +23,7 @@ local function OnDropped(inst)
     inst:Remove()
 end
 
-local function RefreshIcon(inst)
+function RefreshIcon(inst)
     local image = inst.components.container:IsOpen()
         and "wx78_inventorycontainer_open"
         or (inst.components.container.canbeopened and "wx78_inventorycontainer_powered" or "wx78_inventorycontainer")
@@ -42,6 +46,8 @@ local function SetPowered(inst, powered)
         else
             RefreshIcon(inst)
         end
+    else
+        RefreshIcon(inst)
     end
 end
 
@@ -101,6 +107,7 @@ local function fn()
     inst.components.container.onopenfn = OnOpen
     inst.components.container.onclosefn = OnClose
     inst.components.container.canbeopened = false
+    RefreshIcon(inst)
 
     MakeHauntableLaunchAndDropFirstItem(inst)
 

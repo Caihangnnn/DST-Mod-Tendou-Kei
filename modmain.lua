@@ -32,6 +32,13 @@ Assets = {
 
 AddMinimapAtlas("images/map_icons/kei.xml")
 
+local protocol_slot_mode = GetModConfigData("KEI_PROTOCOL_SLOT_MODE") or "7_2"
+local protocol_slot_settings = {
+    ["7_2"] = { max = 7, step = 2 },
+    ["4_1"] = { max = 4, step = 1 },
+}
+local protocol_slot_setting = protocol_slot_settings[protocol_slot_mode] or protocol_slot_settings["7_2"]
+
 -- Kei 的三项核心资源：电量、稳定性、机体完整度。
 TUNING.KEI_MAX_POWER = 120
 TUNING.KEI_MAX_STABILITY = 240
@@ -47,11 +54,14 @@ TUNING.KEI_LOW_POWER_DAMAGE = 3
 TUNING.KEI_SELF_REPAIR_PERIOD = 3
 TUNING.KEI_PROTOCOL_DRAIN_PERIOD = 10
 TUNING.KEI_PROTOCOL_DRAIN_AMOUNT = 2
-TUNING.KEI_PROTOCOL_SLOT_MAX = 7
-TUNING.KEI_RECORDER_RANGE = 18
+TUNING.KEI_PROTOCOL_SLOT_HARD_MAX = 7
+TUNING.KEI_PROTOCOL_SLOT_INITIAL = 1
+TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_setting.max
+TUNING.KEI_PROTOCOL_UNLOCK_STEP = protocol_slot_setting.step
+TUNING.KEI_RECORDER_RANGE = 35
 
 -- 头部 / 身体解析协议使用的隐藏虚拟装备槽。
-for i = 1, TUNING.KEI_PROTOCOL_SLOT_MAX do
+for i = 1, TUNING.KEI_PROTOCOL_SLOT_HARD_MAX do
     EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(i)] = "kei_protocol_" .. tostring(i)
 end
 

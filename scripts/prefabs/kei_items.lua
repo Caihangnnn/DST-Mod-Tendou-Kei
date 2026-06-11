@@ -133,6 +133,16 @@ local COMBAT_PROTOCOLS = {
     dragonfly = { kind = "combat", protocol = "dragonfly" },
 }
 
+local function GetPrefabDisplayName(prefab)
+    return prefab ~= nil and (STRINGS.NAMES[string.upper(prefab)] or prefab) or nil
+end
+
+local function SetNamedName(inst, name)
+    if name ~= nil and inst.components.named ~= nil then
+        inst.components.named:SetName(name)
+    end
+end
+
 local function SetCombatData(inst, protocol)
     -- 协议数据统一挂在 kei_protocol_data 上，供协议槽组件读取。
     protocol = COMBAT_PROTOCOLS[protocol] ~= nil and protocol or "deerclops"
@@ -142,6 +152,7 @@ local function SetCombatData(inst, protocol)
         protocol = protocol,
         source = protocol,
     }
+    SetNamedName(inst, (GetPrefabDisplayName(protocol) or protocol) .. "战斗数据")
 end
 
 local function CombatCDOnSave(inst, data)
@@ -183,6 +194,7 @@ local function MakeCombatCD()
         end
 
         inst:AddComponent("inspectable")
+        inst:AddComponent("named")
         inst:AddComponent("inventoryitem")
         inst.components.inventoryitem:ChangeImageName("record")
 
@@ -203,15 +215,18 @@ end
 local function SetAnalysisData(inst, data)
     -- 解析 CD 保存装备解析结果，字段由 kei_actions.lua 的 AnalyzeEquipment 生成。
     data = data or {}
+    local source_name = data.display_name or GetPrefabDisplayName(data.source)
     inst.kei_protocol_data = {
         kind = "analysis",
         slot = data.slot or "hands",
         source = data.source,
+        display_name = source_name,
         absorb = data.absorb or 0,
         damage_mult = data.damage_mult or 1,
         speed_mult = data.speed_mult or 1,
         planar_bonus = data.planar_bonus or 0,
     }
+    SetNamedName(inst, source_name ~= nil and ("数据化的" .. source_name) or nil)
 end
 
 local function AnalysisCDOnSave(inst, data)
@@ -251,6 +266,7 @@ local function MakeAnalysisCD()
         end
 
         inst:AddComponent("inspectable")
+        inst:AddComponent("named")
         inst:AddComponent("inventoryitem")
         inst.components.inventoryitem:ChangeImageName("wagstaff_item_2")
 

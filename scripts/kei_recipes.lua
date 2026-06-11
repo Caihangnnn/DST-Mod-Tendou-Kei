@@ -78,7 +78,7 @@ AddRecipe2(
     filters
 )
 
--- 三个解锁模块共用同一套初版材料，分别解锁到 3/5/7 格。
+-- 三个解锁模块共用同一套初版材料；实际解锁数量由模组配置决定。
 for i = 1, 3 do
     AddRecipe2(
         "kei_protocol_mk" .. tostring(i),

@@ -4,6 +4,27 @@ local VALID_RECORD_TARGETS = {
     dragonfly = true,
 }
 
+local RECORDER_STATE = {
+    idle = 0,
+    recording = 1,
+    complete = 2,
+}
+
+local function GetRecorderState(inst)
+    if inst == nil then
+        return RECORDER_STATE.idle
+    end
+    if inst._kei_recorder_state ~= nil then
+        return inst._kei_recorder_state:value()
+    end
+    if inst.kei_state == "recording" then
+        return RECORDER_STATE.recording
+    elseif inst.kei_state == "complete" then
+        return RECORDER_STATE.complete
+    end
+    return RECORDER_STATE.idle
+end
+
 -- 兼容可堆叠物品和单件物品的统一消耗函数。
 local function ConsumeOne(item)
     if item == nil or not item:IsValid() then
@@ -37,6 +58,17 @@ local function IsValidRecordTarget(target)
         and not target:HasTag("INLIMBO")
 end
 
+local function GetPrefabDisplayName(prefab)
+    return prefab ~= nil and (STRINGS.NAMES[string.upper(prefab)] or prefab) or nil
+end
+
+local function GetTargetDisplayName(target)
+    if target == nil then
+        return nil
+    end
+    return target:GetDisplayName() or GetPrefabDisplayName(target.prefab)
+end
+
 local function FindRecorderForTarget(target)
     -- 手持空白 CD 点巨兽时，寻找能覆盖该巨兽的空闲记录仪。
     if not IsValidRecordTarget(target) then
@@ -48,7 +80,7 @@ local function FindRecorderForTarget(target)
     local best_dsq = nil
 
     for _, recorder in ipairs(recorders) do
-        if recorder.kei_state == "idle"
+        if GetRecorderState(recorder) == RECORDER_STATE.idle
             and recorder:GetDistanceSqToInst(target) <= TUNING.KEI_RECORDER_RANGE * TUNING.KEI_RECORDER_RANGE
         then
             local dsq = recorder:GetDistanceSqToInst(target)
@@ -75,6 +107,8 @@ local charge_action = AddAction("KEI_CHARGE", "充电", function(act)
     return true
 end)
 charge_action.mount_valid = true
+charge_action.rmb = true
+charge_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
 
@@ -91,6 +125,8 @@ local repair_action = AddAction("KEI_REPAIR", "修复", function(act)
     return true
 end)
 repair_action.mount_valid = true
+repair_action.rmb = true
+repair_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 
@@ -111,6 +147,8 @@ local unlock_action = AddAction("KEI_UNLOCK_PROTOCOL", "扩展协议槽", functi
     return false
 end)
 unlock_action.mount_valid = true
+unlock_action.rmb = true
+unlock_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_UNLOCK_PROTOCOL, "doshortaction"))
 
@@ -134,6 +172,7 @@ local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
     return true
 end)
 bind_cd_action.mount_valid = true
+bind_cd_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
 
@@ -145,6 +184,7 @@ local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act
     return act.target:StartKeiRecording(act.invobject, act.doer)
 end)
 submit_cd_action.mount_valid = true
+submit_cd_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
 
@@ -156,6 +196,7 @@ local stop_record_action = AddAction("KEI_STOP_RECORD", "停止记录", function
     return act.target:StopKeiRecording(act.doer)
 end)
 stop_record_action.mount_valid = true
+stop_record_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
 
@@ -167,6 +208,7 @@ local harvest_action = AddAction("KEI_HARVEST_RECORD", "收获数据", function(
     return act.target:HarvestKeiData(act.doer)
 end)
 harvest_action.mount_valid = true
+harvest_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
 
@@ -182,6 +224,7 @@ local function AnalyzeEquipment(tool, target, doer)
     local slot = target.components.equippable.equipslot
     local data = {
         source = target.prefab,
+        display_name = GetTargetDisplayName(target),
     }
 
     -- 头部和身体装备提取护甲吸收率；手部装备提取武器、移速和平面伤害信息。
@@ -269,9 +312,10 @@ AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
     if not right or not IsKei(doer) or not inst:HasTag("kei_data_recorder") then
         return
     end
-    if inst.kei_state == "recording" then
+    local state = GetRecorderState(inst)
+    if state == RECORDER_STATE.recording then
         table.insert(actions, ACTIONS.KEI_STOP_RECORD)
-    elseif inst.kei_state == "complete" then
+    elseif state == RECORDER_STATE.complete then
         table.insert(actions, ACTIONS.KEI_HARVEST_RECORD)
     end
 end)

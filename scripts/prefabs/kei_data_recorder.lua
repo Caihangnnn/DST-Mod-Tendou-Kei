@@ -14,6 +14,12 @@ local VALID_RECORD_TARGETS = {
     dragonfly = true,
 }
 
+local RECORDER_STATE = {
+    idle = 0,
+    recording = 1,
+    complete = 2,
+}
+
 local function Say(doer, key)
     -- 记录仪动作的反馈仍由操作者 Kei 说出。
     if doer ~= nil and doer.components.talker ~= nil and STRINGS.CHARACTERS.KEI[key] ~= nil then
@@ -39,23 +45,106 @@ local function GetBoundTarget(cd)
     return nil
 end
 
+local function IsPointInArena(inst, px, pz)
+    if WAGPUNK_ARENA_COLLISION_DATA == nil then
+        local range = TUNING.KEI_RECORDER_RANGE
+        return inst:GetDistanceSqToPoint(px, 0, pz) <= range * range
+    end
+
+    local cx, cy, cz = inst.Transform:GetWorldPosition()
+    local x = px - cx
+    local z = pz - cz
+    local inside = false
+    local previous = WAGPUNK_ARENA_COLLISION_DATA[#WAGPUNK_ARENA_COLLISION_DATA]
+
+    for _, current in ipairs(WAGPUNK_ARENA_COLLISION_DATA) do
+        local x1, z1 = previous[1], previous[2]
+        local x2, z2 = current[1], current[2]
+        if (z1 > z) ~= (z2 > z) and x < (x2 - x1) * (z - z1) / (z2 - z1) + x1 then
+            inside = not inside
+        end
+        previous = current
+    end
+
+    return inside
+end
+
 local function TargetInRange(inst, target)
     -- 目标必须一直处在记录仪工作半径内，死亡时才算记录成功。
-    return target ~= nil
-        and target:IsValid()
-        and inst:GetDistanceSqToInst(target) <= TUNING.KEI_RECORDER_RANGE * TUNING.KEI_RECORDER_RANGE
+    if target == nil or not target:IsValid() then
+        return false
+    end
+    local x, y, z = target.Transform:GetWorldPosition()
+    return IsPointInArena(inst, x, z)
+end
+
+local function ClearForceField(inst)
+    if inst.kei_forcefield_walls ~= nil then
+        for _, wall in ipairs(inst.kei_forcefield_walls) do
+            if wall:IsValid() then
+                if wall.RetractWallWithJitter ~= nil then
+                    wall:RetractWallWithJitter(0.4)
+                    wall:DoTaskInTime(1, wall.Remove)
+                else
+                    wall:Remove()
+                end
+            end
+        end
+        inst.kei_forcefield_walls = nil
+    end
+    if inst.kei_forcefield_collision ~= nil and inst.kei_forcefield_collision:IsValid() then
+        inst.kei_forcefield_collision:Remove()
+        inst.kei_forcefield_collision = nil
+    end
+end
+
+local function CreateForceField(inst)
+    ClearForceField(inst)
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+
+    inst.kei_forcefield_walls = {}
+    for _, data in ipairs(WAGPUNK_ARENA_COLLISION_DATA) do
+        local wall = SpawnPrefab("wagpunk_cagewall")
+        if wall ~= nil then
+            wall.persists = false
+            wall.Transform:SetPosition(x + data[1], 0, z + data[2])
+            wall.Transform:SetRotation(math.floor(data[3] / 90) * 90)
+            wall.sfxlooper = data[4] or nil
+            if wall.ExtendWallWithJitter ~= nil then
+                wall:ExtendWallWithJitter(0.4)
+            end
+            table.insert(inst.kei_forcefield_walls, wall)
+        end
+    end
+
+    inst.kei_forcefield_collision = SpawnPrefab("wagpunk_arena_collision")
+    if inst.kei_forcefield_collision ~= nil then
+        inst.kei_forcefield_collision.Transform:SetPosition(x, 0, z)
+        inst.kei_forcefield_collision.Transform:SetRotation(0)
+    end
 end
 
 local function SetRecorderState(inst, state)
     -- 记录仪状态同时驱动交互逻辑和动画表现。
     inst.kei_state = state
+    if inst._kei_recorder_state ~= nil then
+        inst._kei_recorder_state:set(RECORDER_STATE[state] or RECORDER_STATE.idle)
+    end
+    inst:RemoveTag("kei_recording")
+    inst:RemoveTag("kei_record_complete")
     if state == "recording" then
+        inst:AddTag("kei_recording")
         inst.AnimState:PlayAnimation("activate")
         inst.AnimState:PushAnimation("idle_on", true)
+        CreateForceField(inst)
     elseif state == "complete" then
+        inst:AddTag("kei_record_complete")
         inst.AnimState:PlayAnimation("idle_on", true)
+        ClearForceField(inst)
     else
         inst.AnimState:PlayAnimation("idle_off", true)
+        ClearForceField(inst)
     end
 end
 
@@ -162,15 +251,8 @@ local function HarvestKeiData(inst, doer)
 end
 
 local function OnHammered(inst)
-    -- 被锤毁时掉落基础材料；若正在记录，先走取消逻辑返还空白 CD。
-    if inst.components.lootdropper ~= nil then
-        inst.components.lootdropper:DropLoot()
-    end
-    if inst.kei_state == "recording" then
-        StopKeiRecording(inst)
-    end
-    SpawnPrefab("collapse_small").Transform:SetPosition(inst.Transform:GetWorldPosition())
-    inst:Remove()
+    inst.components.workable:SetWorkLeft(999999)
+    inst:PushEvent("workinghit")
 end
 
 local function OnHit(inst)
@@ -226,6 +308,7 @@ local function recorder_fn()
     inst:AddTag("kei_data_recorder")
 
     inst:SetDeploySmartRadius(DEPLOYSPACING_RADIUS[DEPLOYSPACING.DEFAULT] / 2)
+    inst._kei_recorder_state = net_tinybyte(inst.GUID, "kei_data_recorder._state", "kei_recorderstatedirty")
 
     inst.entity:SetPristine()
 
@@ -240,7 +323,7 @@ local function recorder_fn()
 
     local workable = inst:AddComponent("workable")
     workable:SetWorkAction(ACTIONS.HAMMER)
-    workable:SetWorkLeft(3)
+    workable:SetWorkLeft(999999)
     workable:SetOnFinishCallback(OnHammered)
     workable:SetOnWorkCallback(OnHit)
 
@@ -264,7 +347,7 @@ local function kit_postinit(inst)
 end
 
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-return Prefab("kei_data_recorder", recorder_fn, assets, { "collapse_small", "kei_blank_cd", "kei_combat_data_cd" }),
+return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "wagpunk_cagewall", "wagpunk_arena_collision" }),
     MakeDeployableKitItem(
         "kei_data_recorder_item",
         "kei_data_recorder",
