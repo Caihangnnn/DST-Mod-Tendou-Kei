@@ -553,6 +553,16 @@ function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_eyeofterror_protocol_active ~= nil then
         self.inst._kei_eyeofterror_protocol_active:set(self:HasCombatProtocol("eyeofterror"))
     end
+    local daywalker_active = self:HasCombatProtocol("daywalker")
+    if self.inst._kei_daywalker_protocol_active ~= nil then
+        self.inst._kei_daywalker_protocol_active:set(daywalker_active)
+    end
+    if not daywalker_active then
+        self.inst.kei_daywalker_aiming = nil
+        if self.inst._kei_daywalker_aiming ~= nil then
+            self.inst._kei_daywalker_aiming:set(false)
+        end
+    end
 end
 
 function KeiProtocolSlots:Refresh()

@@ -23,7 +23,7 @@ function EyeOfTerrorDash.GetTargetPoint(inst, targetpos)
         return nil
     end
 
-    local maxdist = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
+    local maxdist = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 16
     local map = TheWorld.Map
     local dirx = dx / dist
     local dirz = dz / dist
@@ -44,7 +44,7 @@ function EyeOfTerrorDash.GetTargetPoint(inst, targetpos)
 end
 
 function EyeOfTerrorDash.ReticuleTargetFn(inst)
-    local distance = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
+    local distance = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 16
     return EyeOfTerrorDash.GetTargetPoint(inst, Vector3(inst.entity:LocalToWorldSpace(distance, 0, 0)))
 end
 

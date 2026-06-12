@@ -1,5 +1,6 @@
 local CombatProtocolDefs = require("kei_combat_protocol_defs")
 local EyeOfTerrorDash = require("kei_eyeofterror_dash")
+local DaywalkerLeap = require("kei_daywalker_leap")
 local SpDamageUtil = require("components/spdamageutil")
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
@@ -58,6 +59,22 @@ end
 
 local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
+end
+
+local function ToggleKeiOffPhysics(inst)
+    inst.sg.statemem.isphysicstoggle = true
+    inst.Physics:SetCollisionMask(COLLISION.GROUND)
+end
+
+local function ToggleKeiOnPhysics(inst)
+    inst.sg.statemem.isphysicstoggle = nil
+    inst.Physics:SetCollisionMask(
+        COLLISION.WORLD,
+        COLLISION.OBSTACLES,
+        COLLISION.SMALLOBSTACLES,
+        COLLISION.CHARACTERS,
+        COLLISION.GIANTS
+    )
 end
 
 local DASH_DAMAGE_MUST_TAGS = { "_combat" }
@@ -165,6 +182,100 @@ local function DoEyeOfTerrorDash(doer, targetpos)
 
     DoEyeOfTerrorDashDamage(doer, startpt, pt)
     doer.Physics:Teleport(pt.x, 0, pt.z)
+    return true
+end
+
+local function SetDaywalkerAiming(doer, aiming)
+    if doer == nil then
+        return
+    end
+    doer.kei_daywalker_aiming = aiming == true or nil
+    if TheWorld.ismastersim and doer._kei_daywalker_aiming ~= nil then
+        doer._kei_daywalker_aiming:set(aiming == true)
+    end
+end
+
+local DAYWALKER_LEAP_MUST_TAGS = { "_combat" }
+local DAYWALKER_LEAP_CANT_TAGS = { "INLIMBO", "wall", "companion", "flight", "invisible", "notarget", "noattack", "playerghost" }
+
+local function SlowDaywalkerLeapTarget(target)
+    if target.components.locomotor == nil then
+        return
+    end
+
+    target.components.locomotor:SetExternalSpeedMultiplier(target, "kei_daywalker_leap_slow", TUNING.KEI_DAYWALKER_LEAP_SLOW_MULT or 0.1)
+
+    if target._kei_daywalker_leap_slow_task ~= nil then
+        target._kei_daywalker_leap_slow_task:Cancel()
+    end
+
+    target._kei_daywalker_leap_slow_task = target:DoTaskInTime(TUNING.KEI_DAYWALKER_LEAP_SLOW_DURATION or 3, function(inst)
+        if inst.components.locomotor ~= nil then
+            inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_daywalker_leap_slow")
+        end
+        inst._kei_daywalker_leap_slow_task = nil
+    end)
+end
+
+local function SpawnDaywalkerLeapSinkhole(pos)
+    local sinkhole = SpawnPrefab("daywalker_sinkhole")
+    if sinkhole == nil then
+        return
+    end
+
+    sinkhole.persists = false
+    sinkhole.Transform:SetPosition(pos:Get())
+    sinkhole:PushEvent("docollapse")
+    sinkhole:DoTaskInTime(TUNING.KEI_DAYWALKER_SINKHOLE_DURATION or 3, function(inst)
+        if inst:IsValid() then
+            if ErodeAway ~= nil then
+                ErodeAway(inst)
+            else
+                inst:Remove()
+            end
+        end
+    end)
+end
+
+local function DoDaywalkerLeapImpact(doer, pos)
+    if doer.components.combat == nil or pos == nil then
+        return
+    end
+
+    SpawnDaywalkerLeapSinkhole(pos)
+
+    local radius = TUNING.KEI_DAYWALKER_LEAP_RADIUS or 4
+    local base_damage = TUNING.KEI_DAYWALKER_LEAP_DAMAGE_BASE or 150
+    local maxhealth_percent = TUNING.KEI_DAYWALKER_LEAP_DAMAGE_MAXHEALTH_PERCENT or 0.04
+    local x, y, z = pos:Get()
+    local targets = TheSim:FindEntities(x, y, z, radius, DAYWALKER_LEAP_MUST_TAGS, DAYWALKER_LEAP_CANT_TAGS)
+
+    for _, target in ipairs(targets) do
+        if target ~= doer
+            and target:IsValid()
+            and target.components.combat ~= nil
+            and doer.components.combat:IsValidTarget(target)
+            and not (target.components.health ~= nil and target.components.health:IsDead())
+        then
+            local maxhealth = target.components.health ~= nil and target.components.health.maxhealth or 0
+            local damage = base_damage + maxhealth * maxhealth_percent
+            target.components.combat:GetAttacked(doer, damage)
+            SlowDaywalkerLeapTarget(target)
+        end
+    end
+end
+
+local function DoDaywalkerLeap(doer, targetpos)
+    if not DaywalkerLeap.IsAiming(doer) then
+        return false
+    end
+    local pt = DaywalkerLeap.GetTargetPoint(doer, targetpos)
+    if pt == nil then
+        return false
+    end
+
+    SetDaywalkerAiming(doer, false)
+    doer:PushEvent("kei_daywalker_leap", { targetpos = pt })
     return true
 end
 
@@ -389,6 +500,193 @@ AddStategraphState("wilson_client", State{
 
     onexit = function(inst)
         inst.AnimState:SetDeltaTimeMultiplier(1)
+    end,
+})
+
+local daywalker_aim_action = AddAction("KEI_DAYWALKER_AIM", "选择跳劈", function(act)
+    if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) then
+        return false
+    end
+    SetDaywalkerAiming(act.doer, true)
+    return true
+end)
+daywalker_aim_action.mount_valid = true
+daywalker_aim_action.rmb = true
+daywalker_aim_action.distance = math.huge
+daywalker_aim_action.priority = 4
+daywalker_aim_action.invalid_hold_action = true
+
+local daywalker_cancel_aim_action = AddAction("KEI_DAYWALKER_CANCEL_AIM", "取消跳劈", function(act)
+    if not IsKei(act.doer) then
+        return false
+    end
+    SetDaywalkerAiming(act.doer, false)
+    return true
+end)
+daywalker_cancel_aim_action.mount_valid = true
+daywalker_cancel_aim_action.rmb = true
+daywalker_cancel_aim_action.distance = math.huge
+daywalker_cancel_aim_action.priority = 4
+daywalker_cancel_aim_action.invalid_hold_action = true
+
+local daywalker_leap_action = AddAction("KEI_DAYWALKER_LEAP", "跳劈", function(act)
+    if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) or not DaywalkerLeap.IsAiming(act.doer) then
+        return false
+    end
+    local pt = act:GetActionPoint()
+    return pt ~= nil and DoDaywalkerLeap(act.doer, pt) or false
+end)
+daywalker_leap_action.mount_valid = true
+daywalker_leap_action.distance = math.huge
+daywalker_leap_action.priority = 4
+daywalker_leap_action.invalid_hold_action = true
+
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_AIM, "kei_daywalker_aim"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_AIM, "kei_daywalker_aim"))
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_CANCEL_AIM, "kei_daywalker_aim"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_CANCEL_AIM, "kei_daywalker_aim"))
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
+
+AddStategraphState("wilson", State{
+    name = "kei_daywalker_aim",
+    tags = { "doing" },
+
+    onenter = function(inst)
+        inst:PerformBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_daywalker_aim",
+    tags = { "doing" },
+    server_states = { "kei_daywalker_aim" },
+
+    onenter = function(inst)
+        inst:PerformPreviewBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+})
+
+AddStategraphState("wilson", State{
+    name = "kei_daywalker_leap_pre",
+    tags = { "aoe", "doing", "busy", "nointerrupt", "nomorph" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.AnimState:PlayAnimation("atk_leap_pre")
+    end,
+
+    events =
+    {
+        EventHandler("kei_daywalker_leap", function(inst, data)
+            inst.sg.statemem.leap = true
+            inst.sg:GoToState("kei_daywalker_leap", data ~= nil and data.targetpos or nil)
+        end),
+        EventHandler("animover", function(inst)
+            if not inst.AnimState:AnimDone() then
+                return
+            end
+            if inst.AnimState:IsCurrentAnimation("atk_leap_pre") then
+                inst.AnimState:PlayAnimation("atk_leap_lag")
+                inst:PerformBufferedAction()
+            else
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+})
+
+AddStategraphState("wilson", State{
+    name = "kei_daywalker_leap",
+    tags = { "aoe", "doing", "busy", "nointerrupt", "nopredict", "nomorph" },
+
+    onenter = function(inst, targetpos)
+        if targetpos == nil or not inst.AnimState:IsCurrentAnimation("atk_leap_lag") then
+            inst.sg:GoToState("idle", true)
+            return
+        end
+
+        ToggleKeiOffPhysics(inst)
+        inst.Transform:SetEightFaced()
+        inst.AnimState:PlayAnimation("atk_leap")
+        inst.SoundEmitter:PlaySound("dontstarve/common/deathpoof")
+        inst.sg.statemem.startingpos = inst:GetPosition()
+        inst.sg.statemem.targetpos = targetpos
+
+        if inst.sg.statemem.startingpos.x ~= targetpos.x or inst.sg.statemem.startingpos.z ~= targetpos.z then
+            inst:ForceFacePoint(targetpos:Get())
+            inst.Physics:SetMotorVel(math.sqrt(distsq(inst.sg.statemem.startingpos.x, inst.sg.statemem.startingpos.z, targetpos.x, targetpos.z)) / (12 * FRAMES), 0, 0)
+        end
+    end,
+
+    timeline =
+    {
+        TimeEvent(12 * FRAMES, function(inst)
+            ToggleKeiOnPhysics(inst)
+            inst.Physics:Stop()
+            inst.Physics:SetMotorVel(0, 0, 0)
+            inst.Physics:Teleport(inst.sg.statemem.targetpos.x, 0, inst.sg.statemem.targetpos.z)
+        end),
+        TimeEvent(13 * FRAMES, function(inst)
+            ShakeAllCameras(CAMERASHAKE.VERTICAL, 0.7, 0.015, 0.8, inst, 20)
+            inst.sg:RemoveStateTag("nointerrupt")
+            DoDaywalkerLeapImpact(inst, inst.sg.statemem.targetpos)
+        end),
+    },
+
+    events =
+    {
+        EventHandler("animover", function(inst)
+            if inst.AnimState:AnimDone() then
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+
+    onexit = function(inst)
+        if inst.sg.statemem.isphysicstoggle then
+            ToggleKeiOnPhysics(inst)
+            inst.Physics:Stop()
+            inst.Physics:SetMotorVel(0, 0, 0)
+            local x, y, z = inst.Transform:GetWorldPosition()
+            if TheWorld.Map:IsPassableAtPoint(x, 0, z) and not TheWorld.Map:IsGroundTargetBlocked(Vector3(x, 0, z)) then
+                inst.Physics:Teleport(x, 0, z)
+            elseif inst.sg.statemem.targetpos ~= nil then
+                inst.Physics:Teleport(inst.sg.statemem.targetpos.x, 0, inst.sg.statemem.targetpos.z)
+            end
+        end
+        inst.Transform:SetFourFaced()
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_daywalker_leap_pre",
+    tags = { "doing", "busy", "nointerrupt" },
+    server_states = { "kei_daywalker_leap_pre", "kei_daywalker_leap" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.AnimState:PlayAnimation("atk_leap_pre")
+        inst.AnimState:PushAnimation("atk_leap_lag", false)
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(2)
+    end,
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
     end,
 })
 

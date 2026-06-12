@@ -26,6 +26,12 @@ local COMBAT_PROTOCOLS = {
         display_name = "恐怖之眼",
         description = "恐怖之眼数据：右键冲锋到鼠标指定位置。",
     },
+    daywalker = {
+        kind = "combat",
+        protocol = "daywalker",
+        display_name = "梦魇疯猪",
+        description = "梦魇疯猪数据：右键跳劈到鼠标指定位置，落地造成范围伤害并减速目标。",
+    },
 }
 
 local VALID_RECORD_TARGETS = {}

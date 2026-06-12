@@ -1,5 +1,6 @@
 local MakePlayerCharacter = require("prefabs/player_common")
 local EyeOfTerrorDash = require("kei_eyeofterror_dash")
+local DaywalkerLeap = require("kei_daywalker_leap")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
@@ -11,6 +12,9 @@ local assets = {
 local prefabs = {
     "kei_battery",
     "kei_protocol_container",
+    "reticuleaoe",
+    "reticuleaoeping",
+    "daywalker_sinkhole",
 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
@@ -22,13 +26,92 @@ local start_inv = {
     "kei_battery",
 }
 
+local function SetReticulePrefab(reticule, prefab)
+    if reticule == nil then
+        return
+    end
+    if reticule.reticuleprefab ~= prefab and reticule.reticule ~= nil then
+        reticule:DestroyReticule()
+    end
+    reticule.reticuleprefab = prefab
+end
+
+local function ConfigureEyeOfTerrorReticule(inst)
+    local reticule = inst.components.reticule
+    if reticule == nil then
+        return
+    end
+    SetReticulePrefab(reticule, "reticuleline")
+    reticule.pingprefab = nil
+    reticule.targetfn = EyeOfTerrorDash.ReticuleTargetFn
+    reticule.mousetargetfn = EyeOfTerrorDash.ReticuleMouseTargetFn
+    reticule.updatepositionfn = EyeOfTerrorDash.ReticuleUpdatePositionFn
+    reticule.validcolour = { 1, 0.2, 0.2, 0 }
+    reticule.invalidcolour = { 0.5, 0, 0, 0 }
+    reticule.twinstickrange = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
+end
+
+local function ConfigureDaywalkerReticule(inst)
+    local reticule = inst.components.reticule
+    if reticule == nil then
+        return
+    end
+    SetReticulePrefab(reticule, "reticuleaoe")
+    reticule.pingprefab = "reticuleaoeping"
+    reticule.targetfn = DaywalkerLeap.ReticuleTargetFn
+    reticule.mousetargetfn = DaywalkerLeap.ReticuleMouseTargetFn
+    reticule.updatepositionfn = nil
+    reticule.validcolour = { 1, 0.75, 0, 1 }
+    reticule.invalidcolour = { 0.5, 0, 0, 1 }
+    reticule.twinstickrange = TUNING.KEI_DAYWALKER_LEAP_DISTANCE or 7
+end
+
+local function UpdateDaywalkerAimingReticule(inst)
+    if inst.components.reticule == nil then
+        return
+    end
+    if inst._kei_daywalker_aiming ~= nil and inst._kei_daywalker_aiming:value() then
+        ConfigureDaywalkerReticule(inst)
+        inst.components.reticule:CreateReticule()
+    else
+        inst.components.reticule:DestroyReticule()
+    end
+end
+
 local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
+    if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
+        and DaywalkerLeap.HasProtocol(inst)
+        and DaywalkerLeap.IsAiming(inst)
+        and not inst:HasTag("playerghost")
+    then
+        ConfigureDaywalkerReticule(inst)
+        local targetpos = usereticulepos and DaywalkerLeap.ReticuleTargetFn(inst) or DaywalkerLeap.GetTargetPoint(inst, pos)
+        if targetpos ~= nil then
+            return { right and ACTIONS.KEI_DAYWALKER_CANCEL_AIM or ACTIONS.KEI_DAYWALKER_LEAP }, targetpos
+        end
+        return right and { ACTIONS.KEI_DAYWALKER_CANCEL_AIM } or {}
+    end
+
+    if right
+        and useitem == nil
+        and ACTIONS.KEI_DAYWALKER_AIM ~= nil
+        and DaywalkerLeap.HasProtocol(inst)
+        and not inst:HasTag("playerghost")
+    then
+        ConfigureDaywalkerReticule(inst)
+        local targetpos = usereticulepos and DaywalkerLeap.ReticuleTargetFn(inst) or DaywalkerLeap.GetTargetPoint(inst, pos)
+        if targetpos ~= nil then
+            return { ACTIONS.KEI_DAYWALKER_AIM }, targetpos
+        end
+    end
+
     if right
         and useitem == nil
         and ACTIONS.KEI_EYEOFTERROR_DASH ~= nil
         and EyeOfTerrorDash.HasProtocol(inst)
         and not inst:HasTag("playerghost")
     then
+        ConfigureEyeOfTerrorReticule(inst)
         local targetpos = usereticulepos and EyeOfTerrorDash.ReticuleTargetFn(inst) or EyeOfTerrorDash.GetTargetPoint(inst, pos)
         if targetpos ~= nil then
             return { ACTIONS.KEI_EYEOFTERROR_DASH }, targetpos
@@ -37,8 +120,44 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
     return {}
 end
 
+local function DaywalkerAimLeftClickPicker(inst, target, position)
+    if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
+        and DaywalkerLeap.HasProtocol(inst)
+        and DaywalkerLeap.IsAiming(inst)
+        and position ~= nil
+        and not inst:HasTag("playerghost")
+    then
+        local targetpos = DaywalkerLeap.GetTargetPoint(inst, position)
+        return targetpos ~= nil and inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_LEAP }, targetpos) or {}
+    end
+    if inst._kei_old_leftclickoverride ~= nil then
+        return inst._kei_old_leftclickoverride(inst, target, position)
+    end
+    return nil, true
+end
+
+local function DaywalkerAimRightClickPicker(inst, target, position)
+    if ACTIONS.KEI_DAYWALKER_CANCEL_AIM ~= nil
+        and DaywalkerLeap.IsAiming(inst)
+        and not inst:HasTag("playerghost")
+    then
+        return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_CANCEL_AIM }, position or inst:GetPosition())
+    end
+    if inst._kei_old_rightclickoverride ~= nil then
+        return inst._kei_old_rightclickoverride(inst, target, position)
+    end
+    return nil, true
+end
+
 local function OnSetOwner(inst)
     if inst.components.playeractionpicker ~= nil then
+        if not inst._kei_daywalker_picker_wrapped then
+            inst._kei_old_leftclickoverride = inst.components.playeractionpicker.leftclickoverride
+            inst._kei_old_rightclickoverride = inst.components.playeractionpicker.rightclickoverride
+            inst.components.playeractionpicker.leftclickoverride = DaywalkerAimLeftClickPicker
+            inst.components.playeractionpicker.rightclickoverride = DaywalkerAimRightClickPicker
+            inst._kei_daywalker_picker_wrapped = true
+        end
         inst.components.playeractionpicker.pointspecialactionsfn = GetPointSpecialActions
     end
 end
@@ -58,22 +177,18 @@ local function common_postinit(inst)
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
+    inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
+    inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
 
     inst:AddComponent("reticule")
-    inst.components.reticule.reticuleprefab = "reticuleline"
-    inst.components.reticule.pingprefab = nil
-    inst.components.reticule.targetfn = EyeOfTerrorDash.ReticuleTargetFn
-    inst.components.reticule.mousetargetfn = EyeOfTerrorDash.ReticuleMouseTargetFn
-    inst.components.reticule.updatepositionfn = EyeOfTerrorDash.ReticuleUpdatePositionFn
-    inst.components.reticule.validcolour = { 1, 0.2, 0.2, 0 }
-    inst.components.reticule.invalidcolour = { 0.5, 0, 0, 0 }
     inst.components.reticule.ease = true
     inst.components.reticule.mouseenabled = true
     inst.components.reticule.twinstickcheckscheme = true
     inst.components.reticule.twinstickmode = 1
-    inst.components.reticule.twinstickrange = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
+    ConfigureEyeOfTerrorReticule(inst)
 
     inst:ListenForEvent("setowner", OnSetOwner)
+    inst:ListenForEvent("kei_daywalker_aiming_dirty", UpdateDaywalkerAimingReticule)
 
     ConfigureVisuals(inst)
 end

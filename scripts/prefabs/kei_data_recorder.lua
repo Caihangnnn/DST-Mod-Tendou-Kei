@@ -180,8 +180,12 @@ local function ClearTargetListener(inst)
     if inst.kei_target ~= nil and inst.kei_target_death_fn ~= nil then
         inst:RemoveEventCallback("death", inst.kei_target_death_fn, inst.kei_target)
     end
+    if inst.kei_target ~= nil and inst.kei_target_minhealth_fn ~= nil then
+        inst:RemoveEventCallback("minhealth", inst.kei_target_minhealth_fn, inst.kei_target)
+    end
     inst.kei_target = nil
     inst.kei_target_death_fn = nil
+    inst.kei_target_minhealth_fn = nil
 end
 
 local function CompleteRecording(inst, target)
@@ -211,6 +215,7 @@ local function StartKeiRecording(inst, cd, doer)
         or target.prefab ~= cd.kei_bound_prefab
         or target.components.health == nil
         or target.components.health:IsDead()
+        or target.defeated
         or not TargetInRange(inst, target)
     then
         return false
@@ -230,6 +235,13 @@ local function StartKeiRecording(inst, cd, doer)
         Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
     end
     inst:ListenForEvent("death", inst.kei_target_death_fn, target)
+    if target.prefab == "daywalker" then
+        inst.kei_target_minhealth_fn = function(target_inst)
+            CompleteRecording(inst, target_inst)
+            Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
+        end
+        inst:ListenForEvent("minhealth", inst.kei_target_minhealth_fn, target)
+    end
     SetRecorderState(inst, "recording")
     Say(doer, "ANNOUNCE_KEI_RECORDING")
     return true
