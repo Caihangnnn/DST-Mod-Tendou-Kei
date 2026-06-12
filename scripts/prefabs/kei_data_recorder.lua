@@ -1,4 +1,5 @@
 require("prefabutil")
+local CombatProtocolDefs = require("kei_combat_protocol_defs")
 
 local assets = {
     Asset("ANIM", "anim/vault_decon_mister.zip"),
@@ -17,13 +18,7 @@ local RECORDER_ANIM_ON = "misting_loop"
 local RECORDER_ANIM_ACTIVATE = "misting_activate"
 local RECORDER_ANIM_DEACTIVATE = "misting_deactivated"
 
-local VALID_RECORD_TARGETS = {
-    deerclops = true,
-    bearger = true,
-    dragonfly = true,
-    moose = true,
-    eyeofterror = true,
-}
+local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
 
 local RECORDER_STATE = {
     idle = 0,

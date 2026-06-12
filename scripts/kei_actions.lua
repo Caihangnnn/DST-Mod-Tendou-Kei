@@ -1,12 +1,8 @@
+local CombatProtocolDefs = require("kei_combat_protocol_defs")
+local EyeOfTerrorDash = require("kei_eyeofterror_dash")
 local SpDamageUtil = require("components/spdamageutil")
 
-local VALID_RECORD_TARGETS = {
-    deerclops = true,
-    bearger = true,
-    dragonfly = true,
-    moose = true,
-    eyeofterror = true,
-}
+local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
 
 local ANALYSIS_BLACKLIST = {
     armorwagpunk = true,
@@ -64,53 +60,10 @@ local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
 end
 
-local function HasEyeOfTerrorProtocol(doer)
-    if doer == nil then
-        return false
-    end
-    if doer.components.kei_protocolslots ~= nil then
-        return doer.components.kei_protocolslots:HasCombatProtocol("eyeofterror")
-    end
-    return doer._kei_eyeofterror_protocol_active ~= nil and doer._kei_eyeofterror_protocol_active:value()
-end
-
 local DASH_DAMAGE_MUST_TAGS = { "_combat" }
 local DASH_DAMAGE_CANT_TAGS = { "INLIMBO", "wall", "companion", "flight", "invisible", "notarget", "noattack", "playerghost" }
 local DASH_DAMAGE_SIDE_RANGE = 1
 local DASH_DAMAGE_PHYSICS_PADDING = 3
-
-local function GetClampedDashPoint(doer, targetpos)
-    if doer == nil or targetpos == nil then
-        return nil
-    end
-
-    local x, y, z = doer.Transform:GetWorldPosition()
-    local dx = targetpos.x - x
-    local dz = targetpos.z - z
-    local dist = math.sqrt(dx * dx + dz * dz)
-    if dist <= 0 then
-        return nil
-    end
-
-    local maxdist = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
-    local map = TheWorld.Map
-    local dirx = dx / dist
-    local dirz = dz / dist
-    local pt = Vector3(0, 0, 0)
-
-    for d = math.min(dist, maxdist), 0.5, -0.25 do
-        pt.x = x + dirx * d
-        pt.z = z + dirz * d
-        if map:IsPassableAtPoint(pt:Get())
-            and not map:IsGroundTargetBlocked(pt)
-            and not map:IsPointNearHole(pt)
-        then
-            return pt
-        end
-    end
-
-    return nil
-end
 
 local function GetEquippedWeapon(doer)
     return doer.components.inventory ~= nil and doer.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) or nil
@@ -194,7 +147,7 @@ local function DoEyeOfTerrorDashDamage(doer, startpt, endpt)
 end
 
 local function DoEyeOfTerrorDash(doer, targetpos)
-    local pt = GetClampedDashPoint(doer, targetpos)
+    local pt = EyeOfTerrorDash.GetTargetPoint(doer, targetpos)
     if pt == nil then
         return false
     end
@@ -326,7 +279,7 @@ local EYEOFTERROR_DASH_ANIM_SPEED = 2
 
 -- 恐怖之眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置，最多 12 距离单位且不造成伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
-    if not IsKei(act.doer) or not HasEyeOfTerrorProtocol(act.doer) then
+    if not IsKei(act.doer) or not EyeOfTerrorDash.HasProtocol(act.doer) then
         return false
     end
     local pt = act:GetActionPoint()
