@@ -57,4 +57,22 @@ configuration_options = {
         },
         default = false,
     },
+    {
+        name = "KEI_ANALYSIS_USE_EQUIPMENT_VISUAL",
+        label = "数据化装备显示",
+        hover = "设置解析协议是否使用原装备的背包贴图和掉落动画。",
+        options = {
+            {
+                description = "原装备显示",
+                hover = "数据化装备按照被解析的原装备显示（可能会导致部分模组装备地面动画消失）。",
+                data = true,
+            },
+            {
+                description = "默认显示",
+                hover = "数据化装备使用统一使用瓦格斯塔夫的剪切板显示。",
+                data = false,
+            },
+        },
+        default = true,
+    },
 }

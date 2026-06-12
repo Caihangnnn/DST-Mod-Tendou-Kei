@@ -1,7 +1,11 @@
+local SpDamageUtil = require("components/spdamageutil")
+
 local VALID_RECORD_TARGETS = {
     deerclops = true,
     bearger = true,
     dragonfly = true,
+    moose = true,
+    eyeofterror = true,
 }
 
 local ANALYSIS_BLACKLIST = {
@@ -60,6 +64,157 @@ local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
 end
 
+local function HasEyeOfTerrorProtocol(doer)
+    if doer == nil then
+        return false
+    end
+    if doer.components.kei_protocolslots ~= nil then
+        return doer.components.kei_protocolslots:HasCombatProtocol("eyeofterror")
+    end
+    return doer._kei_eyeofterror_protocol_active ~= nil and doer._kei_eyeofterror_protocol_active:value()
+end
+
+local DASH_DAMAGE_MUST_TAGS = { "_combat" }
+local DASH_DAMAGE_CANT_TAGS = { "INLIMBO", "wall", "companion", "flight", "invisible", "notarget", "noattack", "playerghost" }
+local DASH_DAMAGE_SIDE_RANGE = 1
+local DASH_DAMAGE_PHYSICS_PADDING = 3
+
+local function GetClampedDashPoint(doer, targetpos)
+    if doer == nil or targetpos == nil then
+        return nil
+    end
+
+    local x, y, z = doer.Transform:GetWorldPosition()
+    local dx = targetpos.x - x
+    local dz = targetpos.z - z
+    local dist = math.sqrt(dx * dx + dz * dz)
+    if dist <= 0 then
+        return nil
+    end
+
+    local maxdist = TUNING.KEI_EYEOFTERROR_DASH_DISTANCE or 12
+    local map = TheWorld.Map
+    local dirx = dx / dist
+    local dirz = dz / dist
+    local pt = Vector3(0, 0, 0)
+
+    for d = math.min(dist, maxdist), 0.5, -0.25 do
+        pt.x = x + dirx * d
+        pt.z = z + dirz * d
+        if map:IsPassableAtPoint(pt:Get())
+            and not map:IsGroundTargetBlocked(pt)
+            and not map:IsPointNearHole(pt)
+        then
+            return pt
+        end
+    end
+
+    return nil
+end
+
+local function GetEquippedWeapon(doer)
+    return doer.components.inventory ~= nil and doer.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) or nil
+end
+
+local function IsDashDamageTarget(doer, target)
+    return target ~= doer
+        and target:IsValid()
+        and not target:IsInLimbo()
+        and target.components.combat ~= nil
+        and doer.components.combat ~= nil
+        and doer.components.combat:IsValidTarget(target)
+        and not (target.components.health ~= nil and target.components.health:IsDead())
+end
+
+local function HitDashTarget(doer, target, weapon)
+    if not IsDashDamageTarget(doer, target) then
+        return
+    end
+
+    local damage, spdamage = doer.components.combat:CalcDamage(target, weapon)
+    damage = damage * 2
+    spdamage = SpDamageUtil.ApplyMult(spdamage, 2)
+    target.components.combat:GetAttacked(doer, damage, weapon, nil, spdamage)
+end
+
+local function DoEyeOfTerrorDashDamage(doer, startpt, endpt)
+    if doer.components.combat == nil or startpt == nil or endpt == nil then
+        return
+    end
+
+    local p1 = { x = startpt.x, y = startpt.z }
+    local p2 = { x = endpt.x, y = endpt.z }
+    local dx = p2.x - p1.x
+    local dy = p2.y - p1.y
+    local dist = dx * dx + dy * dy
+    local weapon = GetEquippedWeapon(doer)
+    local hit = {}
+    local pv = {}
+
+    if dist > 0 then
+        dist = math.sqrt(dist)
+        local radius = (dist + doer.components.combat.hitrange * 0.5 + DASH_DAMAGE_PHYSICS_PADDING) * 0.5
+        dx = dx / dist
+        dy = dy / dist
+        local cx = p1.x + dx * radius
+        local cz = p1.y + dy * radius
+
+        local targets = TheSim:FindEntities(cx, 0, cz, radius, DASH_DAMAGE_MUST_TAGS, DASH_DAMAGE_CANT_TAGS)
+        for _, target in ipairs(targets) do
+            if IsDashDamageTarget(doer, target) then
+                pv.x, pv._, pv.y = target.Transform:GetWorldPosition()
+                local range = DASH_DAMAGE_SIDE_RANGE + target:GetPhysicsRadius(0.5)
+                if DistPointToSegmentXYSq(pv, p1, p2) < range * range then
+                    hit[target] = true
+                    HitDashTarget(doer, target, weapon)
+                end
+            end
+        end
+    end
+
+    local angle = (doer.Transform:GetRotation() + 90) * DEGREES
+    local p3 = {
+        x = p2.x + doer.components.combat.hitrange * math.sin(angle),
+        y = p2.y + doer.components.combat.hitrange * math.cos(angle),
+    }
+    local targets = TheSim:FindEntities(p2.x, 0, p2.y, doer.components.combat.hitrange + DASH_DAMAGE_PHYSICS_PADDING, DASH_DAMAGE_MUST_TAGS, DASH_DAMAGE_CANT_TAGS)
+    for _, target in ipairs(targets) do
+        if not hit[target] and IsDashDamageTarget(doer, target) then
+            pv.x, pv._, pv.y = target.Transform:GetWorldPosition()
+            local radius = target:GetPhysicsRadius(0.5)
+            local range = doer.components.combat.hitrange + radius
+            if distsq(pv.x, pv.y, p2.x, p2.y) < range * range then
+                range = DASH_DAMAGE_SIDE_RANGE + radius
+                if DistPointToSegmentXYSq(pv, p2, p3) < range * range then
+                    HitDashTarget(doer, target, weapon)
+                end
+            end
+        end
+    end
+end
+
+local function DoEyeOfTerrorDash(doer, targetpos)
+    local pt = GetClampedDashPoint(doer, targetpos)
+    if pt == nil then
+        return false
+    end
+
+    local startpt = doer:GetPosition()
+    doer:ForceFacePoint(pt)
+    local fx = SpawnPrefab("spear_wathgrithr_lightning_lunge_fx")
+    if fx ~= nil then
+        fx.Transform:SetPosition(pt:Get())
+        fx.Transform:SetRotation(doer:GetRotation())
+    end
+    if doer.SoundEmitter ~= nil then
+        doer.SoundEmitter:PlaySound("meta3/wigfrid/spear_lighting_lunge")
+    end
+
+    DoEyeOfTerrorDashDamage(doer, startpt, pt)
+    doer.Physics:Teleport(pt.x, 0, pt.z)
+    return true
+end
+
 local function IsValidRecordTarget(target)
     return target ~= nil
         and target:IsValid()
@@ -83,6 +238,27 @@ local function GetTargetDisplayName(target)
         return nil
     end
     return target:GetDisplayName() or GetPrefabDisplayName(target.prefab)
+end
+
+local WORLD_ANIM_CANDIDATES = {
+    "anim",
+    "idle",
+    "idle_loop",
+    "idle1",
+    "idle2",
+    "idle3",
+    "idle4",
+}
+
+local function GetTargetWorldAnim(target, slot)
+    if target ~= nil and target.AnimState ~= nil then
+        for _, anim in ipairs(WORLD_ANIM_CANDIDATES) do
+            if target.AnimState:IsCurrentAnimation(anim) then
+                return anim
+            end
+        end
+    end
+    return slot == EQUIPSLOTS.HANDS and "idle" or "anim"
 end
 
 local function FindRecorderForTarget(target)
@@ -146,6 +322,123 @@ repair_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 
+local EYEOFTERROR_DASH_ANIM_SPEED = 2
+
+-- 恐怖之眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置，最多 12 距离单位且不造成伤害。
+local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
+    if not IsKei(act.doer) or not HasEyeOfTerrorProtocol(act.doer) then
+        return false
+    end
+    local pt = act:GetActionPoint()
+    return pt ~= nil and DoEyeOfTerrorDash(act.doer, pt) or false
+end)
+eyeofterror_dash_action.mount_valid = true
+eyeofterror_dash_action.rmb = true
+eyeofterror_dash_action.distance = math.huge
+eyeofterror_dash_action.priority = 3
+eyeofterror_dash_action.invalid_hold_action = true
+
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_EYEOFTERROR_DASH, "kei_eyeofterror_dash_pre"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_EYEOFTERROR_DASH, "kei_eyeofterror_dash_pre"))
+
+AddStategraphState("wilson", State{
+    name = "kei_eyeofterror_dash_pre",
+    tags = { "aoe", "doing", "busy", "nointerrupt", "nomorph" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+        inst.AnimState:PlayAnimation("lunge_pre")
+    end,
+
+    timeline =
+    {
+        TimeEvent(4 * FRAMES, function(inst)
+            inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
+        end),
+    },
+
+    events =
+    {
+        EventHandler("animover", function(inst)
+            if not inst.AnimState:AnimDone() then
+                return
+            end
+            if inst.AnimState:IsCurrentAnimation("lunge_pre") then
+                if inst:PerformBufferedAction() then
+                    inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+                    inst.AnimState:PlayAnimation("lunge_pst")
+                    if inst.components.bloomer ~= nil then
+                        inst.components.bloomer:PushBloom("kei_eyeofterror_dash", "shaders/anim.ksh", -2)
+                    end
+                    if inst.components.colouradder ~= nil then
+                        inst.components.colouradder:PushColour("kei_eyeofterror_dash", 1, 0.2, 0.2, 0)
+                    end
+                else
+                    inst.sg:GoToState("idle")
+                end
+            else
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+
+    onexit = function(inst)
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+        if inst.components.bloomer ~= nil then
+            inst.components.bloomer:PopBloom("kei_eyeofterror_dash")
+        end
+        if inst.components.colouradder ~= nil then
+            inst.components.colouradder:PopColour("kei_eyeofterror_dash")
+        end
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_eyeofterror_dash_pre",
+    tags = { "doing", "busy", "nointerrupt" },
+    server_states = { "kei_eyeofterror_dash_pre" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+        inst.AnimState:PlayAnimation("lunge_pre")
+        inst.AnimState:PushAnimation("lunge_lag", false)
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(2)
+    end,
+
+    timeline =
+    {
+        TimeEvent(4 * FRAMES, function(inst)
+            inst.sg.statemem.twirled = true
+            inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
+        end),
+    },
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                if not inst.sg.statemem.twirled then
+                    inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
+                end
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+    end,
+})
+
 -- 空白 CD 先绑定目标，之后才能提交给数据记录仪开始记录。
 local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
     if not IsKei(act.doer) or act.invobject == nil or not act.invobject:HasTag("kei_blank_cd") then
@@ -173,6 +466,10 @@ AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_BIND_CD, "
 -- 把已绑定目标的空白 CD 交给数据记录仪。
 local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act)
     if not IsKei(act.doer) or act.target == nil or act.invobject == nil or act.target.StartKeiRecording == nil then
+        return false
+    end
+    if act.invobject.kei_bound_prefab == nil then
+        Say(act.doer, "ANNOUNCE_KEI_CD_NOT_BOUND")
         return false
     end
     return act.target:StartKeiRecording(act.invobject, act.doer)
@@ -232,9 +529,15 @@ local function AnalyzeEquipment(tool, target, doer)
     end
 
     local slot = target.components.equippable.equipslot
+    local inventoryitem = target.components.inventoryitem
     local data = {
         source = target.prefab,
         display_name = GetTargetDisplayName(target),
+        icon_image = inventoryitem ~= nil and (inventoryitem.imagename or target.prefab) or target.prefab,
+        icon_atlas = inventoryitem ~= nil and inventoryitem.atlasname or nil,
+        visual_bank = target.AnimState ~= nil and target.AnimState:GetBankHash() or nil,
+        visual_build = target.AnimState ~= nil and target.AnimState:GetBuild() or nil,
+        visual_anim = GetTargetWorldAnim(target, slot),
     }
 
     -- 头部和身体装备提取护甲吸收率；手部装备提取武器、移速和平面伤害信息。
@@ -250,7 +553,7 @@ local function AnalyzeEquipment(tool, target, doer)
         data.kind = "analysis"
         data.slot = "hands"
         local damage = target.components.weapon ~= nil and FunctionOrValue(target.components.weapon.damage, target, doer, nil) or 0
-        data.damage_mult = damage > 0 and math.max(1, damage / TUNING.UNARMED_DAMAGE) or 1
+        data.damage_bonus = damage
         data.speed_mult = target.components.equippable.walkspeedmult or 1
         data.planar_bonus = target.components.planardamage ~= nil and target.components.planardamage:GetDamage() or 0
     else

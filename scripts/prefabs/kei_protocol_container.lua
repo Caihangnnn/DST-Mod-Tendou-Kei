@@ -100,6 +100,7 @@ local function fn()
     inst.components.inventoryitem:SetOnPutInInventoryFn(OnPutInInventory)
     inst.components.inventoryitem:SetOnDroppedFn(OnDropped)
     inst.components.inventoryitem.canbepickedup = false
+    inst.components.inventoryitem.keepondeath = true
 
     inst:AddComponent("container")
     inst.components.container:EnableInfiniteStackSize(true)

@@ -4,6 +4,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.active = {}
     self.active_combat = {}
     self.virtual_equips = {}
+    self.analysis_damage_bonus = 0
 
     self:SyncUnlockedSlots()
 
@@ -23,6 +24,22 @@ local KeiProtocolSlots = Class(function(self, inst)
 
     inst:ListenForEvent("onhitother", function(_, data)
         self:OnHitOther(data)
+    end)
+
+    inst:ListenForEvent("healthdelta", function()
+        if self:IsDisabledByHealth() then
+            self:DisableAllProtocols()
+        end
+    end)
+
+    inst:ListenForEvent("death", function()
+        self:DisableAllProtocols()
+    end)
+
+    inst:ListenForEvent("respawnfromghost", function()
+        inst:DoTaskInTime(0, function()
+            self:Refresh()
+        end)
     end)
 end)
 
@@ -45,6 +62,15 @@ end
 local function ProtocolNeedsStability(data)
     return data.slot == "hands"
 end
+
+local function GetAnalysisDamageBonus(data)
+    if data.damage_bonus ~= nil then
+        return data.damage_bonus
+    end
+    return data.damage_mult ~= nil and data.damage_mult > 1 and data.damage_mult * TUNING.UNARMED_DAMAGE or 0
+end
+
+local MOOSE_ELECTRIC_BUFF_NAME = "kei_moose_electricattack"
 
 local function ReturnItemToOwner(owner, item)
     if owner ~= nil and owner.components.inventory ~= nil then
@@ -114,6 +140,7 @@ function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
     if container.components.inventoryitem ~= nil then
         container.components.inventoryitem.islockedinslot = true
         container.components.inventoryitem.canbepickedup = false
+        container.components.inventoryitem.keepondeath = true
     end
 
     if container.components.container ~= nil then
@@ -124,10 +151,14 @@ function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
                 ReturnItemToOwner(self.inst, stored)
             end
         end
+        stored = container.components.container:GetItemInSlot(1)
+        if stored ~= nil and stored.components.inventoryitem ~= nil then
+            stored.components.inventoryitem.keepondeath = true
+        end
         if container.SetPowered ~= nil then
-            container:SetPowered(slot <= self.unlocked_slots)
+            container:SetPowered(slot <= self.unlocked_slots and self:IsFunctional())
         else
-            container.components.container.canbeopened = slot <= self.unlocked_slots
+            container.components.container.canbeopened = slot <= self.unlocked_slots and self:IsFunctional()
         end
     end
 end
@@ -203,7 +234,42 @@ function KeiProtocolSlots:UnlockTier(tier)
     return true
 end
 
+function KeiProtocolSlots:IsDisabledByHealth()
+    local health = self.inst.components.health
+    return self.inst:HasTag("playerghost")
+        or (health ~= nil and (health:IsDead() or health.currenthealth <= 0))
+end
+
+function KeiProtocolSlots:IsFunctional()
+    return not self:IsDisabledByHealth()
+end
+
+function KeiProtocolSlots:SetProtocolContainersPowered(powered)
+    local inventory = self.inst.components.inventory
+    if inventory == nil then
+        return
+    end
+
+    for slot = 1, GetMaxSlots() do
+        local container = inventory:GetItemInSlot(slot)
+        if IsProtocolContainer(container) and container.components.container ~= nil then
+            local enabled = powered and slot <= self.unlocked_slots
+            if container.SetPowered ~= nil then
+                container:SetPowered(enabled)
+            else
+                container.components.container.canbeopened = enabled
+                if not enabled and container.components.container:IsOpen() then
+                    container.components.container:Close()
+                end
+            end
+        end
+    end
+end
+
 function KeiProtocolSlots:CanRun(data)
+    if not self:IsFunctional() then
+        return false
+    end
     if ProtocolNeedsPower(data) and self.inst.components.hunger ~= nil and self.inst.components.hunger.current <= 0 then
         return false
     end
@@ -215,6 +281,9 @@ end
 
 function KeiProtocolSlots:GetProtocolSlotItems()
     local items = {}
+    if not self:IsFunctional() then
+        return items
+    end
     local inventory = self.inst.components.inventory
     if inventory == nil then
         return items
@@ -337,10 +406,12 @@ end
 
 function KeiProtocolSlots:ClearModifiers()
     self:ClearVirtualEquips()
+    self:SetAnalysisDamageBonus(0)
 
     self.inst:RemoveTag("kei_nofreezing")
     self.inst:RemoveTag("kei_nooverheat")
     self:DisableFreezeImmunity()
+    self:DisableMooseProtocol()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
@@ -355,6 +426,31 @@ function KeiProtocolSlots:ClearModifiers()
     if self.inst.components.locomotor ~= nil then
         self.inst.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, "kei_analysis_hands")
     end
+end
+
+function KeiProtocolSlots:SetAnalysisDamageBonus(amount)
+    local combat = self.inst.components.combat
+    local old = self.analysis_damage_bonus or 0
+    amount = amount or 0
+
+    if combat ~= nil then
+        if old ~= 0 then
+            combat.damagebonus = (combat.damagebonus or 0) - old
+        end
+        if amount ~= 0 then
+            combat.damagebonus = (combat.damagebonus or 0) + amount
+        end
+    end
+
+    self.analysis_damage_bonus = amount
+end
+
+function KeiProtocolSlots:DisableAllProtocols()
+    self.active = {}
+    self.active_combat = {}
+    self:SyncCombatProtocolFlags()
+    self:SetProtocolContainersPowered(false)
+    self:ClearModifiers()
 end
 
 local function FreezeImmuneRedirect()
@@ -420,10 +516,55 @@ function KeiProtocolSlots:RefreshTemperatureProtocols()
     end
 end
 
+function KeiProtocolSlots:EnableMooseProtocol()
+    if not self.inst:HasDebuff(MOOSE_ELECTRIC_BUFF_NAME) then
+        self.inst:AddDebuff(MOOSE_ELECTRIC_BUFF_NAME, "buff_electricattack")
+    end
+
+    if not self.inst:HasTag("wet") then
+        if self.inst.components.moistureimmunity == nil then
+            self.inst:AddComponent("moistureimmunity")
+        end
+        self.inst.components.moistureimmunity:AddSource(self.inst)
+    end
+end
+
+function KeiProtocolSlots:DisableMooseProtocol()
+    self.inst:RemoveDebuff(MOOSE_ELECTRIC_BUFF_NAME)
+
+    if self.inst.components.moistureimmunity ~= nil then
+        self.inst.components.moistureimmunity:RemoveSource(self.inst)
+    end
+end
+
+function KeiProtocolSlots:RefreshMooseProtocol()
+    if self.active_combat.moose then
+        self:EnableMooseProtocol()
+    else
+        self:DisableMooseProtocol()
+    end
+end
+
+function KeiProtocolSlots:HasCombatProtocol(protocol)
+    return self:IsFunctional() and self.active_combat[protocol] == true
+end
+
+function KeiProtocolSlots:SyncCombatProtocolFlags()
+    if self.inst._kei_eyeofterror_protocol_active ~= nil then
+        self.inst._kei_eyeofterror_protocol_active:set(self:HasCombatProtocol("eyeofterror"))
+    end
+end
+
 function KeiProtocolSlots:Refresh()
+    if not self:IsFunctional() then
+        self:DisableAllProtocols()
+        return
+    end
+    self:SetProtocolContainersPowered(true)
+
     local items = self:GetProtocolSlotItems()
     local combat = {}
-    local damage_mult = 1
+    local damage_bonus = 0
     local speed_mult = 1
     local planar_bonus = 0
     local desired_virtuals = {}
@@ -439,7 +580,7 @@ function KeiProtocolSlots:Refresh()
                 desired_virtuals[entry.slot] = true
                 self:ApplyVirtualEquip(entry)
             elseif data.slot == "hands" then
-                damage_mult = damage_mult * (data.damage_mult or 1)
+                damage_bonus = damage_bonus + GetAnalysisDamageBonus(data)
                 speed_mult = speed_mult * (data.speed_mult or 1)
                 planar_bonus = planar_bonus + (data.planar_bonus or 0)
             end
@@ -449,12 +590,15 @@ function KeiProtocolSlots:Refresh()
     self:ClearVirtualEquips(desired_virtuals)
     self.active_combat = combat
     self:RefreshTemperatureProtocols()
+    self:RefreshMooseProtocol()
+    self:SyncCombatProtocolFlags()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
     end
     if self.inst.components.combat ~= nil then
-        self.inst.components.combat.externaldamagemultipliers:SetModifier(self.inst, damage_mult, "kei_analysis_hands")
+        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, "kei_analysis_hands")
+        self:SetAnalysisDamageBonus(damage_bonus)
     end
     if planar_bonus > 0 then
         if self.inst.components.planardamage == nil then
@@ -470,6 +614,11 @@ function KeiProtocolSlots:Refresh()
 end
 
 function KeiProtocolSlots:DrainProtocols()
+    if not self:IsFunctional() then
+        self:DisableAllProtocols()
+        return
+    end
+
     local power_cost = 0
     local stability_cost = 0
 
@@ -517,6 +666,10 @@ function KeiProtocolSlots:DoBeargerPulse(target, weapon)
 end
 
 function KeiProtocolSlots:OnHitOther(data)
+    if not self:IsFunctional() then
+        return
+    end
+
     local target = data ~= nil and data.target or nil
     if target == nil or not target:IsValid() then
         return

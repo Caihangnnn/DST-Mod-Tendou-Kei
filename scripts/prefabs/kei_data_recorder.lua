@@ -1,17 +1,28 @@
 require("prefabutil")
 
 local assets = {
-    Asset("ANIM", "anim/wagpunk_cagewall.zip"),
+    Asset("ANIM", "anim/vault_decon_mister.zip"),
+    Asset("INV_IMAGE", "vault_decon_mister"),
 }
 
 local item_assets = {
-    Asset("ANIM", "anim/wagstaff_personal_items.zip"),
+    Asset("ANIM", "anim/vault_decon_mister.zip"),
+    Asset("INV_IMAGE", "wagstaff_item_2"),
 }
+
+local RECORDER_BANK = "vault_decon_mister"
+local RECORDER_BUILD = "vault_decon_mister"
+local RECORDER_ANIM_OFF = "misting_closed"
+local RECORDER_ANIM_ON = "misting_loop"
+local RECORDER_ANIM_ACTIVATE = "misting_activate"
+local RECORDER_ANIM_DEACTIVATE = "misting_deactivated"
 
 local VALID_RECORD_TARGETS = {
     deerclops = true,
     bearger = true,
     dragonfly = true,
+    moose = true,
+    eyeofterror = true,
 }
 
 local RECORDER_STATE = {
@@ -125,6 +136,24 @@ local function CreateForceField(inst)
     end
 end
 
+local function EnableRecorderMistFx(inst)
+    if inst.kei_mistfx == nil then
+        inst.kei_mistfx = SpawnPrefab("vault_decon_mister_fx")
+        if inst.kei_mistfx ~= nil then
+            inst.kei_mistfx.entity:SetParent(inst.entity)
+        end
+    end
+end
+
+local function DisableRecorderMistFx(inst)
+    if inst.kei_mistfx ~= nil then
+        if inst.kei_mistfx:IsValid() then
+            inst.kei_mistfx:Remove()
+        end
+        inst.kei_mistfx = nil
+    end
+end
+
 local function SetRecorderState(inst, state)
     -- 记录仪状态同时驱动交互逻辑和动画表现。
     inst.kei_state = state
@@ -135,15 +164,18 @@ local function SetRecorderState(inst, state)
     inst:RemoveTag("kei_record_complete")
     if state == "recording" then
         inst:AddTag("kei_recording")
-        inst.AnimState:PlayAnimation("activate")
-        inst.AnimState:PushAnimation("idle_on", true)
+        inst.AnimState:PlayAnimation(RECORDER_ANIM_ACTIVATE)
+        inst.AnimState:PushAnimation(RECORDER_ANIM_ON, true)
+        EnableRecorderMistFx(inst)
         CreateForceField(inst)
     elseif state == "complete" then
         inst:AddTag("kei_record_complete")
-        inst.AnimState:PlayAnimation("idle_on", true)
+        inst.AnimState:PlayAnimation(RECORDER_ANIM_ON, true)
+        EnableRecorderMistFx(inst)
         ClearForceField(inst)
     else
-        inst.AnimState:PlayAnimation("idle_off", true)
+        inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
+        DisableRecorderMistFx(inst)
         ClearForceField(inst)
     end
 end
@@ -273,13 +305,14 @@ local function FinishPackUp(inst)
         inst.kei_packup_finish_fn = nil
     end
     if inst:IsValid() then
+        DisableRecorderMistFx(inst)
         inst:Remove()
     end
 end
 
 local function PlayPackUpAnimation(inst)
-    inst.AnimState:PlayAnimation("activate")
-    inst.AnimState:PushAnimation("deactivated", false)
+    inst.AnimState:PlayAnimation(RECORDER_ANIM_DEACTIVATE)
+    inst.AnimState:PushAnimation(RECORDER_ANIM_OFF, false)
 
     inst.kei_packup_finish_fn = FinishPackUp
     inst:ListenForEvent("animqueueover", inst.kei_packup_finish_fn)
@@ -299,6 +332,7 @@ local function PackUpKeiRecorder(inst, doer)
     inst.kei_packing_up = true
     inst.persists = false
     inst:AddTag("NOCLICK")
+    DisableRecorderMistFx(inst)
     ClearForceField(inst)
     ClearTargetListener(inst)
     PlayPackUpAnimation(inst)
@@ -341,9 +375,8 @@ local function OnLoad(inst, data)
 end
 
 local function OnBuilt(inst)
-    -- 部署完成时播放一次启动动画。
-    inst.AnimState:PlayAnimation("activate")
-    inst.AnimState:PushAnimation("idle_off", true)
+    -- 部署完成但未提交 CD 时保持未激活外观。
+    inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
 end
 
 local function recorder_fn()
@@ -356,9 +389,9 @@ local function recorder_fn()
     inst.entity:AddNetwork()
 
     inst.Transform:SetEightFaced()
-    inst.AnimState:SetBank("wagpunk_fence")
-    inst.AnimState:SetBuild("wagpunk_cagewall")
-    inst.AnimState:PlayAnimation("idle_off", true)
+    inst.AnimState:SetBank(RECORDER_BANK)
+    inst.AnimState:SetBuild(RECORDER_BUILD)
+    inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
 
     inst:AddTag("structure")
     inst:AddTag("kei_data_recorder")
@@ -391,6 +424,7 @@ local function recorder_fn()
     inst.PackUpKeiRecorder = PackUpKeiRecorder
 
     inst:ListenForEvent("onbuilt", OnBuilt)
+    inst:ListenForEvent("onremove", DisableRecorderMistFx)
 
     inst.OnSave = OnSave
     inst.OnLoad = OnLoad
@@ -399,18 +433,17 @@ local function recorder_fn()
 end
 
 local function kit_postinit(inst)
-    -- 设计未指定部署包图标时，统一使用 wagstaff_item_2 占位。
     inst.components.inventoryitem:ChangeImageName("wagstaff_item_2")
 end
 
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "vault_decon_mister_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
     MakeDeployableKitItem(
         "kei_data_recorder_item",
         "kei_data_recorder",
-        "wagstaff_personal_items",
-        "wagstaff_personal_items",
-        "clipboard",
+        RECORDER_BANK,
+        RECORDER_BUILD,
+        RECORDER_ANIM_OFF,
         item_assets,
         { size = "small", y_offset = nil, scale = 0.8 },
         { "kei_data_recorder_item" },
@@ -419,4 +452,4 @@ return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_c
         nil,
         kit_postinit
     ),
-    MakePlacer("kei_data_recorder_item_placer", "wagpunk_fence", "wagpunk_cagewall", "idle_off", false, nil, nil, nil, nil, "eight")
+    MakePlacer("kei_data_recorder_item_placer", RECORDER_BANK, RECORDER_BUILD, RECORDER_ANIM_OFF, false, nil, nil, nil, nil, "eight")
