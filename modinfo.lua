@@ -75,4 +75,22 @@ configuration_options = {
         },
         default = true,
     },
+    {
+        name = "KEI_BEEQUEEN_PRESTIGE_MODE",
+        label = "蜂后协议威压",
+        hover = "设置蜂后战斗协议威压被动的触发方式。",
+        options = {
+            {
+                description = "嘶吼领域",
+                hover = "受到生物攻击时，在 Kei 位置触发蜂后嘶吼，对周围 12 范围内的生物施加 5 秒恐慌，并有 3 秒触发冷却。",
+                data = "area",
+            },
+            {
+                description = "反制攻击者",
+                hover = "保留原方案：受到生物攻击时，仅让本次攻击者陷入恐慌。",
+                data = "retaliate",
+            },
+        },
+        default = "area",
+    },
 }

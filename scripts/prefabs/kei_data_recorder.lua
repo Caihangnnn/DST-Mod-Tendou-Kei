@@ -17,8 +17,10 @@ local RECORDER_ANIM_OFF = "misting_closed"
 local RECORDER_ANIM_ON = "misting_loop"
 local RECORDER_ANIM_ACTIVATE = "misting_activate"
 local RECORDER_ANIM_DEACTIVATE = "misting_deactivated"
+local RECORDER_WORLD_SCALE = 2
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
+local GetRecordProtocol = CombatProtocolDefs.GetRecordProtocol
 
 local RECORDER_STATE = {
     idle = 0,
@@ -136,6 +138,9 @@ local function EnableRecorderMistFx(inst)
         inst.kei_mistfx = SpawnPrefab("vault_decon_mister_fx")
         if inst.kei_mistfx ~= nil then
             inst.kei_mistfx.entity:SetParent(inst.entity)
+            if inst.kei_mistfx.AnimState ~= nil then
+                inst.kei_mistfx.AnimState:SetScale(RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE)
+            end
         end
     end
 end
@@ -228,7 +233,7 @@ local function StartKeiRecording(inst, cd, doer)
     cd:Remove()
 
     inst.kei_target = target
-    inst.kei_target_prefab = target.prefab
+    inst.kei_target_prefab = GetRecordProtocol(target.prefab) or target.prefab
     inst.kei_completed_protocol = nil
     inst.kei_target_death_fn = function(target_inst)
         CompleteRecording(inst, target_inst)
@@ -398,6 +403,7 @@ local function recorder_fn()
     inst.Transform:SetEightFaced()
     inst.AnimState:SetBank(RECORDER_BANK)
     inst.AnimState:SetBuild(RECORDER_BUILD)
+    inst.AnimState:SetScale(RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE)
     inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
 
     inst:AddTag("structure")

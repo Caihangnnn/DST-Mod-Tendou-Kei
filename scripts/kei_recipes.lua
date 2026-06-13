@@ -19,7 +19,7 @@ local function image(tex)
 end
 
 local function kei_config(tex, extra)
-    -- 未指定图标时，按设计要求统一回退到 wagstaff_item_2。
+    -- 未显式指定图标的配方仍回退到通用 Kei 分类图标。
     local cfg
     if type(tex) == "table" then
         -- 如果第一个参数是 table，说明传入了完整的配置
@@ -92,7 +92,10 @@ AddRecipe2(
     "kei_blank_cd",
     { Ingredient("charcoal", 10) },
     TECH.NONE,
-    kei_config("record.tex"),
+    kei_config({
+        atlas = "images/kei_blank_cd.xml",
+        image = "kei_blank_cd.tex",
+    }),
     filters
 )
 
@@ -135,7 +138,10 @@ AddRecipe2(
     "kei_analysis_tool",
     { Ingredient("goldnugget", 10) },
     TECH.NONE,
-    kei_config("wagstaff_tool_5.tex"),
+    kei_config({
+        atlas = "images/kei_analysis_tool.xml",
+        image = "kei_analysis_tool.tex",
+    }),
     filters
 )
 

@@ -1,3 +1,5 @@
+local WortoxSoulCommon = require("prefabs/wortox_soul_common")
+
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = 1
@@ -24,6 +26,10 @@ local KeiProtocolSlots = Class(function(self, inst)
 
     inst:ListenForEvent("onhitother", function(_, data)
         self:OnHitOther(data)
+    end)
+
+    inst:ListenForEvent("attacked", function(_, data)
+        self:OnAttacked(data)
     end)
 
     inst:ListenForEvent("healthdelta", function()
@@ -109,6 +115,14 @@ local function GetTierPreviousSlots(tier)
     return math.min(GetInitialSlots() + (tier - 1) * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2), GetMaxSlots())
 end
 
+local function GetUnlockedTierCount(unlocked_slots)
+    local step = TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2
+    if step <= 0 then
+        return 0
+    end
+    return math.min(3, math.max(0, math.floor((unlocked_slots - GetInitialSlots()) / step + 0.5)))
+end
+
 local function RemoveProtocolContainer(owner, inventory, container)
     if container.components.container ~= nil then
         local stored = container.components.container:GetItemInSlot(1)
@@ -130,6 +144,30 @@ end
 function KeiProtocolSlots:SyncUnlockedSlots()
     if self.inst._kei_unlocked_protocol_slots ~= nil then
         self.inst._kei_unlocked_protocol_slots:set(self.unlocked_slots)
+    end
+end
+
+function KeiProtocolSlots:GetStatBonus()
+    return GetUnlockedTierCount(self.unlocked_slots) * (TUNING.KEI_PROTOCOL_STAT_BONUS or 20)
+end
+
+function KeiProtocolSlots:ApplyStatProgression()
+    local bonus = self:GetStatBonus()
+    local max_integrity = (TUNING.KEI_MAX_INTEGRITY or 120) + bonus
+    local max_power = (TUNING.KEI_MAX_POWER or 120) + bonus
+    local max_stability = (TUNING.KEI_MAX_STABILITY or 120) + bonus
+    local health = self.inst.components.health
+    local hunger = self.inst.components.hunger
+    local sanity = self.inst.components.sanity
+
+    if health ~= nil and health.maxhealth ~= max_integrity then
+        health:SetMaxHealth(max_integrity)
+    end
+    if hunger ~= nil and hunger.max ~= max_power then
+        hunger:SetMax(max_power)
+    end
+    if sanity ~= nil and sanity.max ~= max_stability then
+        sanity:SetMax(max_stability)
     end
 end
 
@@ -172,6 +210,7 @@ function KeiProtocolSlots:EnsureProtocolContainers()
     local max_slots = GetMaxSlots()
     self.unlocked_slots = math.clamp(self.unlocked_slots, GetInitialSlots(), max_slots)
     self:SyncUnlockedSlots()
+    self:ApplyStatProgression()
 
     for slot = 1, max_slots do
         local current = inventory:GetItemInSlot(slot)
@@ -229,6 +268,7 @@ function KeiProtocolSlots:UnlockTier(tier)
     end
     self.unlocked_slots = GetTierTargetSlots(tier)
     self:SyncUnlockedSlots()
+    self:ApplyStatProgression()
     self:EnsureProtocolContainers()
     self:Refresh()
     return true
@@ -412,6 +452,8 @@ function KeiProtocolSlots:ClearModifiers()
     self.inst:RemoveTag("kei_nooverheat")
     self:DisableFreezeImmunity()
     self:DisableMooseProtocol()
+    self:DisableMalbatrossProtocol()
+    self:DisableToadstoolProtocol()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
@@ -545,6 +587,106 @@ function KeiProtocolSlots:RefreshMooseProtocol()
     end
 end
 
+function KeiProtocolSlots:EnableMalbatrossProtocol()
+    if self._kei_malbatross_enabled then
+        return
+    end
+
+    local drownable = self.inst.components.drownable
+    if drownable ~= nil and not TheWorld:HasTag("cave") then
+        self._kei_malbatross_old_drownable_enabled = drownable.enabled
+        drownable.enabled = false
+        self.inst.Physics:SetCollisionMask(
+            COLLISION.GROUND,
+            COLLISION.OBSTACLES,
+            COLLISION.SMALLOBSTACLES,
+            COLLISION.CHARACTERS,
+            COLLISION.GIANTS
+        )
+        self.inst.Physics:Teleport(self.inst.Transform:GetWorldPosition())
+    end
+
+    self._kei_malbatross_enabled = true
+end
+
+function KeiProtocolSlots:DisableMalbatrossProtocol()
+    if not self._kei_malbatross_enabled then
+        return
+    end
+
+    local drownable = self.inst.components.drownable
+    if drownable ~= nil then
+        drownable.enabled = self._kei_malbatross_old_drownable_enabled ~= false
+        self._kei_malbatross_old_drownable_enabled = nil
+    end
+
+    if not self.inst:HasTag("playerghost") then
+        self.inst.Physics:SetCollisionMask(
+            COLLISION.WORLD,
+            COLLISION.OBSTACLES,
+            COLLISION.SMALLOBSTACLES,
+            COLLISION.CHARACTERS,
+            COLLISION.GIANTS
+        )
+        self.inst.Physics:Teleport(self.inst.Transform:GetWorldPosition())
+    end
+
+    self._kei_malbatross_enabled = nil
+end
+
+function KeiProtocolSlots:RefreshMalbatrossProtocol()
+    if self.active_combat.malbatross then
+        self:EnableMalbatrossProtocol()
+    else
+        self:DisableMalbatrossProtocol()
+    end
+end
+
+function KeiProtocolSlots:EnableToadstoolProtocol()
+    if self._kei_toadstool_enabled then
+        return
+    end
+
+    local grogginess = self.inst.components.grogginess
+    if grogginess ~= nil then
+        grogginess:ResetGrogginess()
+        grogginess:AddImmunitySource(self.inst)
+        if grogginess:IsKnockedOut() then
+            grogginess:ComeTo()
+        end
+    end
+
+    local sleeper = self.inst.components.sleeper
+    if sleeper ~= nil then
+        sleeper.sleepiness = 0
+        if sleeper:IsAsleep() then
+            sleeper:WakeUp()
+        end
+    end
+
+    self._kei_toadstool_enabled = true
+end
+
+function KeiProtocolSlots:DisableToadstoolProtocol()
+    if not self._kei_toadstool_enabled then
+        return
+    end
+
+    if self.inst.components.grogginess ~= nil then
+        self.inst.components.grogginess:RemoveImmunitySource(self.inst)
+    end
+
+    self._kei_toadstool_enabled = nil
+end
+
+function KeiProtocolSlots:RefreshToadstoolProtocol()
+    if self.active_combat.toadstool then
+        self:EnableToadstoolProtocol()
+    else
+        self:DisableToadstoolProtocol()
+    end
+end
+
 function KeiProtocolSlots:HasCombatProtocol(protocol)
     return self:IsFunctional() and self.active_combat[protocol] == true
 end
@@ -556,6 +698,9 @@ function KeiProtocolSlots:SyncCombatProtocolFlags()
     local daywalker_active = self:HasCombatProtocol("daywalker")
     if self.inst._kei_daywalker_protocol_active ~= nil then
         self.inst._kei_daywalker_protocol_active:set(daywalker_active)
+    end
+    if self.inst._kei_malbatross_protocol_active ~= nil then
+        self.inst._kei_malbatross_protocol_active:set(self:HasCombatProtocol("malbatross"))
     end
     if not daywalker_active then
         self.inst.kei_daywalker_aiming = nil
@@ -601,6 +746,8 @@ function KeiProtocolSlots:Refresh()
     self.active_combat = combat
     self:RefreshTemperatureProtocols()
     self:RefreshMooseProtocol()
+    self:RefreshMalbatrossProtocol()
+    self:RefreshToadstoolProtocol()
     self:SyncCombatProtocolFlags()
 
     if self.inst.components.health ~= nil then
@@ -629,6 +776,11 @@ function KeiProtocolSlots:DrainProtocols()
         return
     end
 
+    self:Refresh()
+    if self.active_combat.lordfruitfly then
+        return
+    end
+
     local power_cost = 0
     local stability_cost = 0
 
@@ -653,6 +805,33 @@ end
 
 local AREA_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "playerghost" }
 local AREA_MUST_TAGS = { "_combat" }
+local BEEQUEEN_SCARE_MUST_TAGS = { "_combat", "_health" }
+local BEEQUEEN_SCARE_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "epic" }
+
+local function NoHoles(pt)
+    return not TheWorld.Map:IsPointNearHole(pt)
+end
+
+local function IsValidMinotaurProtocolTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and target ~= nil
+        and target:IsValid()
+        and target.entity:IsVisible()
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and owner.components.combat ~= nil
+        and owner.components.combat:IsValidTarget(target)
+end
+
+local function IsNearShadowPillar(pt, pillars)
+    for _, pillarpt in pairs(pillars) do
+        if distsq(pt.x, pt.z, pillarpt.x, pillarpt.z) < 1 then
+            return true
+        end
+    end
+    return false
+end
 
 function KeiProtocolSlots:DoBeargerPulse(target, weapon)
     if self._doing_aoe or target == nil or target.components.combat == nil then
@@ -673,6 +852,333 @@ function KeiProtocolSlots:DoBeargerPulse(target, weapon)
         end
     end
     self._doing_aoe = false
+end
+
+local function IsValidAntlionSpikeTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and owner.components.combat ~= nil
+        and target ~= nil
+        and target:IsValid()
+        and target.entity:IsVisible()
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and target.components.combat ~= nil
+        and owner.components.combat:IsValidTarget(target)
+end
+
+local function DoAntlionSpikeDamage(inst, owner, target, damage)
+    if IsValidAntlionSpikeTarget(owner, target)
+        and inst:IsValid()
+        and target:GetDistanceSqToInst(inst) <= (TUNING.KEI_ANTLION_SANDSPIKE_DAMAGE_RADIUS or 1.1) ^ 2
+    then
+        target.components.combat:GetAttacked(owner, damage)
+    end
+end
+
+local function ArmAntlionSpikeDamage(inst, owner, target, damage)
+    inst:DoTaskInTime(2 * FRAMES, DoAntlionSpikeDamage, owner, target, damage)
+end
+
+function KeiProtocolSlots:SpawnAntlionSpike(pt, target, prefab, damage)
+    local spike = SpawnPrefab(prefab or "sandspike_tall")
+    if spike == nil then
+        return
+    end
+
+    damage = damage or TUNING.SANDSPIKE.DAMAGE.TALL
+    spike.Transform:SetPosition(pt.x, 0, pt.z)
+    if spike.components.combat ~= nil then
+        -- The spike keeps the vanilla animation and collision, while damage is
+        -- applied only to Kei's original attack target to avoid friendly fire.
+        spike.components.combat:SetDefaultDamage(0)
+        spike.components.combat.playerdamagepercent = 0
+    end
+    spike:ListenForEvent("animover", function(inst)
+        if not inst._kei_antlion_damage_armed then
+            inst._kei_antlion_damage_armed = true
+            ArmAntlionSpikeDamage(inst, self.inst, target, damage)
+        end
+    end)
+end
+
+function KeiProtocolSlots:SpawnAntlionSpikeTriangle(center, target)
+    local radius = TUNING.KEI_ANTLION_SANDSPIKE_TRIANGLE_RADIUS or 1.6
+    local theta = math.random() * TWOPI
+    for i = 0, 2 do
+        local angle = theta + i * TWOPI / 3
+        self:SpawnAntlionSpike(
+            Vector3(center.x + math.cos(angle) * radius, 0, center.z + math.sin(angle) * radius),
+            target,
+            "sandspike_short",
+            TUNING.KEI_ANTLION_SANDSPIKE_SHORT_DAMAGE or TUNING.SANDSPIKE.DAMAGE.SHORT
+        )
+    end
+end
+
+function KeiProtocolSlots:DoAntlionProtocol(target)
+    if math.random() >= (TUNING.KEI_ANTLION_SANDSPIKE_CHANCE or 0.30)
+        or not IsValidAntlionSpikeTarget(self.inst, target)
+    then
+        return
+    end
+
+    local center = target:GetPosition()
+    self:SpawnAntlionSpike(center, target, "sandspike_tall", TUNING.KEI_ANTLION_SANDSPIKE_TALL_DAMAGE or TUNING.SANDSPIKE.DAMAGE.TALL)
+    self.inst:DoTaskInTime(TUNING.KEI_ANTLION_SANDSPIKE_VERTEX_DELAY or 8 * FRAMES, function()
+        if IsValidAntlionSpikeTarget(self.inst, target) then
+            self:SpawnAntlionSpikeTriangle(center, target)
+        end
+    end)
+end
+
+function KeiProtocolSlots:SpawnMinotaurTentacle(target)
+    if not IsValidMinotaurProtocolTarget(self.inst, target) then
+        return
+    end
+
+    local pt = target:GetPosition()
+    local offset = FindWalkableOffset(pt, math.random() * TWOPI, 2, 3, false, true, NoHoles, false, true, true)
+    if offset == nil then
+        return
+    end
+
+    local tentacle = SpawnPrefab("bigshadowtentacle")
+    if tentacle == nil then
+        return
+    end
+
+    tentacle.kei_owner = self.inst
+    tentacle.kei_target = target
+    tentacle.Transform:SetPosition(pt.x + offset.x, 0, pt.z + offset.z)
+    if tentacle.components.combat ~= nil then
+        tentacle.components.combat:SetRetargetFunction(0.5, function(inst)
+            return IsValidMinotaurProtocolTarget(inst.kei_owner, inst.kei_target) and inst.kei_target or nil
+        end)
+        tentacle.components.combat:SetKeepTargetFunction(function(inst, current_target)
+            return current_target == inst.kei_target
+                and IsValidMinotaurProtocolTarget(inst.kei_owner, current_target)
+                and current_target:IsNear(inst, TUNING.TENTACLE_STOPATTACK_DIST)
+        end)
+        tentacle.components.combat:SetTarget(target)
+    end
+    tentacle:PushEvent("arrive")
+end
+
+function KeiProtocolSlots:SpawnShadowPrison(target, weapon)
+    if target.components.locomotor == nil or not IsValidMinotaurProtocolTarget(self.inst, target) then
+        return
+    end
+
+    target:PushEvent("dispell_shadow_pillars")
+
+    local map = TheWorld.Map
+    local x0, y0, z0 = target.Transform:GetWorldPosition()
+    if not map:IsPassableAtPoint(x0, y0, z0, true) then
+        return
+    end
+
+    local padding = (target:HasTag("epic") and 1) or (target:HasTag("smallcreature") and 0) or 0.75
+    local radius = math.max(1, target:GetPhysicsRadius(0) + padding)
+    local num = math.floor(TWOPI * radius / 1.4 + 0.5)
+    local period = 1 / num
+    local delays = {}
+    for i = 0, num - 1 do
+        table.insert(delays, i * period)
+    end
+
+    local platform = target:GetCurrentPlatform()
+    local flying = platform == nil and target:HasTag("flying")
+    local target_marker = SpawnPrefab("shadow_pillar_target")
+    if target_marker ~= nil then
+        target_marker.Transform:SetPosition(x0, 0, z0)
+        target_marker:SetDelay(delays[#delays])
+        target_marker:SetTarget(target, radius, platform ~= nil)
+    end
+
+    local pillars = {}
+    local theta = math.random() * TWOPI
+    local delta = TWOPI / num
+    for i = 1, num do
+        local pt = Vector3(x0 + math.cos(theta) * radius, 0, z0 - math.sin(theta) * radius)
+        if not IsNearShadowPillar(pt, pillars)
+            and map:IsPassableAtPoint(pt.x, 0, pt.z, true)
+            and (flying or (map:GetPlatformAtPoint(pt.x, pt.z) == platform and not map:IsGroundTargetBlocked(pt)))
+        then
+            local pillar = SpawnPrefab("shadow_pillar")
+            if pillar ~= nil then
+                pillar.Transform:SetPosition(pt:Get())
+                pillar:SetDelay(table.remove(delays, math.random(#delays)))
+                pillar:SetTarget(target, platform ~= nil)
+                pillars[pillar] = pt
+            end
+        end
+        theta = theta + delta
+    end
+
+    if not (target.sg ~= nil and target.sg:HasStateTag("noattack")) then
+        target:PushEvent("attacked", { attacker = self.inst, damage = 0, weapon = weapon })
+    end
+end
+
+function KeiProtocolSlots:DoMinotaurProtocol(target, weapon)
+    if math.random() < (TUNING.KEI_MINOTAUR_TENTACLE_CHANCE or 0.30) then
+        self:SpawnMinotaurTentacle(target)
+    end
+    if math.random() < (TUNING.KEI_MINOTAUR_SHADOW_PRISON_CHANCE or 0.15) then
+        self:SpawnShadowPrison(target, weapon)
+    end
+end
+
+function KeiProtocolSlots:DoKlausProtocol(target)
+    if math.random() >= (TUNING.KEI_KLAUS_SOUL_CHANCE or 0.20)
+        or target == nil
+        or not target:IsValid()
+        or not WortoxSoulCommon.HasSoul(target)
+    then
+        return
+    end
+
+    local soul = SpawnPrefab("wortox_soul")
+    if soul == nil then
+        return
+    end
+
+    local x, y, z = target.Transform:GetWorldPosition()
+    soul.Transform:SetPosition(x, y, z)
+    soul.persists = false
+    soul.soulhealfinishing = true
+
+    if soul._task ~= nil then
+        soul._task:Cancel()
+        soul._task = nil
+    end
+    if soul.components.inventoryitem ~= nil then
+        soul.components.inventoryitem.canbepickedup = false
+    end
+
+    WortoxSoulCommon.DoHeal(soul)
+    soul.AnimState:PlayAnimation("idle_pst")
+    soul.SoundEmitter:PlaySound("dontstarve/characters/wortox/soul/spawn", nil, .5)
+    soul:ListenForEvent("animover", soul.Remove)
+end
+
+function KeiProtocolSlots:DoToadstoolProtocol(target)
+    if math.random() >= (TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE or 0.15)
+        or target == nil
+        or not target:IsValid()
+        or target:IsInLimbo()
+    then
+        return
+    end
+
+    local sleepbomb = SpawnPrefab("sleepbomb")
+    if sleepbomb == nil or sleepbomb.components.complexprojectile == nil then
+        if sleepbomb ~= nil then
+            sleepbomb:Remove()
+        end
+        return
+    end
+
+    sleepbomb.persists = false
+    sleepbomb.Transform:SetPosition(self.inst.Transform:GetWorldPosition())
+    if self.inst.components.combat ~= nil and self.inst.components.combat:IsValidTarget(target) then
+        self.inst:ForceFacePoint(target.Transform:GetWorldPosition())
+        sleepbomb.components.complexprojectile:Launch(target:GetPosition(), self.inst, sleepbomb)
+    else
+        sleepbomb:Remove()
+    end
+end
+
+local function IsValidBeequeenScareTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and target ~= nil
+        and target:IsValid()
+        and target ~= owner
+        and target.entity:IsVisible()
+        and not target:IsInLimbo()
+        and not target:HasTag("player")
+        and not target:HasTag("playerghost")
+        and not target:HasTag("epic")
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+end
+
+local function ScareBeequeenTarget(owner, target, duration)
+    if not IsValidBeequeenScareTarget(owner, target) then
+        return
+    end
+
+    target:PushEvent("epicscare", { scarer = owner, duration = duration })
+
+    if target.components.hauntable ~= nil and target.components.hauntable.panicable then
+        target.components.hauntable:Panic(duration)
+    end
+
+    if target.components.combat ~= nil and target.components.combat:TargetIs(owner) then
+        target.components.combat:SetTarget(nil)
+    end
+end
+
+function KeiProtocolSlots:SpawnBeequeenScreechFx()
+    local fx = SpawnPrefab("battlesong_instant_panic_fx")
+    if fx ~= nil then
+        fx.Transform:SetNoFaced()
+        self.inst:AddChild(fx)
+    end
+
+    if self.inst.SoundEmitter ~= nil then
+        self.inst.SoundEmitter:PlaySound("dontstarve/creatures/together/bee_queen/taunt")
+    end
+    ShakeAllCameras(CAMERASHAKE.FULL, 1, .015, .3, self.inst, 30)
+end
+
+function KeiProtocolSlots:DoBeequeenRetaliateProtocol(attacker)
+    ScareBeequeenTarget(self.inst, attacker, TUNING.KEI_BEEQUEEN_PANIC_DURATION or 5)
+end
+
+function KeiProtocolSlots:DoBeequeenAreaProtocol(attacker)
+    if not IsValidBeequeenScareTarget(self.inst, attacker) then
+        return
+    end
+
+    local now = GetTime()
+    if self._kei_beequeen_panic_ready_time ~= nil and now < self._kei_beequeen_panic_ready_time then
+        return
+    end
+
+    self._kei_beequeen_panic_ready_time = now + (TUNING.KEI_BEEQUEEN_PANIC_COOLDOWN or 3)
+
+    local duration = TUNING.KEI_BEEQUEEN_PANIC_DURATION or 5
+    local x, y, z = self.inst.Transform:GetWorldPosition()
+    local ents = TheSim:FindEntities(
+        x, y, z,
+        TUNING.KEI_BEEQUEEN_PANIC_RADIUS or 8,
+        BEEQUEEN_SCARE_MUST_TAGS,
+        BEEQUEEN_SCARE_EXCLUDE_TAGS
+    )
+
+    self:SpawnBeequeenScreechFx()
+    for _, ent in ipairs(ents) do
+        ScareBeequeenTarget(self.inst, ent, duration)
+    end
+end
+
+function KeiProtocolSlots:DoBeequeenProtocol(attacker)
+    if TUNING.KEI_BEEQUEEN_PRESTIGE_MODE == "retaliate" then
+        self:DoBeequeenRetaliateProtocol(attacker)
+    else
+        self:DoBeequeenAreaProtocol(attacker)
+    end
+end
+
+function KeiProtocolSlots:OnAttacked(data)
+    if not self:IsFunctional() or not self.active_combat.beequeen then
+        return
+    end
+
+    self:DoBeequeenProtocol(data ~= nil and data.attacker or nil)
 end
 
 function KeiProtocolSlots:OnHitOther(data)
@@ -704,6 +1210,22 @@ function KeiProtocolSlots:OnHitOther(data)
     if self.active_combat.bearger then
         self:DoBeargerPulse(target, data.weapon)
     end
+
+    if self.active_combat.minotaur then
+        self:DoMinotaurProtocol(target, data.weapon)
+    end
+
+    if self.active_combat.klaus then
+        self:DoKlausProtocol(target)
+    end
+
+    if self.active_combat.toadstool then
+        self:DoToadstoolProtocol(target)
+    end
+
+    if self.active_combat.antlion then
+        self:DoAntlionProtocol(target)
+    end
 end
 
 function KeiProtocolSlots:OnSave()
@@ -717,6 +1239,7 @@ function KeiProtocolSlots:OnLoad(data)
         self.unlocked_slots = math.clamp(data.unlocked_slots, GetInitialSlots(), GetMaxSlots())
     end
     self:SyncUnlockedSlots()
+    self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
         self:Refresh()

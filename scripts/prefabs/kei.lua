@@ -15,6 +15,17 @@ local prefabs = {
     "reticuleaoe",
     "reticuleaoeping",
     "daywalker_sinkhole",
+    "bigshadowtentacle",
+    "shadow_pillar",
+    "shadow_pillar_target",
+    "wortox_soul",
+    "wortox_soul_heal_fx",
+    "sleepbomb",
+    "sleepbomb_burst",
+    "sleepcloud",
+    "sandspike_tall",
+    "sandspike_short",
+    "battlesong_instant_panic_fx",
 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
@@ -76,6 +87,33 @@ local function UpdateDaywalkerAimingReticule(inst)
     else
         inst.components.reticule:DestroyReticule()
     end
+end
+
+local function SetMalbatrossCollision(inst, enabled)
+    if enabled and not TheWorld:HasTag("cave") and not inst:HasTag("playerghost") then
+        inst.Physics:SetCollisionMask(
+            COLLISION.GROUND,
+            COLLISION.OBSTACLES,
+            COLLISION.SMALLOBSTACLES,
+            COLLISION.CHARACTERS,
+            COLLISION.GIANTS
+        )
+    elseif not inst:HasTag("playerghost") then
+        inst.Physics:SetCollisionMask(
+            COLLISION.WORLD,
+            COLLISION.OBSTACLES,
+            COLLISION.SMALLOBSTACLES,
+            COLLISION.CHARACTERS,
+            COLLISION.GIANTS
+        )
+    end
+end
+
+local function OnMalbatrossProtocolDirty(inst)
+    SetMalbatrossCollision(
+        inst,
+        inst._kei_malbatross_protocol_active ~= nil and inst._kei_malbatross_protocol_active:value()
+    )
 end
 
 local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
@@ -182,6 +220,7 @@ local function common_postinit(inst)
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
+    inst._kei_malbatross_protocol_active = net_bool(inst.GUID, "kei.malbatross_protocol_active", "kei_malbatross_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
     inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")
 
@@ -195,6 +234,8 @@ local function common_postinit(inst)
     inst:ListenForEvent("setowner", OnSetOwner)
     inst:ListenForEvent("kei_daywalker_aiming_dirty", UpdateDaywalkerAimingReticule)
     inst:ListenForEvent("kei_daywalker_leap_cd_dirty", UpdateDaywalkerAimingReticule)
+    inst:ListenForEvent("kei_malbatross_protocol_dirty", OnMalbatrossProtocolDirty)
+    inst:DoTaskInTime(0, OnMalbatrossProtocolDirty)
 
     ConfigureVisuals(inst)
 end

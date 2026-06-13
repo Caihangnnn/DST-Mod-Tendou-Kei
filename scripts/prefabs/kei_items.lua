@@ -1,5 +1,49 @@
 local CombatProtocolDefs = require("kei_combat_protocol_defs")
 
+local ITEM_VISUALS = {
+    analysis_cd = {
+        bank = "kei_analysis_cd",
+        build = "kei_analysis_cd",
+        anim = "idle",
+        atlas = "images/kei_analysis_cd.xml",
+        image = "kei_analysis_cd",
+        scale = 1.5,
+    },
+    analysis_tool = {
+        bank = "kei_analysis_tool",
+        build = "kei_analysis_tool",
+        anim = "idle",
+        atlas = "images/kei_analysis_tool.xml",
+        image = "kei_analysis_tool",
+        scale = 1.5,
+    },
+    blank_cd = {
+        bank = "kei_blank_cd",
+        build = "kei_blank_cd",
+        anim = "idle",
+        atlas = "images/kei_blank_cd.xml",
+        image = "kei_blank_cd",
+        scale = 1.5,
+    },
+    combat_cd = {
+        bank = "kei_combat_cd",
+        build = "kei_combat_cd",
+        anim = "idle",
+        atlas = "images/kei_combat_cd.xml",
+        image = "kei_combat_cd",
+        scale = 1.5,
+    },
+}
+
+local function AssetImagePath(visual)
+    return visual ~= nil and visual.image ~= nil and "images/" .. visual.image .. ".tex" or nil
+end
+
+local function SetWorldScale(inst, scale)
+    scale = scale or 1
+    inst.Transform:SetScale(scale, scale, scale)
+end
+
 local function ConsumeOne(inst)
     if inst.components.stackable ~= nil then
         inst.components.stackable:Get():Remove()
@@ -19,12 +63,13 @@ local function MakeKeiDeviceEdible(inst)
 end
 
 -- 多个简单道具都只需要动画、背包、堆叠和标签，因此抽成一个 prefab 工厂。
-local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, postmaster, atlasname)
+local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, postmaster, atlasname, scale)
     local assets = {
         Asset("ANIM", "anim/" .. build .. ".zip"),
     }
     if atlasname ~= nil then
         table.insert(assets, Asset("ATLAS", atlasname))
+        table.insert(assets, Asset("IMAGE", atlasname:gsub("%.xml$", ".tex")))
     end
 
     local function fn()
@@ -40,6 +85,7 @@ local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, pos
         inst.AnimState:SetBank(bank or build)
         inst.AnimState:SetBuild(build)
         inst.AnimState:PlayAnimation(anim or "idle")
+        SetWorldScale(inst, scale)
 
         if tags ~= nil then
             for _, tag in ipairs(tags) do
@@ -191,9 +237,11 @@ local function MakeRepairTool()
 end
 
 local function MakeBlankCD()
+    local visual = ITEM_VISUALS.blank_cd
     local assets = {
-        Asset("ANIM", "anim/records.zip"),
-        Asset("INV_IMAGE", "record"),
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
     }
 
     local function fn()
@@ -204,9 +252,10 @@ local function MakeBlankCD()
         inst.entity:AddNetwork()
 
         MakeInventoryPhysics(inst)
-        inst.AnimState:SetBank("records")
-        inst.AnimState:SetBuild("records")
-        inst.AnimState:PlayAnimation("idle")
+        SetWorldScale(inst, visual.scale)
+        inst.AnimState:SetBank(visual.bank)
+        inst.AnimState:SetBuild(visual.build)
+        inst.AnimState:PlayAnimation(visual.anim)
 
         inst:AddTag("kei_blank_cd")
         inst:AddTag("kei_data_cd")
@@ -221,7 +270,8 @@ local function MakeBlankCD()
 
         inst:AddComponent("inspectable")
         inst:AddComponent("inventoryitem")
-        inst.components.inventoryitem:ChangeImageName("record")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(visual.image)
 
         inst.SetBoundTarget = SetBoundTarget
         -- 空白 CD 的绑定状态需要跨存档保留。
@@ -249,10 +299,12 @@ local function SetNamedName(inst, name)
 end
 
 local DEFAULT_ANALYSIS_VISUAL = {
-    bank = "wagstaff_personal_items",
-    build = "wagstaff_personal_items",
-    anim = "clipboard",
-    image = "wagstaff_item_2",
+    bank = ITEM_VISUALS.analysis_cd.bank,
+    build = ITEM_VISUALS.analysis_cd.build,
+    anim = ITEM_VISUALS.analysis_cd.anim,
+    atlas = ITEM_VISUALS.analysis_cd.atlas,
+    image = ITEM_VISUALS.analysis_cd.image,
+    scale = ITEM_VISUALS.analysis_cd.scale,
 }
 
 local function UseEquipmentVisual()
@@ -268,6 +320,7 @@ local function SetInventoryImage(inst, imagename, atlasname, fallback)
 end
 
 local function SetAnalysisWorldAnimation(inst, bank, build, anim)
+    local use_default_visual = bank == nil and build == nil and anim == nil
     bank = bank or DEFAULT_ANALYSIS_VISUAL.bank
     build = build or DEFAULT_ANALYSIS_VISUAL.build
     anim = anim or DEFAULT_ANALYSIS_VISUAL.anim
@@ -276,12 +329,14 @@ local function SetAnalysisWorldAnimation(inst, bank, build, anim)
         inst.AnimState:SetBank(bank)
         inst.AnimState:SetBuild(build)
         inst.AnimState:PlayAnimation(anim)
+        SetWorldScale(inst, use_default_visual and DEFAULT_ANALYSIS_VISUAL.scale or nil)
     end)
 
     if not success and bank ~= DEFAULT_ANALYSIS_VISUAL.bank then
         inst.AnimState:SetBank(DEFAULT_ANALYSIS_VISUAL.bank)
         inst.AnimState:SetBuild(DEFAULT_ANALYSIS_VISUAL.build)
         inst.AnimState:PlayAnimation(DEFAULT_ANALYSIS_VISUAL.anim)
+        SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
     end
 end
 
@@ -290,7 +345,7 @@ local function ApplyAnalysisAppearance(inst, data, icon_image)
         SetInventoryImage(inst, icon_image, data.icon_atlas, DEFAULT_ANALYSIS_VISUAL.image)
         SetAnalysisWorldAnimation(inst, data.visual_bank, data.visual_build, data.visual_anim)
     else
-        SetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.image)
+        SetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.image, DEFAULT_ANALYSIS_VISUAL.atlas)
         SetAnalysisWorldAnimation(inst)
     end
 end
@@ -321,9 +376,11 @@ local function CombatCDOnLoad(inst, data)
 end
 
 local function MakeCombatCD()
+    local visual = ITEM_VISUALS.combat_cd
     local assets = {
-        Asset("ANIM", "anim/records.zip"),
-        Asset("INV_IMAGE", "record"),
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
     }
 
     local function fn()
@@ -334,9 +391,10 @@ local function MakeCombatCD()
         inst.entity:AddNetwork()
 
         MakeInventoryPhysics(inst)
-        inst.AnimState:SetBank("records")
-        inst.AnimState:SetBuild("records")
-        inst.AnimState:PlayAnimation("idle")
+        SetWorldScale(inst, visual.scale)
+        inst.AnimState:SetBank(visual.bank)
+        inst.AnimState:SetBuild(visual.build)
+        inst.AnimState:PlayAnimation(visual.anim)
 
         inst:AddTag("kei_protocol_cd")
         inst:AddTag("kei_combat_protocol")
@@ -354,7 +412,8 @@ local function MakeCombatCD()
         inst.components.inspectable.descriptionfn = CombatCDDescriptionFn
         inst:AddComponent("named")
         inst:AddComponent("inventoryitem")
-        inst.components.inventoryitem:ChangeImageName("record")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(visual.image)
         inst.components.inventoryitem.keepondeath = true
 
         inst.SetCombatData = SetCombatData
@@ -408,8 +467,11 @@ local function AnalysisCDOnLoad(inst, data)
 end
 
 local function MakeAnalysisCD()
+    local visual = ITEM_VISUALS.analysis_cd
     local assets = {
-        Asset("ANIM", "anim/wagstaff_personal_items.zip"),
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
     }
 
     local function fn()
@@ -436,7 +498,8 @@ local function MakeAnalysisCD()
         inst:AddComponent("inspectable")
         inst:AddComponent("named")
         inst:AddComponent("inventoryitem")
-        inst.components.inventoryitem:ChangeImageName("wagstaff_item_2")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(visual.image)
         inst.components.inventoryitem.keepondeath = true
 
         inst.SetAnalysisData = SetAnalysisData
@@ -478,10 +541,20 @@ local function MakeProtocolUnlocker(name, tier)
     return prefab
 end
 
--- 这些道具未指定贴图的部分，统一使用设计要求的 wagstaff_item_2 或原版近似图标占位。
+-- 核心协议道具统一使用 ITEM_VISUALS 中登记的专用贴图和地面动画。
 return MakeBattery(),
     MakeRepairTool(),
-    MakeSimpleInventoryItem("kei_analysis_tool", "wagstaff_tools", "wagstaff_tools_all", "radio", { "kei_analysis_tool" }, "wagstaff_tool_5"),
+    MakeSimpleInventoryItem(
+        "kei_analysis_tool",
+        ITEM_VISUALS.analysis_tool.build,
+        ITEM_VISUALS.analysis_tool.bank,
+        ITEM_VISUALS.analysis_tool.anim,
+        { "kei_analysis_tool" },
+        ITEM_VISUALS.analysis_tool.image,
+        nil,
+        ITEM_VISUALS.analysis_tool.atlas,
+        ITEM_VISUALS.analysis_tool.scale
+    ),
     MakeBlankCD(),
     MakeCombatCD(),
     MakeAnalysisCD(),
