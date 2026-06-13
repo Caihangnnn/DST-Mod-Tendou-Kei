@@ -19,10 +19,13 @@ local function MakeKeiDeviceEdible(inst)
 end
 
 -- 多个简单道具都只需要动画、背包、堆叠和标签，因此抽成一个 prefab 工厂。
-local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, postmaster)
+local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, postmaster, atlasname)
     local assets = {
         Asset("ANIM", "anim/" .. build .. ".zip"),
     }
+    if atlasname ~= nil then
+        table.insert(assets, Asset("ATLAS", atlasname))
+    end
 
     local function fn()
         local inst = CreateEntity()
@@ -56,6 +59,7 @@ local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, pos
         inst:AddComponent("inspectable")
         inst:AddComponent("inventoryitem")
         if image ~= nil then
+            inst.components.inventoryitem.atlasname = atlasname
             inst.components.inventoryitem:ChangeImageName(image)
         end
 
@@ -90,6 +94,100 @@ local function BlankCDOnLoad(inst, data)
     if data ~= nil then
         inst.kei_bound_prefab = data.bound_prefab
     end
+end
+
+local function MakeBattery()
+    local assets = {
+        Asset("ANIM", "anim/kei_battery.zip"),
+        Asset("ATLAS", "images/kei_battery.xml"),
+        Asset("IMAGE", "images/kei_battery.tex"),
+    }
+
+    local function fn()
+        local inst = CreateEntity()
+
+        inst.entity:AddTransform()
+        inst.entity:AddAnimState()
+        inst.entity:AddNetwork()
+
+        MakeInventoryPhysics(inst)
+        inst.Transform:SetScale(1.5, 1.5, 1.5)
+        inst.AnimState:SetBank("kei_battery")
+        inst.AnimState:SetBuild("kei_battery")
+        inst.AnimState:PlayAnimation("idle")
+
+        inst:AddTag("kei_battery")
+
+        MakeInventoryFloatable(inst, "small", nil, 0.8)
+
+        inst.entity:SetPristine()
+
+        if not TheWorld.ismastersim then
+            return inst
+        end
+
+        inst:AddComponent("inspectable")
+        inst:AddComponent("inventoryitem")
+        inst.components.inventoryitem.atlasname = "images/kei_battery.xml"
+        inst.components.inventoryitem:ChangeImageName("kei_battery")
+
+        inst:AddComponent("stackable")
+        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
+
+        MakeKeiDeviceEdible(inst)
+        MakeHauntableLaunch(inst)
+
+        return inst
+    end
+
+    return Prefab("kei_battery", fn, assets)
+end
+
+local function MakeRepairTool()
+    local assets = {
+        Asset("ANIM", "anim/kei_repair_tool.zip"),
+        Asset("ATLAS", "images/kei_repair_tool.xml"),
+        Asset("IMAGE", "images/kei_repair_tool.tex"),
+    }
+
+    local function fn()
+        local inst = CreateEntity()
+
+        inst.entity:AddTransform()
+        inst.entity:AddAnimState()
+        inst.entity:AddNetwork()
+
+        MakeInventoryPhysics(inst)
+        inst.Transform:SetScale(1.5, 1.5, 1.5)
+        inst.AnimState:SetBank("kei_repair_tool")
+        inst.AnimState:SetBuild("kei_repair_tool")
+        inst.AnimState:PlayAnimation("idle")
+
+        inst:AddTag("kei_repair_tool")
+
+        MakeInventoryFloatable(inst, "small", nil, 0.8)
+
+        inst.entity:SetPristine()
+
+        if not TheWorld.ismastersim then
+            return inst
+        end
+
+        inst:AddComponent("inspectable")
+        inst:AddComponent("inventoryitem")
+        inst.components.inventoryitem.atlasname = "images/kei_repair_tool.xml"
+        inst.components.inventoryitem:ChangeImageName("kei_repair_tool")
+
+        inst:AddComponent("stackable")
+        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
+
+        MakeKeiDeviceEdible(inst)
+        MakeHauntableLaunch(inst)
+
+        return inst
+    end
+
+    return Prefab("kei_repair_tool", fn, assets)
 end
 
 local function MakeBlankCD()
@@ -357,22 +455,32 @@ end
 
 local function MakeProtocolUnlocker(name, tier)
     -- 解锁模块只靠 tier 区分 Mk1/Mk2/Mk3，动作逻辑会读取这个字段。
-    return MakeSimpleInventoryItem(
+    local mk_images = { "kei_mk1", "kei_mk2", "kei_mk3" }
+    local mk_atlases = { "images/kei_mk1.xml", "images/kei_mk2.xml", "images/kei_mk3.xml" }
+    local prefab = MakeSimpleInventoryItem(
         name,
         "wx_chips",
         "chips",
         "stacksize",
         { "kei_protocol_unlocker", "kei_protocol_mk" .. tostring(tier) },
-        "wx78module_stacksize",
+        nil,
         function(inst)
             inst.kei_unlock_tier = tier
+            -- 设置自定义图片和 atlas
+            if inst.components.inventoryitem ~= nil then
+                inst.components.inventoryitem.atlasname = mk_atlases[tier]
+                inst.components.inventoryitem:ChangeImageName(mk_images[tier])
+            end
         end
     )
+    -- 添加自定义 atlas 资源
+    table.insert(prefab.assets, Asset("ATLAS", mk_atlases[tier]))
+    return prefab
 end
 
 -- 这些道具未指定贴图的部分，统一使用设计要求的 wagstaff_item_2 或原版近似图标占位。
-return MakeSimpleInventoryItem("kei_battery", "transistor", "transistor", "idle", { "kei_battery" }, "transistor", MakeKeiDeviceEdible),
-    MakeSimpleInventoryItem("kei_repair_tool", "sewing_tape", "tape", "idle", { "kei_repair_tool" }, "sewing_tape", MakeKeiDeviceEdible),
+return MakeBattery(),
+    MakeRepairTool(),
     MakeSimpleInventoryItem("kei_analysis_tool", "wagstaff_tools", "wagstaff_tools_all", "radio", { "kei_analysis_tool" }, "wagstaff_tool_5"),
     MakeBlankCD(),
     MakeCombatCD(),

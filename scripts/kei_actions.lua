@@ -195,6 +195,36 @@ local function SetDaywalkerAiming(doer, aiming)
     end
 end
 
+local function StartDaywalkerLeapCooldown(doer)
+    if doer == nil then
+        return
+    end
+
+    SetDaywalkerAiming(doer, false)
+
+    if not TheWorld.ismastersim then
+        return
+    end
+
+    if doer.kei_daywalker_leap_cd_task ~= nil then
+        doer.kei_daywalker_leap_cd_task:Cancel()
+        doer.kei_daywalker_leap_cd_task = nil
+    end
+
+    doer.kei_daywalker_leap_on_cooldown = true
+    if doer._kei_daywalker_leap_on_cooldown ~= nil then
+        doer._kei_daywalker_leap_on_cooldown:set(true)
+    end
+
+    doer.kei_daywalker_leap_cd_task = doer:DoTaskInTime(TUNING.KEI_DAYWALKER_LEAP_COOLDOWN or 3, function(inst)
+        inst.kei_daywalker_leap_on_cooldown = nil
+        inst.kei_daywalker_leap_cd_task = nil
+        if inst._kei_daywalker_leap_on_cooldown ~= nil then
+            inst._kei_daywalker_leap_on_cooldown:set(false)
+        end
+    end)
+end
+
 local DAYWALKER_LEAP_MUST_TAGS = { "_combat" }
 local DAYWALKER_LEAP_CANT_TAGS = { "INLIMBO", "wall", "companion", "flight", "invisible", "notarget", "noattack", "playerghost" }
 
@@ -266,7 +296,7 @@ local function DoDaywalkerLeapImpact(doer, pos)
 end
 
 local function DoDaywalkerLeap(doer, targetpos)
-    if not DaywalkerLeap.IsAiming(doer) then
+    if not DaywalkerLeap.IsAiming(doer) or not DaywalkerLeap.IsReady(doer) then
         return false
     end
     local pt = DaywalkerLeap.GetTargetPoint(doer, targetpos)
@@ -274,7 +304,7 @@ local function DoDaywalkerLeap(doer, targetpos)
         return false
     end
 
-    SetDaywalkerAiming(doer, false)
+    StartDaywalkerLeapCooldown(doer)
     doer:PushEvent("kei_daywalker_leap", { targetpos = pt })
     return true
 end
@@ -504,7 +534,7 @@ AddStategraphState("wilson_client", State{
 })
 
 local daywalker_aim_action = AddAction("KEI_DAYWALKER_AIM", "选择跳劈", function(act)
-    if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) then
+    if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) or not DaywalkerLeap.IsReady(act.doer) then
         return false
     end
     SetDaywalkerAiming(act.doer, true)
@@ -530,7 +560,11 @@ daywalker_cancel_aim_action.priority = 4
 daywalker_cancel_aim_action.invalid_hold_action = true
 
 local daywalker_leap_action = AddAction("KEI_DAYWALKER_LEAP", "跳劈", function(act)
-    if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) or not DaywalkerLeap.IsAiming(act.doer) then
+    if not IsKei(act.doer)
+        or not DaywalkerLeap.HasProtocol(act.doer)
+        or not DaywalkerLeap.IsAiming(act.doer)
+        or not DaywalkerLeap.IsReady(act.doer)
+    then
         return false
     end
     local pt = act:GetActionPoint()

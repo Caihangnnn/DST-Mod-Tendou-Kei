@@ -70,7 +70,7 @@ local function UpdateDaywalkerAimingReticule(inst)
     if inst.components.reticule == nil then
         return
     end
-    if inst._kei_daywalker_aiming ~= nil and inst._kei_daywalker_aiming:value() then
+    if inst._kei_daywalker_aiming ~= nil and inst._kei_daywalker_aiming:value() and DaywalkerLeap.IsReady(inst) then
         ConfigureDaywalkerReticule(inst)
         inst.components.reticule:CreateReticule()
     else
@@ -82,6 +82,7 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
     if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
         and DaywalkerLeap.HasProtocol(inst)
         and DaywalkerLeap.IsAiming(inst)
+        and DaywalkerLeap.IsReady(inst)
         and not inst:HasTag("playerghost")
     then
         ConfigureDaywalkerReticule(inst)
@@ -96,6 +97,7 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
         and useitem == nil
         and ACTIONS.KEI_DAYWALKER_AIM ~= nil
         and DaywalkerLeap.HasProtocol(inst)
+        and DaywalkerLeap.IsReady(inst)
         and not inst:HasTag("playerghost")
     then
         ConfigureDaywalkerReticule(inst)
@@ -124,6 +126,7 @@ local function DaywalkerAimLeftClickPicker(inst, target, position)
     if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
         and DaywalkerLeap.HasProtocol(inst)
         and DaywalkerLeap.IsAiming(inst)
+        and DaywalkerLeap.IsReady(inst)
         and position ~= nil
         and not inst:HasTag("playerghost")
     then
@@ -139,6 +142,7 @@ end
 local function DaywalkerAimRightClickPicker(inst, target, position)
     if ACTIONS.KEI_DAYWALKER_CANCEL_AIM ~= nil
         and DaywalkerLeap.IsAiming(inst)
+        and DaywalkerLeap.IsReady(inst)
         and not inst:HasTag("playerghost")
     then
         return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_CANCEL_AIM }, position or inst:GetPosition())
@@ -179,6 +183,7 @@ local function common_postinit(inst)
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
+    inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")
 
     inst:AddComponent("reticule")
     inst.components.reticule.ease = true
@@ -189,6 +194,7 @@ local function common_postinit(inst)
 
     inst:ListenForEvent("setowner", OnSetOwner)
     inst:ListenForEvent("kei_daywalker_aiming_dirty", UpdateDaywalkerAimingReticule)
+    inst:ListenForEvent("kei_daywalker_leap_cd_dirty", UpdateDaywalkerAimingReticule)
 
     ConfigureVisuals(inst)
 end

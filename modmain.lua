@@ -17,6 +17,8 @@ Assets = {
     Asset("ANIM", "anim/kei.zip"),
     Asset("ANIM", "anim/ghost_kei_build.zip"),
     Asset("ANIM", "anim/player_idles_kei.zip"),
+    Asset("ANIM", "anim/kei_battery.zip"),
+    Asset("ANIM", "anim/kei_repair_tool.zip"),
 
     Asset("ATLAS", "bigportraits/kei.xml"),
     Asset("ATLAS", "images/names_kei.xml"),
@@ -28,6 +30,11 @@ Assets = {
     Asset("ATLAS", "images/saveslot_portraits/kei.xml"),
     Asset("ATLAS", "images/selectscreen_portraits/kei.xml"),
     Asset("ATLAS", "images/selectscreen_portraits/kei_silho.xml"),
+    Asset("ATLAS", "images/kei_mk1.xml"),
+    Asset("ATLAS", "images/kei_mk2.xml"),
+    Asset("ATLAS", "images/kei_mk3.xml"),
+    Asset("ATLAS", "images/kei_repair_tool.xml"),
+    Asset("ATLAS", "images/kei_battery.xml"),
 }
 
 AddMinimapAtlas("images/map_icons/kei.xml")
@@ -72,7 +79,8 @@ TUNING.KEI_DAYWALKER_LEAP_DAMAGE_BASE = 150 -- 梦魇疯猪协议跳劈的固定
 TUNING.KEI_DAYWALKER_LEAP_DAMAGE_MAXHEALTH_PERCENT = 0.04 -- 梦魇疯猪协议跳劈按目标最大生命值追加的伤害比例
 TUNING.KEI_DAYWALKER_LEAP_SLOW_MULT = 0.1 -- 梦魇疯猪协议跳劈命中后的移速倍率
 TUNING.KEI_DAYWALKER_LEAP_SLOW_DURATION = 3 -- 梦魇疯猪协议跳劈命中后的减速时间
-TUNING.KEI_DAYWALKER_SINKHOLE_DURATION = 3 -- 梦魇疯猪协议跳劈留下的坑持续时间
+TUNING.KEI_DAYWALKER_SINKHOLE_DURATION = 0.5 -- 梦魇疯猪协议跳劈留下的坑持续时间
+TUNING.KEI_DAYWALKER_LEAP_COOLDOWN = 3 -- 梦魇疯猪协议跳劈冷却时间
 
 -- 头部 / 身体解析协议使用的隐藏虚拟装备槽。
 for i = 1, TUNING.KEI_PROTOCOL_SLOT_HARD_MAX do

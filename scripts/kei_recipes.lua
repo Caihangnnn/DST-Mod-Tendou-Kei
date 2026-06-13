@@ -20,13 +20,20 @@ end
 
 local function kei_config(tex, extra)
     -- 未指定图标时，按设计要求统一回退到 wagstaff_item_2。
-    local cfg = image(tex or "wagstaff_item_2.tex")
-    cfg.builder_tag = "kei"
-    if extra ~= nil then
-        for k, v in pairs(extra) do
-            cfg[k] = v
+    local cfg
+    if type(tex) == "table" then
+        -- 如果第一个参数是 table，说明传入了完整的配置
+        cfg = tex
+    else
+        -- 否则，使用传统的 tex + extra 方式
+        cfg = image(tex or "wagstaff_item_2.tex")
+        if extra ~= nil then
+            for k, v in pairs(extra) do
+                cfg[k] = v
+            end
         end
     end
+    cfg.builder_tag = "kei"
     return cfg
 end
 
@@ -103,7 +110,10 @@ AddRecipe2(
     "kei_battery",
     { Ingredient("transistor", 1) },
     TECH.NONE,
-    kei_config("transistor.tex"),
+    kei_config({
+    atlas = "images/kei_battery.xml",
+    image = "kei_battery.tex",
+    }),
     filters
 )
 
@@ -112,7 +122,11 @@ AddRecipe2(
     "kei_repair_tool",
     { Ingredient("gears", 1), Ingredient("transistor", 1), Ingredient("butter", 1) },
     TECH.NONE,
-    kei_config("sewing_tape.tex", { numtogive = 5 }),
+    kei_config({
+        atlas = "images/kei_repair_tool.xml",
+        image = "kei_repair_tool.tex",
+        numtogive = 5,
+    }),
     filters
 )
 
@@ -126,12 +140,19 @@ AddRecipe2(
 )
 
 -- 三个解锁模块共用同一套初版材料；实际解锁数量由模组配置决定。
+local mk_data = {
+    { image = "kei_mk1.tex", atlas = "images/kei_mk1.xml" },
+    { image = "kei_mk2.tex", atlas = "images/kei_mk2.xml" },
+    { image = "kei_mk3.tex", atlas = "images/kei_mk3.xml" },
+}
 for i = 1, 3 do
     AddRecipe2(
         "kei_protocol_mk" .. tostring(i),
         { Ingredient("goldnugget", 10) },
         TECH.NONE,
-        kei_config("wx78module_stacksize.tex", {
+        kei_config({
+            atlas = mk_data[i].atlas,
+            image = mk_data[i].image,
             canbuild = can_build_protocol_unlock,
         }),
         filters

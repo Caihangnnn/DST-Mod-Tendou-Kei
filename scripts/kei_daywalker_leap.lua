@@ -23,6 +23,14 @@ function DaywalkerLeap.IsAiming(inst)
         or (inst._kei_daywalker_aiming ~= nil and inst._kei_daywalker_aiming:value())
 end
 
+function DaywalkerLeap.IsReady(inst)
+    if inst == nil then
+        return false
+    end
+    return inst.kei_daywalker_leap_on_cooldown ~= true
+        and not (inst._kei_daywalker_leap_on_cooldown ~= nil and inst._kei_daywalker_leap_on_cooldown:value())
+end
+
 function DaywalkerLeap.GetTargetPoint(inst, targetpos)
     if inst == nil or targetpos == nil then
         return nil
