@@ -51,6 +51,47 @@ local function SetPowered(inst, powered)
     end
 end
 
+local function OpenWithoutClosingProtocolSlots(container, doer, ...)
+    local inventory = doer ~= nil and doer.components.inventory or nil
+    local kept_open = nil
+
+    if inventory ~= nil then
+        for open_inst in pairs(inventory.opencontainers) do
+            if open_inst ~= container.inst
+                and open_inst:HasTag("kei_protocol_slot")
+                and open_inst.components.container ~= nil
+                and open_inst.components.container:IsOpenedBy(doer)
+            then
+                kept_open = kept_open or {}
+                kept_open[open_inst] = true
+                inventory.opencontainers[open_inst] = nil
+            end
+        end
+    end
+
+    local result = container._kei_old_open(container, doer, ...)
+
+    if kept_open ~= nil and inventory ~= nil then
+        for open_inst in pairs(kept_open) do
+            if open_inst:IsValid()
+                and open_inst.components.container ~= nil
+                and open_inst.components.container:IsOpenedBy(doer)
+            then
+                inventory.opencontainers[open_inst] = true
+            end
+        end
+    end
+
+    return result
+end
+
+local function AllowParallelProtocolSlotOpen(container)
+    if container._kei_old_open == nil then
+        container._kei_old_open = container.Open
+        container.Open = OpenWithoutClosingProtocolSlots
+    end
+end
+
 local function GetStatus(inst)
     return inst.components.inventoryitem:IsHeld()
         and (inst.components.container.canbeopened and "HELD" or "NOPOWER")
@@ -108,6 +149,7 @@ local function fn()
     inst.components.container.onopenfn = OnOpen
     inst.components.container.onclosefn = OnClose
     inst.components.container.canbeopened = false
+    AllowParallelProtocolSlotOpen(inst.components.container)
     RefreshIcon(inst)
 
     MakeHauntableLaunchAndDropFirstItem(inst)

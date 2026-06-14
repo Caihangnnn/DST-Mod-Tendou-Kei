@@ -456,6 +456,295 @@ repair_action.priority = 2
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
 
+local dormant_action = AddAction("KEI_DORMANT", "休眠", function(act)
+    if not IsKei(act.doer) or act.target ~= act.doer or act.doer.StartKeiDormant == nil then
+        return false
+    end
+    return act.doer:StartKeiDormant(false)
+end)
+dormant_action.mount_valid = false
+dormant_action.rmb = true
+dormant_action.priority = 5
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DORMANT, "kei_dormant_poweroff"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DORMANT, "kei_dormant_poweroff"))
+
+local wake_action = AddAction("KEI_WAKE", "唤醒", function(act)
+    if not IsKei(act.doer) or act.target ~= act.doer or act.doer.StopKeiDormant == nil then
+        return false
+    end
+    return act.doer:StopKeiDormant(false)
+end)
+wake_action.mount_valid = false
+wake_action.rmb = true
+wake_action.priority = 5
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron"))
+
+local function SetKeiDormantControls(inst, enabled)
+    if inst.components.inventory ~= nil then
+        if enabled then
+            inst.components.inventory:Show()
+        else
+            inst.components.inventory:Hide()
+            inst.components.inventory:CloseAllChestContainers()
+        end
+    end
+    inst:ShowActions(enabled)
+    if inst.components.playercontroller ~= nil then
+        inst.components.playercontroller:EnableMapControls(enabled)
+        inst.components.playercontroller:Enable(enabled)
+        if not enabled then
+            inst.components.playercontroller:RemotePausePrediction()
+        end
+    end
+end
+
+local function AddKeiChassisBuild(inst)
+    if not inst.sg.mem.kei_chassis_build then
+        inst.sg.mem.kei_chassis_build = true
+        inst.AnimState:AddOverrideBuild("wx_chassis")
+    end
+end
+
+local function ClearKeiChassisBuild(inst)
+    inst.sg.mem.kei_chassis_build = nil
+    inst.AnimState:ClearOverrideBuild("wx_chassis")
+end
+
+AddStategraphState("wilson", State{
+    name = "kei_dormant_poweroff",
+    tags = { "busy", "pausepredict", "notalking", "noattack" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.Transform:SetNoFaced()
+        inst:AddTag("notarget")
+        AddKeiChassisBuild(inst)
+        inst.AnimState:PlayAnimation("wx_chassis_poweroff")
+        SetKeiDormantControls(inst, false)
+        if inst.components.talker ~= nil then
+            inst.components.talker:ShutUp()
+            inst.components.talker:IgnoreAll("kei_dormant")
+        end
+    end,
+
+    timeline =
+    {
+        FrameEvent(0, function(inst) inst.SoundEmitter:PlaySound("WX_rework/chassis/internal_rumble") end),
+        FrameEvent(16, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/ratchet") end),
+        FrameEvent(19, function(inst)
+            inst.sg:AddStateTag("nointerrupt")
+            if inst.components.health ~= nil then
+                inst.components.health:SetInvincible(true)
+            end
+        end),
+        FrameEvent(22, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/clunk") end),
+        FrameEvent(28, function(inst)
+            inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk")
+        end),
+        FrameEvent(54, function(inst)
+            if inst.ScreenFade ~= nil then
+                inst:ScreenFade(false, 0)
+            end
+        end),
+        FrameEvent(60, function(inst)
+            inst.sg.statemem.dormant_success = inst:PerformBufferedAction()
+            if inst.sg.statemem.dormant_success and inst.SnapCamera ~= nil then
+                inst:SnapCamera()
+            end
+            if inst.ScreenFade ~= nil then
+                inst:ScreenFade(true, 0.5)
+            end
+            inst.sg:GoToState("idle")
+        end),
+    },
+
+    onexit = function(inst)
+        inst.Transform:SetFourFaced()
+        ClearKeiChassisBuild(inst)
+        if not inst.sg.statemem.dormant_success then
+            inst:RemoveTag("notarget")
+            if inst.components.health ~= nil then
+                inst.components.health:SetInvincible(false)
+            end
+            SetKeiDormantControls(inst, true)
+        else
+            inst:ShowActions(true)
+            if inst.components.playercontroller ~= nil then
+                inst.components.playercontroller:EnableMapControls(true)
+                inst.components.playercontroller:Enable(true)
+            end
+            if inst.components.inventory ~= nil then
+                inst.components.inventory:Hide()
+                inst.components.inventory:CloseAllChestContainers()
+            end
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:StopIgnoringAll("kei_dormant")
+        end
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_dormant_poweroff",
+    tags = { "busy", "pausepredict", "notalking", "noattack" },
+    server_states = { "kei_dormant_poweroff" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.Transform:SetNoFaced()
+        AddKeiChassisBuild(inst)
+        inst.AnimState:PlayAnimation("wx_chassis_poweroff")
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(3)
+    end,
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        inst.Transform:SetFourFaced()
+        ClearKeiChassisBuild(inst)
+    end,
+})
+
+AddStategraphState("wilson", State{
+    name = "kei_dormant_poweron",
+    tags = { "busy", "nopredict", "notalking", "noattack", "nointerrupt" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.Transform:SetNoFaced()
+        inst:AddTag("notarget")
+        if not inst:PerformBufferedAction() then
+            inst.sg:GoToState("idle")
+            return
+        end
+
+        AddKeiChassisBuild(inst)
+        inst.AnimState:PlayAnimation("wx_chassis_idle")
+        if inst.components.health ~= nil then
+            inst.components.health:SetInvincible(true)
+        end
+        SetKeiDormantControls(inst, false)
+        if inst.components.talker ~= nil then
+            inst.components.talker:ShutUp()
+            inst.components.talker:IgnoreAll("kei_dormant")
+        end
+        if inst.ScreenFade ~= nil then
+            inst:ScreenFade(true, 1)
+        end
+    end,
+
+    timeline =
+    {
+        FrameEvent(15, function(inst)
+            inst.AnimState:PlayAnimation("wx_chassis_poweron")
+            inst.SoundEmitter:PlaySound("WX_rework/chassis/internal_rumble")
+        end),
+        FrameEvent(39, function(inst) inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk") end),
+        FrameEvent(42, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/clunk_big_single") end),
+        FrameEvent(57, function(inst) inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk") end),
+        FrameEvent(73, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/ratchet") end),
+        FrameEvent(88, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/clunk") end),
+        FrameEvent(75, function(inst)
+            SetKeiDormantControls(inst, true)
+            if inst.components.talker ~= nil then
+                inst.components.talker:StopIgnoringAll("kei_dormant")
+            end
+        end),
+        FrameEvent(82, function(inst)
+            inst:RemoveTag("notarget")
+            if inst.components.health ~= nil then
+                inst.components.health:SetInvincible(false)
+            end
+        end),
+        FrameEvent(91, function(inst)
+            inst.sg:RemoveStateTag("busy")
+            inst.sg:RemoveStateTag("nopredict")
+            inst.sg:RemoveStateTag("notalking")
+            inst.sg:AddStateTag("idle")
+            inst.sg:AddStateTag("canrotate")
+        end),
+    },
+
+    events =
+    {
+        EventHandler("animover", function(inst)
+            if inst.AnimState:AnimDone() and not inst.sg:HasStateTag("busy") then
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+
+    onexit = function(inst)
+        inst.Transform:SetFourFaced()
+        ClearKeiChassisBuild(inst)
+        inst:RemoveTag("notarget")
+        if inst.components.health ~= nil then
+            inst.components.health:SetInvincible(false)
+        end
+        SetKeiDormantControls(inst, true)
+        if inst.components.talker ~= nil then
+            inst.components.talker:StopIgnoringAll("kei_dormant")
+        end
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_dormant_poweron",
+    tags = { "busy", "nopredict", "notalking", "noattack", "nointerrupt" },
+    server_states = { "kei_dormant_poweron" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.Transform:SetNoFaced()
+        AddKeiChassisBuild(inst)
+        inst.AnimState:PlayAnimation("wx_chassis_idle")
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(4)
+    end,
+
+    timeline =
+    {
+        FrameEvent(15, function(inst)
+            inst.AnimState:PlayAnimation("wx_chassis_poweron")
+        end),
+    },
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        inst.Transform:SetFourFaced()
+        ClearKeiChassisBuild(inst)
+    end,
+})
+
 local EYEOFTERROR_DASH_ANIM_SPEED = 2
 
 -- 恐怖之眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置，最多 12 距离单位且不造成伤害。
@@ -938,9 +1227,22 @@ end)
 
 -- SCENE：空手右键记录仪，根据状态显示停止记录或收获数据。
 AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
-    if not right or not IsKei(doer) or not inst:HasTag("kei_data_recorder") then
+    if not right or not IsKei(doer) then
         return
     end
+
+    if inst == doer and not doer:HasTag("playerghost") then
+        local activeitem = doer.replica.inventory ~= nil and doer.replica.inventory:GetActiveItem() or nil
+        if activeitem == nil then
+            table.insert(actions, doer:HasTag("kei_dormant") and ACTIONS.KEI_WAKE or ACTIONS.KEI_DORMANT)
+        end
+        return
+    end
+
+    if not inst:HasTag("kei_data_recorder") then
+        return
+    end
+
     local state = GetRecorderState(inst)
     if state == RECORDER_STATE.recording then
         table.insert(actions, ACTIONS.KEI_STOP_RECORD)

@@ -1,4 +1,5 @@
 local MakePlayerCharacter = require("prefabs/player_common")
+local PlayerCommonExtensions = require("prefabs/player_common_extensions")
 local EyeOfTerrorDash = require("kei_eyeofterror_dash")
 local DaywalkerLeap = require("kei_daywalker_leap")
 
@@ -7,10 +8,12 @@ local assets = {
     Asset("ANIM", "anim/kei.zip"),
     Asset("ANIM", "anim/ghost_kei_build.zip"),
     Asset("ANIM", "anim/player_idles_kei.zip"),
+    Asset("ANIM", "anim/wx_chassis.zip"),
 }
 
 local prefabs = {
     "kei_battery",
+    "kei_dormant_chassis",
     "kei_protocol_container",
     "reticuleaoe",
     "reticuleaoeping",
@@ -30,6 +33,8 @@ local prefabs = {
     "sandspike_tall",
     "sandspike_short",
     "battlesong_instant_panic_fx",
+    "collapse_small",
+    "wx78_big_spark",
 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
@@ -214,6 +219,8 @@ local function ConfigureVisuals(inst)
     inst.MiniMapEntity:SetIcon("kei.tex")
 end
 
+local UpdateDormantActionFilter
+
 local function common_postinit(inst)
     -- 标签用于动作过滤、专属配方解锁，以及电击免疫等基础设定。
     inst:AddTag("kei")
@@ -240,6 +247,7 @@ local function common_postinit(inst)
     inst:ListenForEvent("kei_daywalker_leap_cd_dirty", UpdateDaywalkerAimingReticule)
     inst:ListenForEvent("kei_malbatross_protocol_dirty", OnMalbatrossProtocolDirty)
     inst:DoTaskInTime(0, OnMalbatrossProtocolDirty)
+    inst:DoPeriodicTask(0.25, UpdateDormantActionFilter)
 
     ConfigureVisuals(inst)
 end
@@ -286,6 +294,245 @@ local function HasAlterguardianPowerOverride(inst)
         and inst.components.kei_protocolslots:AlterguardianProtocolOverridesPower()
 end
 
+local function KeiDormantActionFilter(inst, action)
+    return action == ACTIONS.KEI_WAKE
+end
+
+function UpdateDormantActionFilter(inst)
+    local playeractionpicker = inst.components.playeractionpicker
+    if playeractionpicker == nil then
+        return
+    end
+
+    if inst:HasTag("kei_dormant") then
+        if not inst.kei_dormant_action_filter_active then
+            playeractionpicker:PushActionFilter(KeiDormantActionFilter, 999)
+            inst.kei_dormant_action_filter_active = true
+        end
+    elseif inst.kei_dormant_action_filter_active then
+        playeractionpicker:PopActionFilter(KeiDormantActionFilter)
+        inst.kei_dormant_action_filter_active = nil
+    end
+end
+
+local function SpawnDormantTransitionFx(inst)
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local collapse = SpawnPrefab("collapse_small")
+    if collapse ~= nil then
+        collapse.Transform:SetPosition(x, y, z)
+        if collapse.SetMaterial ~= nil then
+            collapse:SetMaterial("metal")
+        end
+    end
+
+    local spark = SpawnPrefab("wx78_big_spark")
+    if spark ~= nil then
+        if spark.AlignToTarget ~= nil then
+            spark:AlignToTarget(inst)
+        else
+            spark.Transform:SetPosition(x, y, z)
+        end
+    end
+    if inst.SoundEmitter ~= nil then
+        inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk")
+    end
+end
+
+local function RestoreKeiDormantColour(inst)
+    if inst.kei_dormant_old_multcolour ~= nil then
+        inst.AnimState:SetMultColour(unpack(inst.kei_dormant_old_multcolour))
+        inst.kei_dormant_old_multcolour = nil
+    else
+        inst.AnimState:SetMultColour(1, 1, 1, 1)
+    end
+end
+
+local function RemoveDormantVisual(inst)
+    if inst.kei_dormant_visual ~= nil then
+        if inst.kei_dormant_visual:IsValid() then
+            inst.kei_dormant_visual:Remove()
+        end
+        inst.kei_dormant_visual = nil
+    end
+end
+
+local DORMANT_FACE_SYMBOLS = { "face", "swap_face", "cheeks" }
+
+local function HideDormantFaceSymbols(visual)
+    for _, symbol in ipairs(DORMANT_FACE_SYMBOLS) do
+        visual.AnimState:HideSymbol(symbol)
+    end
+end
+
+local function SetDormantChassisPose(visual)
+    visual.AnimState:AddOverrideBuild("wx_chassis")
+    visual.AnimState:PlayAnimation("wx_chassis_poweroff")
+    visual.AnimState:SetPercent("wx_chassis_poweroff", 1)
+    visual.AnimState:Pause()
+    HideDormantFaceSymbols(visual)
+end
+
+local function CopyDormantVisualAppearance(owner, visual)
+    if visual.components.skinner ~= nil and owner.components.skinner ~= nil then
+        visual.components.skinner:CopySkinsFromPlayer(owner, true)
+        SetDormantChassisPose(visual)
+    end
+end
+
+local function SpawnDormantVisual(inst)
+    RemoveDormantVisual(inst)
+
+    local visual = SpawnPrefab("kei_dormant_chassis")
+    if visual == nil then
+        return
+    end
+
+    visual.entity:SetParent(inst.entity)
+    visual.Transform:SetPosition(0, 0, 0)
+    visual.Transform:SetRotation(0)
+    visual.Transform:SetScale(1, 1, 1)
+    CopyDormantVisualAppearance(inst, visual)
+    inst.kei_dormant_visual = visual
+end
+
+local function ClearDormantAttackers(inst)
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local ents = TheSim:FindEntities(x, y, z, 40, { "_combat" }, { "INLIMBO" })
+    for _, ent in ipairs(ents) do
+        if ent ~= inst and ent.components.combat ~= nil and ent.components.combat.target == inst then
+            ent.components.combat:SetTarget(nil)
+        end
+    end
+end
+
+local function DoDormantTick(inst)
+    if not inst.kei_dormant_active
+        or inst.components.health == nil
+        or inst.components.health:IsDead()
+        or inst.components.hunger == nil
+    then
+        if inst.StopKeiDormant ~= nil then
+            inst:StopKeiDormant()
+        end
+        return
+    end
+
+    if inst.components.hunger.current <= 0 then
+        inst:StopKeiDormant()
+        return
+    end
+
+    ClearDormantAttackers(inst)
+    inst.components.hunger:DoDelta(-(TUNING.KEI_DORMANT_POWER_DRAIN or 1))
+    if inst.components.sanity ~= nil then
+        inst.components.sanity:DoDelta(TUNING.KEI_DORMANT_STABILITY_REGEN or 3)
+    end
+    inst.components.health:DoDelta(TUNING.KEI_DORMANT_INTEGRITY_REGEN or 3, true, "kei_dormant", true)
+end
+
+local function StopDormantTask(inst)
+    if inst.kei_dormant_task ~= nil then
+        inst.kei_dormant_task:Cancel()
+        inst.kei_dormant_task = nil
+    end
+end
+
+local function StartKeiDormant(inst, playfx)
+    if inst.kei_dormant_active
+        or inst:HasTag("playerghost")
+        or inst.components.health == nil
+        or inst.components.health:IsDead()
+    then
+        return false
+    end
+
+    if inst.components.hunger == nil or inst.components.hunger.current <= 0 then
+        return false
+    end
+
+    inst.kei_dormant_active = true
+    inst:AddTag("kei_dormant")
+    inst:AddTag("notarget")
+    inst:AddTag("noattack")
+    inst:AddTag("NOBLOCK")
+
+    if inst.components.health ~= nil then
+        inst.kei_dormant_old_invincible = inst.components.health.invincible
+        inst.components.health:SetInvincible(true)
+    end
+    if inst.components.locomotor ~= nil then
+        inst.components.locomotor:Stop()
+        inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_dormant", 0)
+    end
+    if inst.components.combat ~= nil then
+        inst.components.combat:SetTarget(nil)
+    end
+    if inst.components.inventory ~= nil then
+        inst.components.inventory:Hide()
+        inst.components.inventory:CloseAllChestContainers()
+    end
+    inst.kei_daywalker_aiming = nil
+    if inst._kei_daywalker_aiming ~= nil then
+        inst._kei_daywalker_aiming:set(false)
+    end
+    ClearDormantAttackers(inst)
+
+    inst.kei_dormant_old_multcolour = { inst.AnimState:GetMultColour() }
+    inst.AnimState:SetMultColour(
+        inst.kei_dormant_old_multcolour[1] or 1,
+        inst.kei_dormant_old_multcolour[2] or 1,
+        inst.kei_dormant_old_multcolour[3] or 1,
+        0
+    )
+    SpawnDormantVisual(inst)
+    if playfx ~= false then
+        SpawnDormantTransitionFx(inst)
+    end
+    StopDormantTask(inst)
+    inst.kei_dormant_task = inst:DoPeriodicTask(1, DoDormantTick, 1)
+    UpdateDormantActionFilter(inst)
+
+    return true
+end
+
+local function StopKeiDormant(inst, playfx)
+    if not inst.kei_dormant_active then
+        return false
+    end
+
+    StopDormantTask(inst)
+    inst.kei_dormant_active = nil
+    inst:RemoveTag("kei_dormant")
+    inst:RemoveTag("notarget")
+    inst:RemoveTag("noattack")
+    inst:RemoveTag("NOBLOCK")
+
+    if inst.components.health ~= nil then
+        inst.components.health:SetInvincible(inst.kei_dormant_old_invincible == true)
+    end
+    inst.kei_dormant_old_invincible = nil
+    if inst.components.locomotor ~= nil then
+        inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_dormant")
+    end
+    if inst.components.inventory ~= nil then
+        inst.components.inventory:Show()
+    end
+    inst:ShowActions(true)
+    if inst.components.playercontroller ~= nil then
+        inst.components.playercontroller:EnableMapControls(true)
+        inst.components.playercontroller:Enable(true)
+    end
+
+    RestoreKeiDormantColour(inst)
+    RemoveDormantVisual(inst)
+    if playfx ~= false then
+        SpawnDormantTransitionFx(inst)
+    end
+    UpdateDormantActionFilter(inst)
+
+    return true
+end
+
 local function UpdateIntegrityState(inst)
     -- 定时检查把“电量”和“机体完整度”的特殊规则挂到原生 hunger/health 上。
     if inst.components.health == nil or inst.components.hunger == nil or inst.components.locomotor == nil then
@@ -295,6 +542,9 @@ local function UpdateIntegrityState(inst)
     local health = inst.components.health
     local hunger = inst.components.hunger
     if health:IsDead() then
+        return
+    end
+    if inst.kei_dormant_active then
         return
     end
 
@@ -375,11 +625,58 @@ local function master_postinit(inst)
     -- 协议槽负责扫描背包前 1/3/5/7 格中的协议 CD 并施加效果。
     inst:AddComponent("kei_protocolslots")
 
+    inst.StartKeiDormant = StartKeiDormant
+    inst.StopKeiDormant = StopKeiDormant
+
     inst:DoPeriodicTask(TUNING.KEI_SELF_REPAIR_PERIOD, UpdateIntegrityState)
+    inst:ListenForEvent("death", StopKeiDormant)
+    inst:ListenForEvent("onremove", StopKeiDormant)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave
     inst._OnLoad = OnLoad
 end
 
-return MakePlayerCharacter("kei", prefabs, assets, common_postinit, master_postinit)
+local function dormant_chassis_fn()
+    local inst = CreateEntity()
+
+    inst.entity:AddTransform()
+    inst.entity:AddAnimState()
+    inst.entity:AddDynamicShadow()
+    inst.entity:AddNetwork()
+
+    inst:AddTag("equipmentmodel")
+    inst:AddTag("FX")
+    inst:AddTag("NOCLICK")
+
+    PlayerCommonExtensions.SetupBaseSymbolVisibility(inst)
+    inst.AnimState:SetBank("wilson")
+    inst.AnimState:SetBuild("wx78")
+    SetDormantChassisPose(inst)
+    inst.DynamicShadow:SetSize(1.3, 0.6)
+
+    inst.AnimState:Hide("shad_veins")
+    inst.AnimState:Hide("mimic1")
+    inst.AnimState:Hide("mimic2")
+    inst.AnimState:Hide("mimic3")
+    inst.AnimState:Hide("trapper")
+    inst.AnimState:Hide("gestalt_die")
+    inst.AnimState:Hide("gestalt_flee")
+
+    inst.entity:SetPristine()
+
+    if not TheWorld.ismastersim then
+        return inst
+    end
+
+    inst.persists = false
+
+    local skinner = inst:AddComponent("skinner")
+    skinner:SetupNonPlayerData()
+    skinner.useskintypeonload = true
+
+    return inst
+end
+
+return MakePlayerCharacter("kei", prefabs, assets, common_postinit, master_postinit),
+    Prefab("kei_dormant_chassis", dormant_chassis_fn, assets)

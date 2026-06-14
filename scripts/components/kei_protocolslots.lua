@@ -123,10 +123,9 @@ local function AddHandAnalysisStats(stats, data)
 end
 
 local function GetProtocolDrainSettings()
-    local period = TUNING.KEI_PROTOCOL_DRAIN_PERIOD or 10
     return {
         amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
-        cap = (TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_SECOND or 10) * period,
+        cap = TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_PERIOD or TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_SECOND or 10,
     }
 end
 
@@ -672,34 +671,41 @@ function KeiProtocolSlots:DisableAllProtocols()
     self:ClearModifiers()
 end
 
-local function FreezeImmuneRedirect()
-    return true
-end
-
 function KeiProtocolSlots:EnableFreezeImmunity()
     local freezable = self.inst.components.freezable
-    if freezable == nil or self._kei_freeze_immune then
+    if self._kei_freeze_immune then
         return
     end
 
-    self._kei_old_freeze_redirectfn = freezable.redirectfn
-    freezable:SetRedirectFn(FreezeImmuneRedirect)
-    if freezable:IsFrozen() then
-        freezable:Unfreeze()
+    self._kei_had_freezable = freezable ~= nil
+    if freezable ~= nil then
+        -- Rocky cannot be frozen because it has no freezable component. Mirror
+        -- that while the Deerclops protocol is mounted, instead of only
+        -- redirecting AddColdness.
+        if freezable:IsFrozen() then
+            freezable:Unfreeze()
+        else
+            freezable:Reset()
+        end
+        self.inst:RemoveComponent("freezable")
     end
-    freezable.coldness = 0
-    freezable:UpdateTint()
     self._kei_freeze_immune = true
 end
 
 function KeiProtocolSlots:DisableFreezeImmunity()
-    local freezable = self.inst.components.freezable
-    if freezable == nil or not self._kei_freeze_immune then
+    if not self._kei_freeze_immune then
         return
     end
 
-    freezable:SetRedirectFn(self._kei_old_freeze_redirectfn)
-    self._kei_old_freeze_redirectfn = nil
+    if self._kei_had_freezable
+        and self.inst.components.freezable == nil
+        and not self.inst:HasTag("playerghost")
+    then
+        MakeLargeFreezableCharacter(self.inst, "torso")
+        self.inst.components.freezable:SetResistance(4)
+        self.inst.components.freezable:SetDefaultWearOffTime(TUNING.PLAYER_FREEZE_WEAR_OFF_TIME)
+    end
+    self._kei_had_freezable = nil
     self._kei_freeze_immune = nil
 end
 
@@ -1174,6 +1180,8 @@ function KeiProtocolSlots:SpawnAntlionSpike(pt, target, prefab, damage)
             ArmAntlionSpikeDamage(inst, self.inst, target, damage)
         end
     end)
+
+    return spike
 end
 
 function KeiProtocolSlots:SpawnAntlionSpikeTriangle(center, target)
@@ -1191,14 +1199,25 @@ function KeiProtocolSlots:SpawnAntlionSpikeTriangle(center, target)
 end
 
 function KeiProtocolSlots:DoAntlionProtocol(target)
-    if math.random() >= (TUNING.KEI_ANTLION_SANDSPIKE_CHANCE or 0.30)
+    local now = GetTime()
+    if (self._kei_antlion_sandspike_ready_time or 0) > now
+        or math.random() >= (TUNING.KEI_ANTLION_SANDSPIKE_CHANCE or 0.30)
         or not IsValidAntlionSpikeTarget(self.inst, target)
     then
         return
     end
 
     local center = target:GetPosition()
-    self:SpawnAntlionSpike(center, target, "sandspike_tall", TUNING.KEI_ANTLION_SANDSPIKE_TALL_DAMAGE or TUNING.SANDSPIKE.DAMAGE.TALL)
+    if self:SpawnAntlionSpike(
+        center,
+        target,
+        "sandspike_tall",
+        TUNING.KEI_ANTLION_SANDSPIKE_TALL_DAMAGE or TUNING.SANDSPIKE.DAMAGE.TALL
+    ) == nil then
+        return
+    end
+
+    self._kei_antlion_sandspike_ready_time = now + (TUNING.KEI_ANTLION_SANDSPIKE_COOLDOWN or 0.5)
     self.inst:DoTaskInTime(TUNING.KEI_ANTLION_SANDSPIKE_VERTEX_DELAY or 8 * FRAMES, function()
         if IsValidAntlionSpikeTarget(self.inst, target) then
             self:SpawnAntlionSpikeTriangle(center, target)
@@ -1208,18 +1227,18 @@ end
 
 function KeiProtocolSlots:SpawnMinotaurTentacle(target)
     if not IsValidMinotaurProtocolTarget(self.inst, target) then
-        return
+        return false
     end
 
     local pt = target:GetPosition()
     local offset = FindWalkableOffset(pt, math.random() * TWOPI, 2, 3, false, true, NoHoles, false, true, true)
     if offset == nil then
-        return
+        return false
     end
 
     local tentacle = SpawnPrefab("bigshadowtentacle")
     if tentacle == nil then
-        return
+        return false
     end
 
     tentacle.kei_owner = self.inst
@@ -1237,6 +1256,7 @@ function KeiProtocolSlots:SpawnMinotaurTentacle(target)
         tentacle.components.combat:SetTarget(target)
     end
     tentacle:PushEvent("arrive")
+    return true
 end
 
 function KeiProtocolSlots:SpawnShadowPrison(target, weapon)
@@ -1296,8 +1316,12 @@ function KeiProtocolSlots:SpawnShadowPrison(target, weapon)
 end
 
 function KeiProtocolSlots:DoMinotaurProtocol(target, weapon)
-    if math.random() < (TUNING.KEI_MINOTAUR_TENTACLE_CHANCE or 0.30) then
-        self:SpawnMinotaurTentacle(target)
+    local now = GetTime()
+    if (self._kei_minotaur_tentacle_ready_time or 0) <= now
+        and math.random() < (TUNING.KEI_MINOTAUR_TENTACLE_CHANCE or 0.30)
+        and self:SpawnMinotaurTentacle(target)
+    then
+        self._kei_minotaur_tentacle_ready_time = now + (TUNING.KEI_MINOTAUR_TENTACLE_COOLDOWN or 0.5)
     end
     if math.random() < (TUNING.KEI_MINOTAUR_SHADOW_PRISON_CHANCE or 0.15) then
         self:SpawnShadowPrison(target, weapon)

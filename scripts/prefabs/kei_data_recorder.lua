@@ -2,8 +2,9 @@ require("prefabutil")
 local CombatProtocolDefs = require("kei_combat_protocol_defs")
 
 local assets = {
-    Asset("ANIM", "anim/vault_decon_mister.zip"),
-    Asset("INV_IMAGE", "vault_decon_mister"),
+    Asset("ANIM", "anim/vault_key_pedestal.zip"),
+    Asset("ANIM", "anim/wx78_shadowdrone_debuffer.zip"),
+    Asset("ANIM", "anim/wx78_shadowdrone_harvester.zip"),
 }
 
 local item_assets = {
@@ -11,13 +12,18 @@ local item_assets = {
     Asset("INV_IMAGE", "wagstaff_item_2"),
 }
 
-local RECORDER_BANK = "vault_decon_mister"
-local RECORDER_BUILD = "vault_decon_mister"
-local RECORDER_ANIM_OFF = "misting_closed"
-local RECORDER_ANIM_ON = "misting_loop"
-local RECORDER_ANIM_ACTIVATE = "misting_activate"
-local RECORDER_ANIM_DEACTIVATE = "misting_deactivated"
-local RECORDER_WORLD_SCALE = 2
+local RECORDER_BANK = "vault_key_pedestal"
+local RECORDER_BUILD = "vault_key_pedestal"
+local RECORDER_ANIM_OFF = "refiner_idle"
+local RECORDER_ANIM_OFF_APPEAR = "refiner_appear"
+local RECORDER_ANIM_ON = "pedestal_idle_key"
+local RECORDER_ANIM_ACTIVATE = "pedestal_appear"
+local RECORDER_ANIM_DEACTIVATE = "refiner_use"
+local RECORDER_WORLD_SCALE = 1
+
+local RECORDER_KIT_BANK = "vault_decon_mister"
+local RECORDER_KIT_BUILD = "vault_decon_mister"
+local RECORDER_KIT_ANIM = "misting_closed"
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
 local GetRecordProtocol = CombatProtocolDefs.GetRecordProtocol
@@ -27,6 +33,10 @@ local RECORDER_STATE = {
     recording = 1,
     complete = 2,
 }
+
+local RECORD_DRONE_COUNT = 3
+local RECORD_DRONE_BASE_RADIUS = 3
+local RECORD_DRONE_ROTATE_SPEED = 0.45
 
 local function Say(doer, key)
     -- 记录仪动作的反馈仍由操作者 Kei 说出。
@@ -84,6 +94,34 @@ local function TargetInRange(inst, target)
     end
     local x, y, z = target.Transform:GetWorldPosition()
     return IsPointInArena(inst, x, z)
+end
+
+local function ClearRecordDrones(inst)
+    if inst.kei_record_drones ~= nil then
+        for _, drone in ipairs(inst.kei_record_drones) do
+            if drone:IsValid() then
+                drone:Remove()
+            end
+        end
+        inst.kei_record_drones = nil
+    end
+end
+
+local function SpawnRecordDrones(inst, target)
+    ClearRecordDrones(inst)
+    if target == nil or not target:IsValid() then
+        return
+    end
+
+    inst.kei_record_drones = {}
+    local base_angle = math.random() * TWOPI
+    for i = 1, RECORD_DRONE_COUNT do
+        local drone = SpawnPrefab("kei_record_drone")
+        if drone ~= nil then
+            drone:SetRecordTarget(target, i, base_angle)
+            table.insert(inst.kei_record_drones, drone)
+        end
+    end
 end
 
 local function ClearForceField(inst)
@@ -172,10 +210,12 @@ local function SetRecorderState(inst, state)
         inst:AddTag("kei_record_complete")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ON, true)
         EnableRecorderMistFx(inst)
+        ClearRecordDrones(inst)
         ClearForceField(inst)
     else
         inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
         DisableRecorderMistFx(inst)
+        ClearRecordDrones(inst)
         ClearForceField(inst)
     end
 end
@@ -248,6 +288,7 @@ local function StartKeiRecording(inst, cd, doer)
         inst:ListenForEvent("minhealth", inst.kei_target_minhealth_fn, target)
     end
     SetRecorderState(inst, "recording")
+    SpawnRecordDrones(inst, target)
     Say(doer, "ANNOUNCE_KEI_RECORDING")
     return true
 end
@@ -268,6 +309,7 @@ local function StopKeiRecording(inst, doer)
     ClearTargetListener(inst)
     inst.kei_target_prefab = nil
     inst.kei_completed_protocol = nil
+    ClearRecordDrones(inst)
     SetRecorderState(inst, "idle")
     Say(doer, "ANNOUNCE_KEI_RECORD_STOPPED")
     return true
@@ -345,6 +387,7 @@ local function PackUpKeiRecorder(inst, doer)
     inst.persists = false
     inst:AddTag("NOCLICK")
     DisableRecorderMistFx(inst)
+    ClearRecordDrones(inst)
     ClearForceField(inst)
     ClearTargetListener(inst)
     PlayPackUpAnimation(inst)
@@ -388,7 +431,8 @@ end
 
 local function OnBuilt(inst)
     -- 部署完成但未提交 CD 时保持未激活外观。
-    inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
+    inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF_APPEAR)
+    inst.AnimState:PushAnimation(RECORDER_ANIM_OFF, true)
 end
 
 local function recorder_fn()
@@ -438,6 +482,7 @@ local function recorder_fn()
 
     inst:ListenForEvent("onbuilt", OnBuilt)
     inst:ListenForEvent("onremove", DisableRecorderMistFx)
+    inst:ListenForEvent("onremove", ClearRecordDrones)
 
     inst.OnSave = OnSave
     inst.OnLoad = OnLoad
@@ -449,14 +494,127 @@ local function kit_postinit(inst)
     inst.components.inventoryitem:ChangeImageName("wagstaff_item_2")
 end
 
+local function UpdateRecordDronePosition(inst)
+    local target = inst.kei_target
+    if target == nil
+        or not target:IsValid()
+        or (target.components.health ~= nil and target.components.health:IsDead())
+    then
+        inst:Remove()
+        return
+    end
+
+    local tx, ty, tz = target.Transform:GetWorldPosition()
+    local radius = math.max(RECORD_DRONE_BASE_RADIUS, target:GetPhysicsRadius(0) + 2)
+    local angle = (inst.kei_base_angle or 0)
+        + GetTime() * RECORD_DRONE_ROTATE_SPEED
+        + ((inst.kei_index or 1) - 1) * TWOPI / RECORD_DRONE_COUNT
+
+    inst.Transform:SetPosition(tx + math.cos(angle) * radius, 0, tz + math.sin(angle) * radius)
+    inst:FacePoint(tx, ty, tz)
+end
+
+local function RecordDroneOnRemove(inst)
+    if inst.kei_target ~= nil and inst.kei_target_removed_fn ~= nil then
+        inst:RemoveEventCallback("onremove", inst.kei_target_removed_fn, inst.kei_target)
+    end
+    inst.kei_target = nil
+    inst.kei_target_removed_fn = nil
+    if inst.kei_orbit_task ~= nil then
+        inst.kei_orbit_task:Cancel()
+        inst.kei_orbit_task = nil
+    end
+end
+
+local function SetRecordTarget(inst, target, index, base_angle)
+    RecordDroneOnRemove(inst)
+    inst.kei_target = target
+    inst.kei_index = index or 1
+    inst.kei_base_angle = base_angle or 0
+    inst.kei_target_removed_fn = function()
+        if inst:IsValid() then
+            inst:Remove()
+        end
+    end
+    inst:ListenForEvent("onremove", inst.kei_target_removed_fn, target)
+    UpdateRecordDronePosition(inst)
+    inst.kei_orbit_task = inst:DoPeriodicTask(FRAMES, UpdateRecordDronePosition)
+end
+
+local function CreateRecordDroneShadowFx()
+    local inst = CreateEntity()
+
+    inst:AddTag("DECOR")
+    inst:AddTag("NOCLICK")
+    inst.persists = false
+
+    inst.entity:AddTransform()
+    inst.entity:AddAnimState()
+    inst.entity:AddFollower()
+
+    inst.AnimState:SetBank("wx78_shadowdrone_harvester")
+    inst.AnimState:SetBuild("wx78_shadowdrone_harvester")
+    inst.AnimState:PlayAnimation("fx_shadow_loop", true)
+    inst.AnimState:SetMultColour(1, 1, 1, 0.5)
+    inst.AnimState:UsePointFiltering(true)
+
+    return inst
+end
+
+local function record_drone_fn()
+    local inst = CreateEntity()
+
+    inst.entity:AddTransform()
+    inst.entity:AddAnimState()
+    inst.entity:AddSoundEmitter()
+    inst.entity:AddDynamicShadow()
+    inst.entity:AddNetwork()
+
+    inst.Transform:SetEightFaced()
+    inst.DynamicShadow:SetSize(1.2, 0.75)
+
+    inst.AnimState:SetBank("wx78_shadowdrone_debuffer")
+    inst.AnimState:SetBuild("wx78_shadowdrone_debuffer")
+    inst.AnimState:PlayAnimation("debuffscan_pre")
+    inst.AnimState:PushAnimation("debuffscan_loop", true)
+    inst.AnimState:SetSymbolLightOverride("fx_scan_parts", 0.15)
+    inst.AnimState:OverrideSymbol("wx78_shadow_explode", "wx78_shadowdrone_harvester", "wx78_shadow_explode")
+
+    inst:AddTag("FX")
+    inst:AddTag("NOCLICK")
+    inst:AddTag("NOBLOCK")
+    inst:AddTag("flying")
+    inst:AddTag("shadow_aligned")
+    inst:AddTag("kei_record_drone")
+
+    if not TheNet:IsDedicated() then
+        inst.fx = CreateRecordDroneShadowFx()
+        inst.fx.entity:SetParent(inst.entity)
+        inst.fx.Follower:FollowSymbol(inst.GUID, "FOLLOW_SHADOW", 0, 0, 0, true)
+    end
+
+    inst.entity:SetPristine()
+
+    if not TheWorld.ismastersim then
+        return inst
+    end
+
+    inst.persists = false
+    inst.SetRecordTarget = SetRecordTarget
+    inst.OnRemoveEntity = RecordDroneOnRemove
+
+    return inst
+end
+
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "vault_decon_mister_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "kei_record_drone", "vault_decon_mister_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+    Prefab("kei_record_drone", record_drone_fn, assets),
     MakeDeployableKitItem(
         "kei_data_recorder_item",
         "kei_data_recorder",
-        RECORDER_BANK,
-        RECORDER_BUILD,
-        RECORDER_ANIM_OFF,
+        RECORDER_KIT_BANK,
+        RECORDER_KIT_BUILD,
+        RECORDER_KIT_ANIM,
         item_assets,
         { size = "small", y_offset = nil, scale = 0.8 },
         { "kei_data_recorder_item" },
