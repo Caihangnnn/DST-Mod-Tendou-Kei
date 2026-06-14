@@ -75,6 +75,19 @@ local COMBAT_PROTOCOLS = {
         display_name = "蜂后",
         description = "蜂后数据：获得被动技能威压，生物攻击 Kei 时会立即陷入恐慌状态。",
     },
+    stalker_atrium = {
+        kind = "combat",
+        protocol = "stalker_atrium",
+        display_name = "织影者",
+        description = "织影者数据：数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害一半的额外伤害。",
+    },
+    alterguardian = {
+        kind = "combat",
+        protocol = "alterguardian",
+        display_name = "天体英雄",
+        record_prefabs = { "alterguardian_phase1", "alterguardian_phase2", "alterguardian_phase3" },
+        description = "天体英雄数据：电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。",
+    },
 }
 
 local VALID_RECORD_TARGETS = {}

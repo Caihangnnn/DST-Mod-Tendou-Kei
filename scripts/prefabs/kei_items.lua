@@ -453,6 +453,8 @@ local function SetAnalysisData(inst, data)
         damage_bonus = damage_bonus or 0,
         speed_mult = data.speed_mult or 1,
         planar_bonus = data.planar_bonus or 0,
+        tool_actions = data.tool_actions,
+        tool_tough = data.tool_tough or nil,
     }
     ApplyAnalysisAppearance(inst, data, icon_image)
     SetNamedName(inst, source_name ~= nil and ("数据化的 " .. source_name) or nil)

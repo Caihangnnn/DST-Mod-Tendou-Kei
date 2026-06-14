@@ -18,6 +18,10 @@ local prefabs = {
     "bigshadowtentacle",
     "shadow_pillar",
     "shadow_pillar_target",
+    "waxwell_shadowstriker",
+    "shadowstrike_slash_fx",
+    "shadowstrike_slash2_fx",
+    "statue_transition_2",
     "wortox_soul",
     "wortox_soul_heal_fx",
     "sleepbomb",
@@ -277,6 +281,11 @@ local function OnEat(inst, food)
     end
 end
 
+local function HasAlterguardianPowerOverride(inst)
+    return inst.components.kei_protocolslots ~= nil
+        and inst.components.kei_protocolslots:AlterguardianProtocolOverridesPower()
+end
+
 local function UpdateIntegrityState(inst)
     -- 定时检查把“电量”和“机体完整度”的特殊规则挂到原生 hunger/health 上。
     if inst.components.health == nil or inst.components.hunger == nil or inst.components.locomotor == nil then
@@ -293,7 +302,7 @@ local function UpdateIntegrityState(inst)
     local current_integrity = health.currenthealth or health.maxhealth or 0
     local max_integrity = health.maxhealth or TUNING.KEI_MAX_INTEGRITY
 
-    if current_power <= 0 then
+    if current_power <= 0 and not HasAlterguardianPowerOverride(inst) then
         -- 电量耗尽后移动速度几乎归零，移动中还会持续损伤完整度。
         inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_no_power", 0.1)
         if inst.sg ~= nil and inst.sg:HasStateTag("moving") then

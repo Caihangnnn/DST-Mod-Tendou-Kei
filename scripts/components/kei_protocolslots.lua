@@ -7,6 +7,9 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.active_combat = {}
     self.virtual_equips = {}
     self.analysis_damage_bonus = 0
+    self.analysis_tool_actions = {}
+    self._kei_worker_action_old_values = {}
+    self._kei_tool_action_old_tags = {}
 
     self:SyncUnlockedSlots()
 
@@ -30,6 +33,18 @@ local KeiProtocolSlots = Class(function(self, inst)
 
     inst:ListenForEvent("attacked", function(_, data)
         self:OnAttacked(data)
+    end)
+
+    inst:ListenForEvent("equip", function(_, data)
+        if data ~= nil and data.eslot == EQUIPSLOTS.HANDS then
+            self:Refresh()
+        end
+    end)
+
+    inst:ListenForEvent("unequip", function(_, data)
+        if data ~= nil and data.eslot == EQUIPSLOTS.HANDS then
+            self:Refresh()
+        end
     end)
 
     inst:ListenForEvent("healthdelta", function()
@@ -62,11 +77,11 @@ local function HiddenEquipSlot(slot)
 end
 
 local function ProtocolNeedsPower(data)
-    return data.kind == "combat" or data.slot == "head" or data.slot == "body"
+    return data.kind == "analysis"
 end
 
 local function ProtocolNeedsStability(data)
-    return data.slot == "hands"
+    return data.kind == "combat"
 end
 
 local function GetAnalysisDamageBonus(data)
@@ -76,7 +91,48 @@ local function GetAnalysisDamageBonus(data)
     return data.damage_mult ~= nil and data.damage_mult > 1 and data.damage_mult * TUNING.UNARMED_DAMAGE or 0
 end
 
+local function HasHandEquipment(inst)
+    return inst.components.inventory ~= nil
+        and inst.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) ~= nil
+end
+
+local function NewHandAnalysisStats()
+    return {
+        damage_bonus = 0,
+        speed_mult = 1,
+        planar_bonus = 0,
+        tool_actions = {},
+        tool_tough = false,
+    }
+end
+
+local function AddHandAnalysisStats(stats, data)
+    stats.damage_bonus = stats.damage_bonus + GetAnalysisDamageBonus(data)
+    stats.speed_mult = stats.speed_mult * (data.speed_mult or 1)
+    stats.planar_bonus = stats.planar_bonus + (data.planar_bonus or 0)
+
+    if data.tool_actions ~= nil then
+        for action_id, effectiveness in pairs(data.tool_actions) do
+            if ACTIONS[action_id] ~= nil then
+                stats.tool_actions[action_id] = (stats.tool_actions[action_id] or 0) + (effectiveness or 1)
+            end
+        end
+    end
+
+    stats.tool_tough = stats.tool_tough or data.tool_tough == true
+end
+
+local function GetProtocolDrainSettings()
+    local period = TUNING.KEI_PROTOCOL_DRAIN_PERIOD or 10
+    return {
+        amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
+        cap = (TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_SECOND or 10) * period,
+    }
+end
+
 local MOOSE_ELECTRIC_BUFF_NAME = "kei_moose_electricattack"
+local ANALYSIS_ARMOR_MODIFIER = "kei_analysis_armor"
+local ANALYSIS_HANDS_MODIFIER = "kei_analysis_hands"
 
 local function ReturnItemToOwner(owner, item)
     if owner ~= nil and owner.components.inventory ~= nil then
@@ -284,6 +340,39 @@ function KeiProtocolSlots:IsFunctional()
     return not self:IsDisabledByHealth()
 end
 
+function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)
+    local inventory = self.inst.components.inventory
+    if protocol == nil or inventory == nil then
+        return false
+    end
+
+    for slot = 1, GetMaxSlots() do
+        local container = inventory:GetItemInSlot(slot)
+        if IsProtocolContainer(container) and container.components.container ~= nil and slot <= self.unlocked_slots then
+            local item = container.components.container:GetItemInSlot(1)
+            local data = IsProtocol(item) and item.kei_protocol_data or nil
+            if data ~= nil and data.kind == "combat" and data.protocol == protocol then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+function KeiProtocolSlots:StalkerProtocolOverridesStability()
+    return self:HasProtocolInUnlockedSlots("stalker_atrium")
+end
+
+function KeiProtocolSlots:AlterguardianProtocolOverridesPower()
+    if not self:HasProtocolInUnlockedSlots("alterguardian") then
+        return false
+    end
+
+    local sanity = self.inst.components.sanity
+    return sanity == nil or sanity.current > 0 or self:StalkerProtocolOverridesStability()
+end
+
 function KeiProtocolSlots:SetProtocolContainersPowered(powered)
     local inventory = self.inst.components.inventory
     if inventory == nil then
@@ -310,10 +399,19 @@ function KeiProtocolSlots:CanRun(data)
     if not self:IsFunctional() then
         return false
     end
-    if ProtocolNeedsPower(data) and self.inst.components.hunger ~= nil and self.inst.components.hunger.current <= 0 then
+    if ProtocolNeedsPower(data)
+        and self.inst.components.hunger ~= nil
+        and self.inst.components.hunger.current <= 0
+        and not self:AlterguardianProtocolOverridesPower()
+    then
         return false
     end
-    if ProtocolNeedsStability(data) and self.inst.components.sanity ~= nil and self.inst.components.sanity.current <= 0 then
+    if ProtocolNeedsStability(data)
+        and self.inst.components.sanity ~= nil
+        and self.inst.components.sanity.current <= 0
+        and data.protocol ~= "stalker_atrium"
+        and not self:StalkerProtocolOverridesStability()
+    then
         return false
     end
     return true
@@ -444,8 +542,87 @@ function KeiProtocolSlots:ClearVirtualEquips(keep)
     end
 end
 
+function KeiProtocolSlots:ClearAnalysisToolActions()
+    local worker = self.inst.components.worker
+    if worker ~= nil then
+        for action_id, old_value in pairs(self._kei_worker_action_old_values or {}) do
+            local action = ACTIONS[action_id]
+            if action ~= nil then
+                worker.actions[action] = old_value
+            end
+        end
+    end
+
+    if self._kei_added_worker and self.inst.components.worker ~= nil then
+        self.inst:RemoveComponent("worker")
+    end
+
+    for action_id, had_tag in pairs(self._kei_tool_action_old_tags or {}) do
+        if not had_tag then
+            local action = ACTIONS[action_id]
+            local tag = action ~= nil and (action.id .. "_tool") or (action_id .. "_tool")
+            self.inst:RemoveTag(tag)
+        end
+    end
+
+    if self._kei_toughworker_old_tag ~= nil then
+        if not self._kei_toughworker_old_tag then
+            self.inst:RemoveTag("toughworker")
+        end
+        self._kei_toughworker_old_tag = nil
+    end
+
+    self._kei_added_worker = nil
+    self._kei_worker_action_old_values = {}
+    self._kei_tool_action_old_tags = {}
+    self.analysis_tool_actions = {}
+    self.analysis_tool_tough = nil
+end
+
+function KeiProtocolSlots:SetAnalysisToolActions(actions, tough)
+    self:ClearAnalysisToolActions()
+
+    if HasHandEquipment(self.inst) then
+        return
+    end
+
+    local has_actions = actions ~= nil and next(actions) ~= nil
+    if not has_actions and not tough then
+        return
+    end
+
+    if has_actions then
+        if self.inst.components.worker == nil then
+            self.inst:AddComponent("worker")
+            self._kei_added_worker = true
+        end
+
+        local worker = self.inst.components.worker
+        for action_id, effectiveness in pairs(actions) do
+            local action = ACTIONS[action_id]
+            if action ~= nil then
+                self._kei_worker_action_old_values[action_id] = worker.actions[action]
+                worker:SetAction(action, effectiveness or 1)
+
+                local tag = action.id .. "_tool"
+                self._kei_tool_action_old_tags[action_id] = self.inst:HasTag(tag)
+                self.inst:AddTag(tag)
+            end
+        end
+    end
+
+    if tough then
+        self._kei_toughworker_old_tag = self.inst:HasTag("toughworker")
+        self.inst:AddTag("toughworker")
+    end
+
+    self.analysis_tool_actions = actions or {}
+    self.analysis_tool_tough = tough or nil
+end
+
 function KeiProtocolSlots:ClearModifiers()
     self:ClearVirtualEquips()
+    self:ClearAnalysisToolActions()
     self:SetAnalysisDamageBonus(0)
 
     self.inst:RemoveTag("kei_nofreezing")
@@ -456,17 +633,17 @@ function KeiProtocolSlots:ClearModifiers()
     self:DisableToadstoolProtocol()
 
     if self.inst.components.health ~= nil then
-        self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
+        self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
         self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
     end
     if self.inst.components.combat ~= nil then
-        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, "kei_analysis_hands")
+        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, ANALYSIS_HANDS_MODIFIER)
     end
     if self.inst.components.planardamage ~= nil then
-        self.inst.components.planardamage:RemoveBonus(self.inst, "kei_analysis_hands")
+        self.inst.components.planardamage:RemoveBonus(self.inst, ANALYSIS_HANDS_MODIFIER)
     end
     if self.inst.components.locomotor ~= nil then
-        self.inst.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, "kei_analysis_hands")
+        self.inst.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, ANALYSIS_HANDS_MODIFIER)
     end
 end
 
@@ -719,9 +896,7 @@ function KeiProtocolSlots:Refresh()
 
     local items = self:GetProtocolSlotItems()
     local combat = {}
-    local damage_bonus = 0
-    local speed_mult = 1
-    local planar_bonus = 0
+    local hand_stats = NewHandAnalysisStats()
     local desired_virtuals = {}
 
     self.active = items
@@ -735,9 +910,7 @@ function KeiProtocolSlots:Refresh()
                 desired_virtuals[entry.slot] = true
                 self:ApplyVirtualEquip(entry)
             elseif data.slot == "hands" then
-                damage_bonus = damage_bonus + GetAnalysisDamageBonus(data)
-                speed_mult = speed_mult * (data.speed_mult or 1)
-                planar_bonus = planar_bonus + (data.planar_bonus or 0)
+                AddHandAnalysisStats(hand_stats, data)
             end
         end
     end
@@ -751,23 +924,24 @@ function KeiProtocolSlots:Refresh()
     self:SyncCombatProtocolFlags()
 
     if self.inst.components.health ~= nil then
-        self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, "kei_analysis_armor")
+        self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
     end
     if self.inst.components.combat ~= nil then
-        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, "kei_analysis_hands")
-        self:SetAnalysisDamageBonus(damage_bonus)
+        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, ANALYSIS_HANDS_MODIFIER)
+        self:SetAnalysisDamageBonus(hand_stats.damage_bonus)
     end
-    if planar_bonus > 0 then
+    if hand_stats.planar_bonus > 0 then
         if self.inst.components.planardamage == nil then
             self.inst:AddComponent("planardamage")
         end
-        self.inst.components.planardamage:AddBonus(self.inst, planar_bonus, "kei_analysis_hands")
+        self.inst.components.planardamage:AddBonus(self.inst, hand_stats.planar_bonus, ANALYSIS_HANDS_MODIFIER)
     elseif self.inst.components.planardamage ~= nil then
-        self.inst.components.planardamage:RemoveBonus(self.inst, "kei_analysis_hands")
+        self.inst.components.planardamage:RemoveBonus(self.inst, ANALYSIS_HANDS_MODIFIER)
     end
     if self.inst.components.locomotor ~= nil then
-        self.inst.components.locomotor:SetExternalSpeedMultiplier(self.inst, "kei_analysis_hands", speed_mult)
+        self.inst.components.locomotor:SetExternalSpeedMultiplier(self.inst, ANALYSIS_HANDS_MODIFIER, hand_stats.speed_mult)
     end
+    self:SetAnalysisToolActions(hand_stats.tool_actions, hand_stats.tool_tough)
 end
 
 function KeiProtocolSlots:DrainProtocols()
@@ -777,21 +951,31 @@ function KeiProtocolSlots:DrainProtocols()
     end
 
     self:Refresh()
+
+    if self.active_combat.alterguardian and self.inst.components.hunger ~= nil then
+        self.inst.components.hunger:DoDelta(TUNING.KEI_ALTERGUARDIAN_POWER_REGEN or 10)
+    end
+
+    -- 果蝇王协议停止额外消耗，但不阻止天体英雄协议的回电。
     if self.active_combat.lordfruitfly then
         return
     end
 
     local power_cost = 0
     local stability_cost = 0
+    local drain = GetProtocolDrainSettings()
 
     for _, entry in ipairs(self.active) do
         local data = entry.data
         if ProtocolNeedsPower(data) then
-            power_cost = power_cost + TUNING.KEI_PROTOCOL_DRAIN_AMOUNT
+            power_cost = power_cost + drain.amount
         elseif ProtocolNeedsStability(data) then
-            stability_cost = stability_cost + TUNING.KEI_PROTOCOL_DRAIN_AMOUNT
+            stability_cost = stability_cost + drain.amount
         end
     end
+
+    power_cost = math.min(power_cost, drain.cap)
+    stability_cost = math.min(stability_cost, drain.cap)
 
     if power_cost > 0 and self.inst.components.hunger ~= nil then
         self.inst.components.hunger:DoDelta(-power_cost)
@@ -822,6 +1006,96 @@ local function IsValidMinotaurProtocolTarget(owner, target)
         and not target.components.health:IsDead()
         and owner.components.combat ~= nil
         and owner.components.combat:IsValidTarget(target)
+end
+
+local function IsValidShadowStrikeTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and owner.components.combat ~= nil
+        and target ~= nil
+        and target:IsValid()
+        and target.entity:IsVisible()
+        and target.components.combat ~= nil
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and owner.components.combat:IsValidTarget(target)
+end
+
+local SHADOWSTRIKE_START_DISTANCE = 5
+local SHADOWSTRIKE_LUNGE_SPEED = 30
+local SHADOWSTRIKE_COUNT = 5
+local SHADOWSTRIKE_SPAWN_DELAY = 0.1
+
+local function GetShadowStrikeOffset(index, base_angle)
+    local angle = base_angle + (TWOPI / SHADOWSTRIKE_COUNT) * index * 2
+    return Vector3(
+        SHADOWSTRIKE_START_DISTANCE * math.sin(angle),
+        0,
+        SHADOWSTRIKE_START_DISTANCE * math.cos(angle)
+    )
+end
+
+local function SpawnShadowStrikeSlash(target, rotation)
+    local fx = SpawnPrefab(math.random(2) == 1 and "shadowstrike_slash_fx" or "shadowstrike_slash2_fx")
+    if fx ~= nil then
+        fx.Transform:SetPosition(target.Transform:GetWorldPosition())
+        fx.Transform:SetRotation(rotation or 0)
+    end
+end
+
+function KeiProtocolSlots:SpawnStalkerShadowStrike(target, damage, offset)
+    if not IsValidShadowStrikeTarget(self.inst, target) then
+        return
+    end
+
+    local targetpos = target:GetPosition()
+    local shadow = SpawnPrefab("waxwell_shadowstriker")
+    if shadow == nil then
+        SpawnShadowStrikeSlash(target, self.inst.Transform:GetRotation())
+        self._doing_shadowstrike = true
+        target.components.combat:GetAttacked(self.inst, damage)
+        self._doing_shadowstrike = nil
+        return
+    end
+
+    local transition = SpawnPrefab("statue_transition_2")
+    if transition ~= nil then
+        transition.Transform:SetPosition((targetpos + offset):Get())
+    end
+
+    shadow.persists = false
+    shadow:Show()
+    shadow.Transform:SetPosition((targetpos + offset):Get())
+    shadow:FacePoint(targetpos)
+    shadow.AnimState:PlayAnimation("lunge_pre")
+    shadow.AnimState:PushAnimation("lunge_loop")
+    shadow.AnimState:PushAnimation("lunge_pst")
+
+    shadow:DoTaskInTime(12 * FRAMES, function(inst)
+        if inst:IsValid() and inst.Physics ~= nil then
+            inst.Physics:SetMotorVel(SHADOWSTRIKE_LUNGE_SPEED, 0, 0)
+        end
+    end)
+    shadow:DoTaskInTime(15 * FRAMES, function(inst)
+        if not IsValidShadowStrikeTarget(self.inst, target) then
+            return
+        end
+
+        SpawnShadowStrikeSlash(target, inst.Transform:GetRotation())
+        self._doing_shadowstrike = true
+        target.components.combat:GetAttacked(self.inst, damage)
+        self._doing_shadowstrike = nil
+    end)
+    shadow:DoTaskInTime(22 * FRAMES, function(inst)
+        if inst:IsValid() and inst.Physics ~= nil then
+            inst.Physics:ClearMotorVelOverride()
+        end
+    end)
+    shadow:DoTaskInTime(30 * FRAMES, function(inst)
+        if inst:IsValid() then
+            inst:Remove()
+        end
+    end)
 end
 
 local function IsNearShadowPillar(pt, pillars)
@@ -1030,6 +1304,29 @@ function KeiProtocolSlots:DoMinotaurProtocol(target, weapon)
     end
 end
 
+function KeiProtocolSlots:DoStalkerProtocol(target, damage)
+    if self._doing_shadowstrike
+        or math.random() >= (TUNING.KEI_STALKER_SHADOWSTRIKE_CHANCE or 0.30)
+        or (damage or 0) <= 0
+        or not IsValidShadowStrikeTarget(self.inst, target)
+    then
+        return
+    end
+
+    self._doing_shadowstrike = true
+
+    local shadow_damage = damage * (TUNING.KEI_STALKER_SHADOWSTRIKE_DAMAGE_MULT or 0.5)
+    local base_angle = math.random() * TWOPI
+    for i = 1, SHADOWSTRIKE_COUNT do
+        local offset = GetShadowStrikeOffset(i, base_angle)
+        self.inst:DoTaskInTime(SHADOWSTRIKE_SPAWN_DELAY * (i - 1), function()
+            self:SpawnStalkerShadowStrike(target, shadow_damage, offset)
+        end)
+    end
+
+    self._doing_shadowstrike = nil
+end
+
 function KeiProtocolSlots:DoKlausProtocol(target)
     if math.random() >= (TUNING.KEI_KLAUS_SOUL_CHANCE or 0.20)
         or target == nil
@@ -1190,6 +1487,8 @@ function KeiProtocolSlots:OnHitOther(data)
     if target == nil or not target:IsValid() then
         return
     end
+    local weapon = data.weapon
+    local damage = data.damageresolved or 0
 
     if self.active_combat.deerclops and target.components.freezable ~= nil then
         target.components.freezable:AddColdness(1)
@@ -1208,11 +1507,15 @@ function KeiProtocolSlots:OnHitOther(data)
     end
 
     if self.active_combat.bearger then
-        self:DoBeargerPulse(target, data.weapon)
+        self:DoBeargerPulse(target, weapon)
     end
 
     if self.active_combat.minotaur then
-        self:DoMinotaurProtocol(target, data.weapon)
+        self:DoMinotaurProtocol(target, weapon)
+    end
+
+    if self.active_combat.stalker_atrium then
+        self:DoStalkerProtocol(target, damage)
     end
 
     if self.active_combat.klaus then

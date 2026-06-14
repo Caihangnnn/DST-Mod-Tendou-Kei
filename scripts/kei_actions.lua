@@ -61,6 +61,46 @@ local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
 end
 
+local function GetAnalyzedWeaponDamage(target, doer)
+    local weapon = target.components.weapon
+    if weapon == nil then
+        return 0
+    end
+
+    -- 远距离武器按攻击距离摊薄面板攻击力，避免解析后变成无代价高额近战加成。
+    local damage = FunctionOrValue(weapon.damage, target, doer, nil) or 0
+    local range = weapon.attackrange or 0
+    if range >= 1 then
+        damage = damage / range
+    end
+    return damage
+end
+
+local function GetAnalyzedToolData(target)
+    local tool = target.components.tool
+    if tool == nil then
+        return nil
+    end
+
+    local actions = nil
+    for action, effectiveness in pairs(tool.actions) do
+        if action ~= nil and action.id ~= nil then
+            actions = actions or {}
+            -- 同一件工具如果暴露重复动作，也按效率叠加，和多协议叠加规则保持一致。
+            actions[action.id] = (actions[action.id] or 0) + (effectiveness or 1)
+        end
+    end
+
+    if actions == nil and not tool:CanDoToughWork() then
+        return nil
+    end
+
+    return {
+        actions = actions,
+        tough = tool:CanDoToughWork() or nil,
+    }
+end
+
 local function ToggleKeiOffPhysics(inst)
     inst.sg.statemem.isphysicstoggle = true
     inst.Physics:SetCollisionMask(COLLISION.GROUND)
@@ -837,10 +877,12 @@ local function AnalyzeEquipment(tool, target, doer)
     elseif slot == EQUIPSLOTS.HANDS then
         data.kind = "analysis"
         data.slot = "hands"
-        local damage = target.components.weapon ~= nil and FunctionOrValue(target.components.weapon.damage, target, doer, nil) or 0
-        data.damage_bonus = damage
+        local tooldata = GetAnalyzedToolData(target)
+        data.damage_bonus = GetAnalyzedWeaponDamage(target, doer)
         data.speed_mult = target.components.equippable.walkspeedmult or 1
         data.planar_bonus = target.components.planardamage ~= nil and target.components.planardamage:GetDamage() or 0
+        data.tool_actions = tooldata ~= nil and tooldata.actions or nil
+        data.tool_tough = tooldata ~= nil and tooldata.tough or nil
     else
         return false
     end
@@ -908,6 +950,29 @@ AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
         local activeitem = doer.replica.inventory ~= nil and doer.replica.inventory:GetActiveItem() or nil
         if activeitem == nil and not inst:HasTag("NOCLICK") then
             table.insert(actions, ACTIONS.KEI_PACKUP_RECORDER)
+        end
+    end
+end)
+
+-- 空手时让解析协议继承的工具标签参与原版工作动作发现，支持空格自动捕捉等行为。
+AddComponentAction("SCENE", "workable", function(inst, doer, actions, right)
+    if not IsKei(doer) then
+        return
+    end
+
+    if doer.replica.inventory ~= nil and doer.replica.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) ~= nil then
+        return
+    end
+
+    for action_id in pairs(TOOLACTIONS) do
+        local action = ACTIONS[action_id]
+        if action ~= nil
+            and doer:HasTag(action.id .. "_tool")
+            and inst:IsActionValid(action, right)
+            and (not right or action.rmb or not inst:HasTag("smolder"))
+        then
+            table.insert(actions, action)
+            return
         end
     end
 end)
