@@ -142,10 +142,24 @@ local function SetCaster(inst, caster, targetpos)
     end
 
     inst.caster = caster
-    inst.angle = -math.atan2(dz, dx)
     inst.Transform:SetPosition(x, y, z)
-    inst.Transform:SetRotation(-inst.angle / DEGREES)
+    inst:SetTargetPoint(targetpos)
+end
 
+local function SetTargetPoint(inst, targetpos)
+    if inst.caster == nil or not inst.caster:IsValid() or targetpos == nil then
+        return
+    end
+
+    local x, _, z = inst.caster.Transform:GetWorldPosition()
+    local dx = targetpos.x - x
+    local dz = targetpos.z - z
+    if dx * dx + dz * dz <= 0 then
+        return
+    end
+
+    inst.angle = -math.atan2(dz, dx)
+    inst.Transform:SetRotation(-inst.angle / DEGREES)
 end
 
 local function fn()
@@ -167,6 +181,7 @@ local function fn()
     inst.persists = false
 
     inst.SetCaster = SetCaster
+    inst.SetTargetPoint = SetTargetPoint
     inst.KillFX = KillFX
 
     inst.SoundEmitter:PlaySound("rifts3/mutated_varg/blast_pre_f17")

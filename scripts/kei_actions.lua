@@ -349,6 +349,59 @@ local function DoDaywalkerLeap(doer, targetpos)
     return true
 end
 
+AddStategraphState("wilson", State{
+    name = "kei_mutatedwarg_flamethrower",
+    tags = { "doing", "nomorph", "nodangle" },
+
+    onenter = function(inst)
+        inst.AnimState:PlayAnimation("channelcast_idle_pre")
+        inst.AnimState:PushAnimation("channelcast_idle", true)
+        inst.sg:SetTimeout(TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION or 5)
+    end,
+
+    ontimeout = function(inst)
+        inst.sg.statemem.finished = true
+        inst.kei_mutatedwarg_channelcasting = nil
+        inst.AnimState:PlayAnimation("channelcast_idle_pst")
+    end,
+
+    events =
+    {
+        EventHandler("animqueueover", function(inst)
+            if inst.AnimState:AnimDone() then
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_mutatedwarg_flamethrower",
+    tags = { "doing", "nodangle" },
+    server_states = { "kei_mutatedwarg_flamethrower" },
+
+    onenter = function(inst)
+        inst.AnimState:PlayAnimation("channelcast_idle_pre")
+        inst.AnimState:PushAnimation("channelcast_idle", true)
+        inst.sg:SetTimeout(TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION or 5)
+    end,
+
+    ontimeout = function(inst)
+        inst.sg.statemem.finished = true
+        inst.kei_mutatedwarg_channelcasting = nil
+        inst.AnimState:PlayAnimation("channelcast_idle_pst")
+    end,
+
+    events =
+    {
+        EventHandler("animqueueover", function(inst)
+            if inst.AnimState:AnimDone() then
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+})
+
 local function IsValidRecordTarget(target)
     return target ~= nil
         and target:IsValid()
@@ -748,7 +801,7 @@ AddStategraphState("wilson_client", State{
 local EYEOFTERROR_DASH_PRE_ANIM_SPEED = 3
 local EYEOFTERROR_DASH_POST_ANIM_SPEED = 4
 
--- 恐怖之眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置，最多 12 距离单位且不造成伤害。
+-- 克眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置并造成路径伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
     if not IsKei(act.doer) or not EyeOfTerrorDash.HasProtocol(act.doer) then
         return false

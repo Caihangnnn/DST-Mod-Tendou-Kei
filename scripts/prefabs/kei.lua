@@ -255,6 +255,27 @@ local function ConfigureVisuals(inst)
     inst.MiniMapEntity:SetIcon("kei.tex")
 end
 
+local function PatchKeiChannelCastingFns(inst)
+    if inst._kei_old_IsChannelCasting ~= nil then
+        return
+    end
+
+    inst._kei_old_IsChannelCasting = inst.IsChannelCasting
+    inst._kei_old_IsChannelCastingItem = inst.IsChannelCastingItem
+
+    inst.IsChannelCasting = function(player, ...)
+        return player.kei_mutatedwarg_channelcasting == true
+            or (player._kei_old_IsChannelCasting ~= nil and player:_kei_old_IsChannelCasting(...))
+            or false
+    end
+
+    inst.IsChannelCastingItem = function(player, ...)
+        return player.kei_mutatedwarg_channelcasting == true
+            or (player._kei_old_IsChannelCastingItem ~= nil and player:_kei_old_IsChannelCastingItem(...))
+            or false
+    end
+end
+
 local UpdateDormantActionFilter
 
 local function common_postinit(inst)
@@ -286,6 +307,7 @@ local function common_postinit(inst)
     inst:DoTaskInTime(0, OnMalbatrossProtocolDirty)
     inst:DoPeriodicTask(0.25, UpdateDormantActionFilter)
 
+    PatchKeiChannelCastingFns(inst)
     ConfigureVisuals(inst)
 end
 

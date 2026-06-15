@@ -67,6 +67,7 @@ TUNING.KEI_MUTATEDWARG_FLAMETHROWER_RANGE = 10
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DAMAGE = 50
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_TICK = 0.5
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST = 10
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_AIM_UPDATE_PERIOD = 0.1
 
 local function HasMutatedWargProtocol(player)
     return player ~= nil
@@ -100,6 +101,25 @@ local function StartMutatedWargFlameCooldown(player)
     end)
 end
 
+local function RefreshMutatedWargChannelcastAnimation(player)
+    if player == nil
+        or player.sg == nil
+        or player.sg:HasStateTag("busy")
+        or player.sg:HasStateTag("overridelocomote")
+    then
+        return
+    end
+
+    if player.sg:HasStateTag("moving")
+        and player.components.locomotor ~= nil
+        and player.components.locomotor:WantsToMoveForward()
+    then
+        player.sg:GoToState("run_start")
+    else
+        player.sg:GoToState("idle")
+    end
+end
+
 AddModRPCHandler(KEI_RPC_NAMESPACE, "MutatedWargFlame", function(player, x, z)
     if player == nil or not player:HasTag("kei") then
         return
@@ -125,12 +145,43 @@ AddModRPCHandler(KEI_RPC_NAMESPACE, "MutatedWargFlame", function(player, x, z)
     end
 
     player.components.sanity:DoDelta(-(TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST or 10))
-    player.components.locomotor:Stop()
     player:ForceFacePoint(x, py, z)
     StartMutatedWargFlameCooldown(player)
 
     fx.Transform:SetPosition(px, py, pz)
     fx:SetCaster(player, Vector3(x, py, z))
+    player.kei_mutatedwarg_flamethrower_fx = fx
+    player.kei_mutatedwarg_channelcasting = true
+    fx:ListenForEvent("onremove", function()
+        if player.kei_mutatedwarg_flamethrower_fx == fx then
+            player.kei_mutatedwarg_flamethrower_fx = nil
+        end
+        player.kei_mutatedwarg_channelcasting = nil
+        RefreshMutatedWargChannelcastAnimation(player)
+    end)
+
+    if player.sg ~= nil then
+        player.sg:GoToState("kei_mutatedwarg_flamethrower")
+    end
+end)
+
+AddModRPCHandler(KEI_RPC_NAMESPACE, "UpdateMutatedWargFlameAim", function(player, x, z)
+    if player == nil
+        or x == nil
+        or z == nil
+        or not player:HasTag("kei")
+        or player:HasTag("playerghost")
+        or player:HasTag("kei_dormant")
+    then
+        return
+    end
+
+    local fx = player.kei_mutatedwarg_flamethrower_fx
+    if fx ~= nil and fx:IsValid() and fx.SetTargetPoint ~= nil then
+        local _, y = player.Transform:GetWorldPosition()
+        fx:SetTargetPoint(Vector3(x, y, z))
+        player:ForceFacePoint(x, y, z)
+    end
 end)
 
 -- Kei 的三项核心资源：电量、稳定性、机体完整度。
@@ -161,7 +212,7 @@ TUNING.KEI_PROTOCOL_UNLOCK_STEP = protocol_slot_setting.step -- 每次解锁的�
 TUNING.KEI_RECORDER_RANGE = 35 -- 数据记录器的作用范围
 TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE = 10 -- 独眼巨鹿协议防止过冷时的最低体温
 TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE = 60 -- 龙蝇协议防止过热时的最高体温
-TUNING.KEI_EYEOFTERROR_DASH_DISTANCE = 16 -- 恐怖之眼协议单次冲锋的最大位移距离
+TUNING.KEI_EYEOFTERROR_DASH_DISTANCE = 16 -- 克眼协议单次冲锋的最大位移距离
 TUNING.KEI_DAYWALKER_LEAP_DISTANCE = 12 -- 梦魇疯猪协议单次跳劈的最大位移距离
 TUNING.KEI_DAYWALKER_LEAP_RADIUS = 4 -- 梦魇疯猪协议跳劈的伤害范围
 TUNING.KEI_DAYWALKER_LEAP_DAMAGE_BASE = 150 -- 梦魇疯猪协议跳劈的固定伤害
@@ -179,6 +230,7 @@ TUNING.KEI_KLAUS_SOUL_CHANCE = 0.20 -- 克劳斯协议抽取灵魂并治疗周�
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡眠炸弹弹药的概率
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡眠炸弹弹药后的内置冷却
 TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT = 1.3 -- 装甲熊獾协议攻击速度倍率
+TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT = 1.2 -- 远古戍卫塔协议攻击速度倍率
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_RADIUS = 5.5 -- 独眼晶体巨鹿协议寒冷圈半径
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_DURATION = 5 -- 独眼晶体巨鹿协议寒冷圈持续时间
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_COOLDOWN = 3 -- 独眼晶体巨鹿协议寒冷圈触发冷却
@@ -282,10 +334,17 @@ AddStategraphPostInit("wilson", AddKeiControlImmunityToStategraph)
 AddStategraphPostInit("wilson_client", AddKeiControlImmunityToStategraph)
 
 local function GetKeiAttackSpeedMult(inst)
-    if inst == nil or not inst:HasTag("kei_attack_speed_boost") then
+    if inst == nil then
         return 1
     end
-    local mult = TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT or 1
+
+    local mult = 1
+    if inst:HasTag("kei_attack_speed_boost") then
+        mult = mult * (TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT or 1)
+    end
+    if inst:HasTag("kei_vault_pillar_guard_spin") then
+        mult = mult * (TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT or 1)
+    end
     return mult > 1 and mult or 1
 end
 
@@ -327,7 +386,150 @@ local function ClearKeiAttackSpeedFromAttackState(inst)
     end
 end
 
-local function AddKeiAttackSpeedToStategraph(sg)
+local function GetKeiEquippedHandItem(inst)
+    if inst.components ~= nil
+        and inst.components.inventory ~= nil then
+        return inst.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS)
+    end
+    if inst.replica ~= nil
+        and inst.replica.inventory ~= nil then
+        return inst.replica.inventory:GetEquippedItem(EQUIPSLOTS.HANDS)
+    end
+    return nil
+end
+
+local function GetWeaponAttackRange(item)
+    if item == nil then
+        return nil
+    end
+    if item.components ~= nil
+        and item.components.weapon ~= nil then
+        return item.components.weapon.attackrange or 0
+    end
+    if item.replica ~= nil
+        and item.replica.inventoryitem ~= nil
+        and item.replica.inventoryitem.IsWeapon ~= nil
+        and item.replica.inventoryitem:IsWeapon() then
+        return item.replica.inventoryitem:AttackRange() or 0
+    end
+    return nil
+end
+
+local function IsKeiRiding(inst)
+    if inst.components ~= nil
+        and inst.components.rider ~= nil then
+        return inst.components.rider:IsRiding()
+    end
+    if inst.replica ~= nil
+        and inst.replica.rider ~= nil then
+        return inst.replica.rider:IsRiding()
+    end
+    return false
+end
+
+local function ShouldUseKeiVaultPillarGuardSpinAttack(inst)
+    if inst == nil
+        or not inst:HasTag("kei_vault_pillar_guard_spin")
+        or inst:HasTag("playerghost")
+        or inst:HasTag("kei_dormant")
+        or IsKeiRiding(inst)
+    then
+        return false
+    end
+
+    local equip = GetKeiEquippedHandItem(inst)
+    if equip == nil
+        or equip:HasTag("punch")
+        or equip:HasTag("projectile")
+        or equip:HasTag("rangedweapon")
+    then
+        return false
+    end
+
+    local range = GetWeaponAttackRange(equip)
+    return range ~= nil and range <= 1
+end
+
+local function ApplyKeiVaultPillarGuardSpinAttack(inst, state)
+    if inst.sg == nil
+        or inst.sg.currentstate ~= state
+        or not ShouldUseKeiVaultPillarGuardSpinAttack(inst)
+    then
+        return
+    end
+
+    inst.sg.statemem.kei_vault_pillar_guard_spin = true
+    inst.AnimState:PlayAnimation("wx_spin_attack_loop_slow")
+    inst.AnimState:PushAnimation("wx_spin_attack_pst", false)
+end
+
+local KEI_VAULT_PILLAR_GUARD_SPIN_MUST_TAGS = { "_combat" }
+local KEI_VAULT_PILLAR_GUARD_SPIN_CANT_TAGS = {
+    "INLIMBO",
+    "NOCLICK",
+    "FX",
+    "decor",
+    "companion",
+    "flight",
+    "invisible",
+    "notarget",
+    "noattack",
+    "playerghost",
+}
+
+local function DoKeiVaultPillarGuardSpinAOE(inst)
+    if TheWorld == nil
+        or not TheWorld.ismastersim
+        or inst.sg == nil
+        or inst.sg.statemem == nil
+        or not inst.sg.statemem.kei_vault_pillar_guard_spin
+        or inst.components == nil
+        or inst.components.combat == nil
+    then
+        return
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local attacktarget = inst.sg.statemem.attacktarget
+    local radius = TUNING.WX78_SPIN_RADIUS or 2.1
+    for _, target in ipairs(TheSim:FindEntities(
+        x, y, z,
+        radius + 3,
+        KEI_VAULT_PILLAR_GUARD_SPIN_MUST_TAGS,
+        KEI_VAULT_PILLAR_GUARD_SPIN_CANT_TAGS
+    )) do
+        if target ~= inst
+            and target ~= attacktarget
+            and target:IsValid()
+            and target.entity:IsVisible()
+            and target.components.health ~= nil
+            and not target.components.health:IsDead()
+            and inst.components.combat:CanTarget(target)
+            and not inst.components.combat:IsAlly(target)
+        then
+            local range = radius + target:GetPhysicsRadius(0)
+            if target:GetDistanceSqToPoint(x, y, z) < range * range then
+                inst.components.combat:DoAttack(target)
+            end
+        end
+    end
+end
+
+local function InsertStateTimelineEvent(timeline, event)
+    if timeline == nil then
+        return
+    end
+    local insert_index = #timeline + 1
+    for index, timeline_event in ipairs(timeline) do
+        if timeline_event.time > event.time then
+            insert_index = index
+            break
+        end
+    end
+    table.insert(timeline, insert_index, event)
+end
+
+local function AddKeiAttackStateOverridesToStategraph(sg)
     local state = sg.states ~= nil and sg.states.attack or nil
     if state == nil then
         return
@@ -338,6 +540,7 @@ local function AddKeiAttackSpeedToStategraph(sg)
         if old_onenter ~= nil then
             old_onenter(inst, ...)
         end
+        ApplyKeiVaultPillarGuardSpinAttack(inst, state)
         ApplyKeiAttackSpeedToAttackState(inst, state)
     end
 
@@ -348,10 +551,12 @@ local function AddKeiAttackSpeedToStategraph(sg)
         end
         ClearKeiAttackSpeedFromAttackState(inst)
     end
+
+    InsertStateTimelineEvent(state.timeline, TimeEvent(8 * FRAMES, DoKeiVaultPillarGuardSpinAOE))
 end
 
-AddStategraphPostInit("wilson", AddKeiAttackSpeedToStategraph)
-AddStategraphPostInit("wilson_client", AddKeiAttackSpeedToStategraph)
+AddStategraphPostInit("wilson", AddKeiAttackStateOverridesToStategraph)
+AddStategraphPostInit("wilson_client", AddKeiAttackStateOverridesToStategraph)
 
 if StateGraphInstance ~= nil and StateGraphInstance.UpdateState ~= nil then
     local old_StateGraphInstance_UpdateState = StateGraphInstance.UpdateState
@@ -460,6 +665,73 @@ modimport("scripts/kei_recipes.lua")
 
 if not TheNet:IsDedicated() and TheInput ~= nil then
     local kei_mutatedwarg_key_down = false
+    local kei_mutatedwarg_aim_update_task = nil
+    local kei_mutatedwarg_aim_update_stop_task = nil
+    local kei_mutatedwarg_channelcast_stop_task = nil
+
+    local function SetLocalMutatedWargChannelcasting(player, enabled)
+        if player == nil then
+            return
+        end
+        player.kei_mutatedwarg_channelcasting = enabled == true or nil
+        RefreshMutatedWargChannelcastAnimation(player)
+    end
+
+    local function StopMutatedWargAimUpdates()
+        if kei_mutatedwarg_aim_update_task ~= nil then
+            kei_mutatedwarg_aim_update_task:Cancel()
+            kei_mutatedwarg_aim_update_task = nil
+        end
+        if kei_mutatedwarg_aim_update_stop_task ~= nil then
+            kei_mutatedwarg_aim_update_stop_task:Cancel()
+            kei_mutatedwarg_aim_update_stop_task = nil
+        end
+        if kei_mutatedwarg_channelcast_stop_task ~= nil then
+            kei_mutatedwarg_channelcast_stop_task:Cancel()
+            kei_mutatedwarg_channelcast_stop_task = nil
+        end
+        SetLocalMutatedWargChannelcasting(ThePlayer, false)
+    end
+
+    local function SendMutatedWargAimUpdate()
+        local player = ThePlayer
+        if player == nil
+            or player:HasTag("playerghost")
+            or player:HasTag("kei_dormant")
+            or player._kei_mutatedwarg_protocol_active == nil
+            or not player._kei_mutatedwarg_protocol_active:value()
+        then
+            StopMutatedWargAimUpdates()
+            return
+        end
+
+        local pos = TheInput:GetWorldPosition()
+        if pos ~= nil then
+            SendModRPCToServer(MOD_RPC[KEI_RPC_NAMESPACE].UpdateMutatedWargFlameAim, pos.x, pos.z)
+        end
+    end
+
+    local function StartMutatedWargAimUpdates(player)
+        StopMutatedWargAimUpdates()
+        SetLocalMutatedWargChannelcasting(player, true)
+        SendMutatedWargAimUpdate()
+        kei_mutatedwarg_aim_update_task = player:DoPeriodicTask(
+            TUNING.KEI_MUTATEDWARG_FLAMETHROWER_AIM_UPDATE_PERIOD or 0.1,
+            SendMutatedWargAimUpdate
+        )
+        kei_mutatedwarg_aim_update_stop_task = player:DoTaskInTime(
+            (TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION or 5) + 0.25,
+            StopMutatedWargAimUpdates
+        )
+        kei_mutatedwarg_channelcast_stop_task = player:DoTaskInTime(
+            TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION or 5,
+            function()
+                SetLocalMutatedWargChannelcasting(player, false)
+                kei_mutatedwarg_channelcast_stop_task = nil
+            end
+        )
+    end
+
     TheInput:AddKeyDownHandler(KEY_R, function()
         if kei_mutatedwarg_key_down then
             return
@@ -481,6 +753,7 @@ if not TheNet:IsDedicated() and TheInput ~= nil then
             local pos = TheInput:GetWorldPosition()
             if pos ~= nil then
                 SendModRPCToServer(MOD_RPC[KEI_RPC_NAMESPACE].MutatedWargFlame, pos.x, pos.z)
+                StartMutatedWargAimUpdates(player)
             end
         end
     end)

@@ -637,6 +637,7 @@ function KeiProtocolSlots:ClearModifiers()
     self.inst:RemoveTag("kei_stagger_immune")
     self.inst:RemoveTag("kei_control_immune")
     self.inst:RemoveTag("kei_attack_speed_boost")
+    self.inst:RemoveTag("kei_vault_pillar_guard_spin")
     self:DisableFreezeImmunity()
     self:DisableMooseProtocol()
     self:DisableMalbatrossProtocol()
@@ -1142,9 +1143,19 @@ function KeiProtocolSlots:Refresh()
     if self.active_combat.daywalker2 then
         self.inst:AddTag("kei_stagger_immune")
         self.inst:AddTag("kei_control_immune")
+    else
+        self.inst:RemoveTag("kei_stagger_immune")
+        self.inst:RemoveTag("kei_control_immune")
     end
     if self.active_combat.mutatedbearger then
         self.inst:AddTag("kei_attack_speed_boost")
+    else
+        self.inst:RemoveTag("kei_attack_speed_boost")
+    end
+    if self.active_combat.vault_pillar_guard then
+        self.inst:AddTag("kei_vault_pillar_guard_spin")
+    else
+        self.inst:RemoveTag("kei_vault_pillar_guard_spin")
     end
     self:SyncCombatProtocolFlags()
 

@@ -41,8 +41,9 @@ local COMBAT_PROTOCOLS = {
     eyeofterror = {
         kind = "combat",
         protocol = "eyeofterror",
-        display_name = "恐怖之眼",
-        description = "恐怖之眼数据：右键冲锋到鼠标指定位置。",
+        display_name = "克眼",
+        record_prefabs = { "twinofterror1", "twinofterror2" },
+        description = "克眼数据：右键冲锋到鼠标指定位置。",
     },
     daywalker = {
         kind = "combat",
@@ -67,6 +68,12 @@ local COMBAT_PROTOCOLS = {
         protocol = "minotaur",
         display_name = "远古守卫者",
         description = "远古守卫者数据：攻击有概率召唤友方守护者暗影触手，并有概率对目标释放暗影囚牢。",
+    },
+    vault_pillar_guard = {
+        kind = "combat",
+        protocol = "vault_pillar_guard",
+        display_name = "远古戍卫塔",
+        description = "远古戍卫塔数据：攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击，并伤害旋转范围内的敌对生物。",
     },
     malbatross = {
         kind = "combat",
