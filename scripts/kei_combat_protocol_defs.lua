@@ -9,6 +9,12 @@ local COMBAT_PROTOCOLS = {
         protocol = "bearger",
         description = "熊獾数据：攻击会扩散冲击，造成群体伤害。",
     },
+    mutatedbearger = {
+        kind = "combat",
+        protocol = "mutatedbearger",
+        display_name = "装甲熊獾",
+        description = "装甲熊獾数据：攻击速度提高 30%。",
+    },
     dragonfly = {
         kind = "combat",
         protocol = "dragonfly",
@@ -31,6 +37,12 @@ local COMBAT_PROTOCOLS = {
         protocol = "daywalker",
         display_name = "梦魇疯猪",
         description = "梦魇疯猪数据：右键跳劈到鼠标指定位置，落地造成范围伤害并减速目标。",
+    },
+    daywalker2 = {
+        kind = "combat",
+        protocol = "daywalker2",
+        display_name = "拾荒疯猪",
+        description = "拾荒疯猪数据：免疫受击僵直、击飞、击退与束缚，但仍会正常承受伤害。",
     },
     lordfruitfly = {
         kind = "combat",

@@ -280,7 +280,7 @@ local function StartKeiRecording(inst, cd, doer)
         Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
     end
     inst:ListenForEvent("death", inst.kei_target_death_fn, target)
-    if target.prefab == "daywalker" then
+    if target.prefab == "daywalker" or target.prefab == "daywalker2" then
         inst.kei_target_minhealth_fn = function(target_inst)
             CompleteRecording(inst, target_inst)
             Say(doer, "ANNOUNCE_KEI_RECORD_DONE")

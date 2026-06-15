@@ -745,7 +745,8 @@ AddStategraphState("wilson_client", State{
     end,
 })
 
-local EYEOFTERROR_DASH_ANIM_SPEED = 2
+local EYEOFTERROR_DASH_PRE_ANIM_SPEED = 3
+local EYEOFTERROR_DASH_POST_ANIM_SPEED = 4
 
 -- 恐怖之眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置，最多 12 距离单位且不造成伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
@@ -770,7 +771,7 @@ AddStategraphState("wilson", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
-        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_PRE_ANIM_SPEED)
         inst.AnimState:PlayAnimation("lunge_pre")
     end,
 
@@ -789,7 +790,7 @@ AddStategraphState("wilson", State{
             end
             if inst.AnimState:IsCurrentAnimation("lunge_pre") then
                 if inst:PerformBufferedAction() then
-                    inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+                    inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_POST_ANIM_SPEED)
                     inst.AnimState:PlayAnimation("lunge_pst")
                     if inst.components.bloomer ~= nil then
                         inst.components.bloomer:PushBloom("kei_eyeofterror_dash", "shaders/anim.ksh", -2)
@@ -824,7 +825,7 @@ AddStategraphState("wilson_client", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
-        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_ANIM_SPEED)
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_PRE_ANIM_SPEED)
         inst.AnimState:PlayAnimation("lunge_pre")
         inst.AnimState:PushAnimation("lunge_lag", false)
         inst:PerformPreviewBufferedAction()
@@ -911,6 +912,9 @@ AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
 
+local DAYWALKER_LEAP_PRE_ANIM_SPEED = 3
+local DAYWALKER_LEAP_POST_ANIM_SPEED = 4
+
 AddStategraphState("wilson", State{
     name = "kei_daywalker_aim",
     tags = { "doing" },
@@ -938,6 +942,7 @@ AddStategraphState("wilson", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
+        inst.AnimState:SetDeltaTimeMultiplier(DAYWALKER_LEAP_PRE_ANIM_SPEED)
         inst.AnimState:PlayAnimation("atk_leap_pre")
     end,
 
@@ -959,6 +964,10 @@ AddStategraphState("wilson", State{
             end
         end),
     },
+
+    onexit = function(inst)
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+    end,
 })
 
 AddStategraphState("wilson", State{
@@ -971,6 +980,7 @@ AddStategraphState("wilson", State{
             return
         end
 
+        inst.AnimState:SetDeltaTimeMultiplier(1)
         ToggleKeiOffPhysics(inst)
         inst.Transform:SetEightFaced()
         inst.AnimState:PlayAnimation("atk_leap")
@@ -996,6 +1006,7 @@ AddStategraphState("wilson", State{
             ShakeAllCameras(CAMERASHAKE.VERTICAL, 0.7, 0.015, 0.8, inst, 20)
             inst.sg:RemoveStateTag("nointerrupt")
             DoDaywalkerLeapImpact(inst, inst.sg.statemem.targetpos)
+            inst.AnimState:SetDeltaTimeMultiplier(DAYWALKER_LEAP_POST_ANIM_SPEED)
         end),
     },
 
@@ -1020,6 +1031,7 @@ AddStategraphState("wilson", State{
                 inst.Physics:Teleport(inst.sg.statemem.targetpos.x, 0, inst.sg.statemem.targetpos.z)
             end
         end
+        inst.AnimState:SetDeltaTimeMultiplier(1)
         inst.Transform:SetFourFaced()
     end,
 })
@@ -1031,6 +1043,7 @@ AddStategraphState("wilson_client", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
+        inst.AnimState:SetDeltaTimeMultiplier(DAYWALKER_LEAP_PRE_ANIM_SPEED)
         inst.AnimState:PlayAnimation("atk_leap_pre")
         inst.AnimState:PushAnimation("atk_leap_lag", false)
         inst:PerformPreviewBufferedAction()
@@ -1050,6 +1063,10 @@ AddStategraphState("wilson_client", State{
     ontimeout = function(inst)
         inst:ClearBufferedAction()
         inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        inst.AnimState:SetDeltaTimeMultiplier(1)
     end,
 })
 

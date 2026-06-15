@@ -90,7 +90,11 @@ local function UpdateDaywalkerAimingReticule(inst)
     if inst.components.reticule == nil then
         return
     end
-    if inst._kei_daywalker_aiming ~= nil and inst._kei_daywalker_aiming:value() and DaywalkerLeap.IsReady(inst) then
+    if ThePlayer == inst
+        and inst._kei_daywalker_aiming ~= nil
+        and inst._kei_daywalker_aiming:value()
+        and DaywalkerLeap.IsReady(inst)
+    then
         ConfigureDaywalkerReticule(inst)
         inst.components.reticule:CreateReticule()
     else
@@ -186,6 +190,29 @@ local function DaywalkerAimLeftClickPicker(inst, target, position)
     return nil, true
 end
 
+local function GetRightClickDashPoint(inst, target, position)
+    if ACTIONS.KEI_EYEOFTERROR_DASH == nil
+        or not EyeOfTerrorDash.HasProtocol(inst)
+        or inst:HasTag("playerghost")
+        or target == nil
+        or target == inst
+        or (inst.replica.inventory ~= nil and inst.replica.inventory:GetActiveItem() ~= nil)
+    then
+        return nil
+    end
+
+    local rawpos = position
+    if rawpos == nil and target ~= nil and target:IsValid() then
+        rawpos = target:GetPosition()
+    end
+    if rawpos == nil then
+        return nil
+    end
+
+    ConfigureEyeOfTerrorReticule(inst)
+    return EyeOfTerrorDash.GetTargetPoint(inst, rawpos)
+end
+
 local function DaywalkerAimRightClickPicker(inst, target, position)
     if ACTIONS.KEI_DAYWALKER_CANCEL_AIM ~= nil
         and DaywalkerLeap.IsAiming(inst)
@@ -193,6 +220,10 @@ local function DaywalkerAimRightClickPicker(inst, target, position)
         and not inst:HasTag("playerghost")
     then
         return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_CANCEL_AIM }, position or inst:GetPosition())
+    end
+    local dashpos = GetRightClickDashPoint(inst, target, position)
+    if dashpos ~= nil then
+        return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_EYEOFTERROR_DASH }, dashpos)
     end
     if inst._kei_old_rightclickoverride ~= nil then
         return inst._kei_old_rightclickoverride(inst, target, position)

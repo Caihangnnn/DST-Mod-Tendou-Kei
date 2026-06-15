@@ -626,6 +626,9 @@ function KeiProtocolSlots:ClearModifiers()
 
     self.inst:RemoveTag("kei_nofreezing")
     self.inst:RemoveTag("kei_nooverheat")
+    self.inst:RemoveTag("kei_stagger_immune")
+    self.inst:RemoveTag("kei_control_immune")
+    self.inst:RemoveTag("kei_attack_speed_boost")
     self:DisableFreezeImmunity()
     self:DisableMooseProtocol()
     self:DisableMalbatrossProtocol()
@@ -927,6 +930,13 @@ function KeiProtocolSlots:Refresh()
     self:RefreshMooseProtocol()
     self:RefreshMalbatrossProtocol()
     self:RefreshToadstoolProtocol()
+    if self.active_combat.daywalker2 then
+        self.inst:AddTag("kei_stagger_immune")
+        self.inst:AddTag("kei_control_immune")
+    end
+    if self.active_combat.mutatedbearger then
+        self.inst:AddTag("kei_attack_speed_boost")
+    end
     self:SyncCombatProtocolFlags()
 
     if self.inst.components.health ~= nil then
@@ -1385,7 +1395,9 @@ function KeiProtocolSlots:DoKlausProtocol(target)
 end
 
 function KeiProtocolSlots:DoToadstoolProtocol(target)
-    if math.random() >= (TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE or 0.15)
+    local now = GetTime()
+    if (self._kei_toadstool_sleepbomb_ready_time or 0) > now
+        or math.random() >= (TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE or 0.15)
         or target == nil
         or not target:IsValid()
         or target:IsInLimbo()
@@ -1406,6 +1418,7 @@ function KeiProtocolSlots:DoToadstoolProtocol(target)
     if self.inst.components.combat ~= nil and self.inst.components.combat:IsValidTarget(target) then
         self.inst:ForceFacePoint(target.Transform:GetWorldPosition())
         sleepbomb.components.complexprojectile:Launch(target:GetPosition(), self.inst, sleepbomb)
+        self._kei_toadstool_sleepbomb_ready_time = now + (TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN or 0.5)
     else
         sleepbomb:Remove()
     end

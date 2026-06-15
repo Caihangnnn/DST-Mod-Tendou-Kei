@@ -103,6 +103,8 @@ TUNING.KEI_STALKER_SHADOWSTRIKE_CHANCE = 0.30 -- 织影者协议触发影袭的�
 TUNING.KEI_STALKER_SHADOWSTRIKE_DAMAGE_MULT = 0.5 -- 影袭造成的额外伤害比例
 TUNING.KEI_KLAUS_SOUL_CHANCE = 0.20 -- 克劳斯协议抽取灵魂并治疗周围单位的概率
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡眠炸弹弹药的概率
+TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡眠炸弹弹药后的内置冷却
+TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT = 1.3 -- 装甲熊獾协议攻击速度倍率
 TUNING.KEI_ANTLION_SANDSPIKE_CHANCE = 0.30 -- 蚁狮协议触发高大沙刺的概率
 TUNING.KEI_ANTLION_SANDSPIKE_COOLDOWN = 0.5 -- 蚁狮协议生成沙刺后的内置冷却
 TUNING.KEI_ANTLION_SANDSPIKE_VERTEX_DELAY = 8 * FRAMES -- 中心沙刺后，三角形顶点沙刺的延迟
@@ -156,6 +158,122 @@ containers.params.kei_protocol_container.itemtestfn = function(container, item, 
     return item ~= nil and item:HasTag("kei_protocol_cd")
 end
 containers.params.kei_protocol_container.priorityfn = nil
+
+local KEI_CONTROL_IMMUNE_EVENTS = {
+    suspended = true,
+    knockback = true,
+}
+
+local function AddKeiStaggerImmunityToStategraph(sg)
+    if sg.events == nil or sg.events.attacked == nil then
+        return
+    end
+
+    local old_attacked_fn = sg.events.attacked.fn
+    sg.events.attacked.fn = function(inst, data)
+        if inst:HasTag("kei_stagger_immune") then
+            return
+        end
+        return old_attacked_fn ~= nil and old_attacked_fn(inst, data) or nil
+    end
+end
+
+AddStategraphPostInit("wilson", AddKeiStaggerImmunityToStategraph)
+AddStategraphPostInit("wilson_client", AddKeiStaggerImmunityToStategraph)
+
+local function AddKeiControlImmunityToStategraph(sg)
+    if sg.events == nil then
+        return
+    end
+
+    for eventname in pairs(KEI_CONTROL_IMMUNE_EVENTS) do
+        local event = sg.events[eventname]
+        if event ~= nil and event.fn ~= nil then
+            local old_fn = event.fn
+            event.fn = function(inst, ...)
+                if inst:HasTag("kei_control_immune") then
+                    return
+                end
+                return old_fn(inst, ...)
+            end
+        end
+    end
+end
+
+AddStategraphPostInit("wilson", AddKeiControlImmunityToStategraph)
+AddStategraphPostInit("wilson_client", AddKeiControlImmunityToStategraph)
+
+local function GetKeiAttackSpeedMult(inst)
+    if inst == nil or not inst:HasTag("kei_attack_speed_boost") then
+        return 1
+    end
+    local mult = TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT or 1
+    return mult > 1 and mult or 1
+end
+
+local function ApplyKeiAttackSpeedToAttackState(inst, state)
+    if inst.sg == nil or inst.sg.currentstate ~= state then
+        return
+    end
+
+    local mult = GetKeiAttackSpeedMult(inst)
+    if mult <= 1 then
+        return
+    end
+
+    inst.sg.statemem.kei_attack_speed_mult = mult
+
+    local combat = inst.components ~= nil and inst.components.combat or nil
+    if combat ~= nil and combat.laststartattacktime ~= nil then
+        local period = combat.min_attack_period or 0
+        if period > 0 then
+            combat.laststartattacktime = combat.laststartattacktime - period * (1 - 1 / mult)
+        end
+    end
+
+    if inst.AnimState ~= nil then
+        inst.AnimState:SetDeltaTimeMultiplier(mult)
+    end
+
+    if type(inst.sg.timeout) == "number" and inst.sg.timeout > 0 then
+        inst.sg:SetTimeout(inst.sg.timeout / mult)
+    end
+end
+
+local function ClearKeiAttackSpeedFromAttackState(inst)
+    if inst.sg ~= nil
+        and inst.sg.statemem ~= nil
+        and inst.sg.statemem.kei_attack_speed_mult ~= nil
+        and inst.AnimState ~= nil then
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+    end
+end
+
+local function AddKeiAttackSpeedToStategraph(sg)
+    local state = sg.states ~= nil and sg.states.attack or nil
+    if state == nil then
+        return
+    end
+
+    local old_onenter = state.onenter
+    state.onenter = function(inst, ...)
+        if old_onenter ~= nil then
+            old_onenter(inst, ...)
+        end
+        ApplyKeiAttackSpeedToAttackState(inst, state)
+    end
+
+    local old_onexit = state.onexit
+    state.onexit = function(inst, ...)
+        if old_onexit ~= nil then
+            old_onexit(inst, ...)
+        end
+        ClearKeiAttackSpeedFromAttackState(inst)
+    end
+end
+
+AddStategraphPostInit("wilson", AddKeiAttackSpeedToStategraph)
+AddStategraphPostInit("wilson_client", AddKeiAttackSpeedToStategraph)
 
 local function GetProtocolUnlockRecipeTier(recname)
     return recname ~= nil and tonumber(string.match(recname, "^kei_protocol_mk(%d)$")) or nil
