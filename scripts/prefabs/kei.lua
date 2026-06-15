@@ -17,6 +17,11 @@ local prefabs = {
     "kei_protocol_container",
     "reticuleaoe",
     "reticuleaoeping",
+    "reticuleline",
+    "reticulelineping",
+    "kei_mutatedwarg_flamethrower",
+    "warg_mutated_breath_fx",
+    "warg_mutated_ember_fx",
     "daywalker_sinkhole",
     "bigshadowtentacle",
     "shadow_pillar",
@@ -263,6 +268,7 @@ local function common_postinit(inst)
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
     inst._kei_malbatross_protocol_active = net_bool(inst.GUID, "kei.malbatross_protocol_active", "kei_malbatross_protocol_dirty")
+    inst._kei_mutatedwarg_protocol_active = net_bool(inst.GUID, "kei.mutatedwarg_protocol_active", "kei_mutatedwarg_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
     inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")
 

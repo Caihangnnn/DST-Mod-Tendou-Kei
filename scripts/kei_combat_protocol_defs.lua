@@ -4,6 +4,18 @@ local COMBAT_PROTOCOLS = {
         protocol = "deerclops",
         description = "独眼巨鹿数据：攻击附带冰冻，并免疫冻结与过冷。",
     },
+    mutateddeerclops = {
+        kind = "combat",
+        protocol = "mutateddeerclops",
+        display_name = "独眼晶体巨鹿",
+        description = "独眼晶体巨鹿数据：攻击后在脚下生成寒冷圈，使范围内非友方单位动画与移速减半。",
+    },
+    mutatedwarg = {
+        kind = "combat",
+        protocol = "mutatedwarg",
+        display_name = "附身座狼",
+        description = "附身座狼数据：按 R 消耗 10 点数据稳定性，向鼠标方向喷出冷火，持续 5 秒，每 0.5 秒造成 50 点伤害，冷却 10 秒。",
+    },
     bearger = {
         kind = "combat",
         protocol = "bearger",

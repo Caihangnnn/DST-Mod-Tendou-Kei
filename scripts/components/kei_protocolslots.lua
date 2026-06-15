@@ -1,5 +1,12 @@
 local WortoxSoulCommon = require("prefabs/wortox_soul_common")
 
+local MUTATEDDEERCLOPS_AURA_SLOW_KEY = "kei_mutateddeerclops_aura"
+local MUTATEDDEERCLOPS_AURA_SG_SLOW_TAG = "kei_mutateddeerclops_sg_slow"
+local MUTATEDDEERCLOPS_AURA_FOLLOW_PERIOD = FRAMES
+local MUTATEDDEERCLOPS_AURA_UPDATE_PERIOD = 0.25
+local MUTATEDDEERCLOPS_AURA_MUST_TAGS = { "_combat", "_health" }
+local MUTATEDDEERCLOPS_AURA_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "playerghost" }
+
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = 1
@@ -10,6 +17,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.analysis_tool_actions = {}
     self._kei_worker_action_old_values = {}
     self._kei_tool_action_old_tags = {}
+    self._kei_mutateddeerclops_slowed = {}
 
     self:SyncUnlockedSlots()
 
@@ -633,6 +641,7 @@ function KeiProtocolSlots:ClearModifiers()
     self:DisableMooseProtocol()
     self:DisableMalbatrossProtocol()
     self:DisableToadstoolProtocol()
+    self:DisableMutatedDeerclopsProtocol()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
@@ -710,6 +719,200 @@ function KeiProtocolSlots:DisableFreezeImmunity()
     end
     self._kei_had_freezable = nil
     self._kei_freeze_immune = nil
+end
+
+local function IsValidMutatedDeerclopsAuraTarget(owner, target)
+    if target == nil
+        or target == owner
+        or not target:IsValid()
+        or target:IsInLimbo()
+        or target.components.health == nil
+        or target.components.health:IsDead()
+        or target.components.combat == nil
+    then
+        return false
+    end
+
+    local combat = owner.components.combat
+    return combat == nil or not combat:IsAlly(target)
+end
+
+local function AddMutatedDeerclopsStategraphSlowSource(target, source)
+    target._kei_mutateddeerclops_sg_slow_sources = target._kei_mutateddeerclops_sg_slow_sources or {}
+    target._kei_mutateddeerclops_sg_slow_sources[source] = true
+    target:AddTag(MUTATEDDEERCLOPS_AURA_SG_SLOW_TAG)
+end
+
+local function RemoveMutatedDeerclopsStategraphSlowSource(target, source)
+    local sources = target._kei_mutateddeerclops_sg_slow_sources
+    if sources == nil then
+        target:RemoveTag(MUTATEDDEERCLOPS_AURA_SG_SLOW_TAG)
+        return true
+    end
+
+    sources[source] = nil
+    if next(sources) == nil then
+        target._kei_mutateddeerclops_sg_slow_sources = nil
+        target:RemoveTag(MUTATEDDEERCLOPS_AURA_SG_SLOW_TAG)
+        return true
+    end
+    return false
+end
+
+function KeiProtocolSlots:ApplyMutatedDeerclopsSlow(target)
+    if self._kei_mutateddeerclops_slowed[target] ~= nil then
+        return
+    end
+
+    local data = {}
+    data.onremove = function()
+        self._kei_mutateddeerclops_slowed[target] = nil
+    end
+    self.inst:ListenForEvent("onremove", data.onremove, target)
+    self._kei_mutateddeerclops_slowed[target] = data
+
+    AddMutatedDeerclopsStategraphSlowSource(target, self.inst)
+    if target.components.locomotor ~= nil then
+        target.components.locomotor:SetExternalSpeedMultiplier(self.inst, MUTATEDDEERCLOPS_AURA_SLOW_KEY, TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
+    end
+    if target.AnimState ~= nil then
+        target.AnimState:SetDeltaTimeMultiplier(TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
+    end
+end
+
+function KeiProtocolSlots:ClearMutatedDeerclopsSlow(target)
+    local data = self._kei_mutateddeerclops_slowed[target]
+    if data == nil then
+        return
+    end
+
+    self._kei_mutateddeerclops_slowed[target] = nil
+    self.inst:RemoveEventCallback("onremove", data.onremove, target)
+
+    if target:IsValid() then
+        local no_sources = RemoveMutatedDeerclopsStategraphSlowSource(target, self.inst)
+        if target.components.locomotor ~= nil then
+            target.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, MUTATEDDEERCLOPS_AURA_SLOW_KEY)
+        end
+        if no_sources and target.AnimState ~= nil then
+            target.AnimState:SetDeltaTimeMultiplier(1)
+        end
+    end
+end
+
+function KeiProtocolSlots:ClearAllMutatedDeerclopsSlows()
+    local targets = {}
+    for target in pairs(self._kei_mutateddeerclops_slowed) do
+        table.insert(targets, target)
+    end
+    for _, target in ipairs(targets) do
+        self:ClearMutatedDeerclopsSlow(target)
+    end
+end
+
+function KeiProtocolSlots:PositionMutatedDeerclopsAura()
+    local fx = self._kei_mutateddeerclops_aura
+    if fx ~= nil and fx:IsValid() then
+        fx.Transform:SetPosition(self.inst.Transform:GetWorldPosition())
+    end
+end
+
+function KeiProtocolSlots:UpdateMutatedDeerclopsAura()
+    local fx = self._kei_mutateddeerclops_aura
+    if fx == nil or not fx:IsValid() then
+        self:DisableMutatedDeerclopsProtocol()
+        return
+    end
+
+    self:PositionMutatedDeerclopsAura()
+
+    local x, y, z = fx.Transform:GetWorldPosition()
+    local radius = TUNING.KEI_MUTATEDDEERCLOPS_AURA_RADIUS or 5.5
+    local in_range = {}
+    for _, target in ipairs(TheSim:FindEntities(x, y, z, radius, MUTATEDDEERCLOPS_AURA_MUST_TAGS, MUTATEDDEERCLOPS_AURA_EXCLUDE_TAGS)) do
+        if IsValidMutatedDeerclopsAuraTarget(self.inst, target) then
+            in_range[target] = true
+            self:ApplyMutatedDeerclopsSlow(target)
+        end
+    end
+
+    local out_of_range = {}
+    for target in pairs(self._kei_mutateddeerclops_slowed) do
+        if not in_range[target] then
+            table.insert(out_of_range, target)
+        end
+    end
+    for _, target in ipairs(out_of_range) do
+        self:ClearMutatedDeerclopsSlow(target)
+    end
+end
+
+function KeiProtocolSlots:RefreshMutatedDeerclopsAuraDuration()
+    if self._kei_mutateddeerclops_aura_remove_task ~= nil then
+        self._kei_mutateddeerclops_aura_remove_task:Cancel()
+    end
+    self._kei_mutateddeerclops_aura_remove_task = self.inst:DoTaskInTime(TUNING.KEI_MUTATEDDEERCLOPS_AURA_DURATION or 5, function()
+        self:DisableMutatedDeerclopsProtocol()
+    end)
+end
+
+function KeiProtocolSlots:DisableMutatedDeerclopsProtocol()
+    if self._kei_mutateddeerclops_aura_task ~= nil then
+        self._kei_mutateddeerclops_aura_task:Cancel()
+        self._kei_mutateddeerclops_aura_task = nil
+    end
+    if self._kei_mutateddeerclops_aura_follow_task ~= nil then
+        self._kei_mutateddeerclops_aura_follow_task:Cancel()
+        self._kei_mutateddeerclops_aura_follow_task = nil
+    end
+    if self._kei_mutateddeerclops_aura_remove_task ~= nil then
+        self._kei_mutateddeerclops_aura_remove_task:Cancel()
+        self._kei_mutateddeerclops_aura_remove_task = nil
+    end
+    if self._kei_mutateddeerclops_aura ~= nil then
+        if self._kei_mutateddeerclops_aura:IsValid() then
+            self._kei_mutateddeerclops_aura:KillFX()
+        end
+        self._kei_mutateddeerclops_aura = nil
+    end
+    self:ClearAllMutatedDeerclopsSlows()
+end
+
+function KeiProtocolSlots:DoMutatedDeerclopsProtocol()
+    local now = GetTime()
+    if (self._kei_mutateddeerclops_aura_ready_time or 0) > now then
+        return
+    end
+    self._kei_mutateddeerclops_aura_ready_time = now + (TUNING.KEI_MUTATEDDEERCLOPS_AURA_COOLDOWN or 3)
+
+    local fx = self._kei_mutateddeerclops_aura
+    if fx ~= nil and fx:IsValid() then
+        self:PositionMutatedDeerclopsAura()
+        self:RefreshMutatedDeerclopsAuraDuration()
+        self:UpdateMutatedDeerclopsAura()
+        return
+    end
+
+    self:DisableMutatedDeerclopsProtocol()
+
+    fx = SpawnPrefab("kei_mutateddeerclops_aura_fx")
+    if fx == nil then
+        return
+    end
+
+    self._kei_mutateddeerclops_aura = fx
+    self:PositionMutatedDeerclopsAura()
+    if fx.GrowFX ~= nil then
+        fx:GrowFX()
+    end
+
+    self._kei_mutateddeerclops_aura_follow_task = self.inst:DoPeriodicTask(MUTATEDDEERCLOPS_AURA_FOLLOW_PERIOD, function()
+        self:PositionMutatedDeerclopsAura()
+    end)
+    self._kei_mutateddeerclops_aura_task = self.inst:DoPeriodicTask(MUTATEDDEERCLOPS_AURA_UPDATE_PERIOD, function()
+        self:UpdateMutatedDeerclopsAura()
+    end, 0)
+    self:RefreshMutatedDeerclopsAuraDuration()
 end
 
 function KeiProtocolSlots:RefreshTemperatureProtocols()
@@ -888,6 +1091,9 @@ function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_malbatross_protocol_active ~= nil then
         self.inst._kei_malbatross_protocol_active:set(self:HasCombatProtocol("malbatross"))
     end
+    if self.inst._kei_mutatedwarg_protocol_active ~= nil then
+        self.inst._kei_mutatedwarg_protocol_active:set(self:HasCombatProtocol("mutatedwarg"))
+    end
     if not daywalker_active then
         self.inst.kei_daywalker_aiming = nil
         if self.inst._kei_daywalker_aiming ~= nil then
@@ -930,6 +1136,9 @@ function KeiProtocolSlots:Refresh()
     self:RefreshMooseProtocol()
     self:RefreshMalbatrossProtocol()
     self:RefreshToadstoolProtocol()
+    if not self.active_combat.mutateddeerclops then
+        self:DisableMutatedDeerclopsProtocol()
+    end
     if self.active_combat.daywalker2 then
         self.inst:AddTag("kei_stagger_immune")
         self.inst:AddTag("kei_control_immune")
@@ -1530,6 +1739,10 @@ function KeiProtocolSlots:OnHitOther(data)
     if self.active_combat.deerclops and target.components.freezable ~= nil then
         target.components.freezable:AddColdness(1)
         target.components.freezable:SpawnShatterFX()
+    end
+
+    if self.active_combat.mutateddeerclops then
+        self:DoMutatedDeerclopsProtocol()
     end
 
     if self.active_combat.dragonfly and target.components.burnable ~= nil and not target.components.burnable:IsBurning() then

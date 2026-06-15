@@ -11,6 +11,8 @@ PrefabFiles = {
     "kei_items",
     "kei_data_recorder",
     "kei_protocol_container",
+    "kei_mutateddeerclops_aura",
+    "kei_mutatedwarg_flamethrower",
 }
 
 Assets = {
@@ -49,6 +51,7 @@ AddMinimapAtlas("images/map_icons/kei.xml")
 
 FOODTYPE.KEI_DEVICE = "KEI_DEVICE"
 
+local KEI_RPC_NAMESPACE = "TendouKei"
 local protocol_slot_mode = GetModConfigData("KEI_PROTOCOL_SLOT_MODE") or "7_2"
 local protocol_slot_settings = {
     ["7_2"] = { max = 7, step = 2 },
@@ -58,6 +61,77 @@ local protocol_slot_setting = protocol_slot_settings[protocol_slot_mode] or prot
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
 TUNING.KEI_BEEQUEEN_PRESTIGE_MODE = GetModConfigData("KEI_BEEQUEEN_PRESTIGE_MODE") or "area"
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION = 5
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_COOLDOWN = 10
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_RANGE = 10
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DAMAGE = 50
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_TICK = 0.5
+TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST = 10
+
+local function HasMutatedWargProtocol(player)
+    return player ~= nil
+        and player.components.kei_protocolslots ~= nil
+        and player.components.kei_protocolslots:HasCombatProtocol("mutatedwarg")
+end
+
+local function IsMutatedWargFlameReady(player)
+    return player ~= nil
+        and player:HasTag("kei")
+        and not player:HasTag("playerghost")
+        and not player:HasTag("kei_dormant")
+        and (player.components.health == nil or not player.components.health:IsDead())
+        and HasMutatedWargProtocol(player)
+        and player.kei_mutatedwarg_flamethrower_cd_task == nil
+        and player.components.inventory ~= nil
+        and player.components.inventory:GetActiveItem() == nil
+        and player.components.sanity ~= nil
+        and player.components.sanity.current >= (TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST or 10)
+end
+
+local function StartMutatedWargFlameCooldown(player)
+    if player == nil then
+        return
+    end
+    if player.kei_mutatedwarg_flamethrower_cd_task ~= nil then
+        player.kei_mutatedwarg_flamethrower_cd_task:Cancel()
+    end
+    player.kei_mutatedwarg_flamethrower_cd_task = player:DoTaskInTime(TUNING.KEI_MUTATEDWARG_FLAMETHROWER_COOLDOWN or 10, function(inst)
+        inst.kei_mutatedwarg_flamethrower_cd_task = nil
+    end)
+end
+
+AddModRPCHandler(KEI_RPC_NAMESPACE, "MutatedWargFlame", function(player, x, z)
+    if player == nil or not player:HasTag("kei") then
+        return
+    end
+
+    if not IsMutatedWargFlameReady(player) then
+        return
+    end
+
+    local px, py, pz = player.Transform:GetWorldPosition()
+    if x == nil or z == nil then
+        return
+    end
+    local dx = x - px
+    local dz = z - pz
+    if dx * dx + dz * dz <= 0 then
+        return
+    end
+
+    local fx = SpawnPrefab("kei_mutatedwarg_flamethrower")
+    if fx == nil then
+        return
+    end
+
+    player.components.sanity:DoDelta(-(TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST or 10))
+    player.components.locomotor:Stop()
+    player:ForceFacePoint(x, py, z)
+    StartMutatedWargFlameCooldown(player)
+
+    fx.Transform:SetPosition(px, py, pz)
+    fx:SetCaster(player, Vector3(x, py, z))
+end)
 
 -- Kei 的三项核心资源：电量、稳定性、机体完整度。
 TUNING.KEI_MAX_POWER = 120 -- 最大电量上限
@@ -105,6 +179,10 @@ TUNING.KEI_KLAUS_SOUL_CHANCE = 0.20 -- 克劳斯协议抽取灵魂并治疗周�
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡眠炸弹弹药的概率
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡眠炸弹弹药后的内置冷却
 TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT = 1.3 -- 装甲熊獾协议攻击速度倍率
+TUNING.KEI_MUTATEDDEERCLOPS_AURA_RADIUS = 5.5 -- 独眼晶体巨鹿协议寒冷圈半径
+TUNING.KEI_MUTATEDDEERCLOPS_AURA_DURATION = 5 -- 独眼晶体巨鹿协议寒冷圈持续时间
+TUNING.KEI_MUTATEDDEERCLOPS_AURA_COOLDOWN = 3 -- 独眼晶体巨鹿协议寒冷圈触发冷却
+TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT = 0.5 -- 独眼晶体巨鹿协议寒冷圈动画与移速倍率
 TUNING.KEI_ANTLION_SANDSPIKE_CHANCE = 0.30 -- 蚁狮协议触发高大沙刺的概率
 TUNING.KEI_ANTLION_SANDSPIKE_COOLDOWN = 0.5 -- 蚁狮协议生成沙刺后的内置冷却
 TUNING.KEI_ANTLION_SANDSPIKE_VERTEX_DELAY = 8 * FRAMES -- 中心沙刺后，三角形顶点沙刺的延迟
@@ -275,6 +353,16 @@ end
 AddStategraphPostInit("wilson", AddKeiAttackSpeedToStategraph)
 AddStategraphPostInit("wilson_client", AddKeiAttackSpeedToStategraph)
 
+if StateGraphInstance ~= nil and StateGraphInstance.UpdateState ~= nil then
+    local old_StateGraphInstance_UpdateState = StateGraphInstance.UpdateState
+    function StateGraphInstance:UpdateState(dt)
+        if self.inst ~= nil and self.inst:HasTag("kei_mutateddeerclops_sg_slow") then
+            dt = dt * (TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
+        end
+        return old_StateGraphInstance_UpdateState(self, dt)
+    end
+end
+
 local function GetProtocolUnlockRecipeTier(recname)
     return recname ~= nil and tonumber(string.match(recname, "^kei_protocol_mk(%d)$")) or nil
 end
@@ -369,6 +457,37 @@ modimport("scripts/kei_strings.lua")
 modimport("scripts/kei_assets.lua")
 modimport("scripts/kei_actions.lua")
 modimport("scripts/kei_recipes.lua")
+
+if not TheNet:IsDedicated() and TheInput ~= nil then
+    local kei_mutatedwarg_key_down = false
+    TheInput:AddKeyDownHandler(KEY_R, function()
+        if kei_mutatedwarg_key_down then
+            return
+        end
+        kei_mutatedwarg_key_down = true
+        local player = ThePlayer
+        local screen = TheFrontEnd ~= nil and TheFrontEnd:GetActiveScreen() or nil
+        if player ~= nil
+            and screen ~= nil
+            and screen.name == "HUD"
+            and player:HasTag("kei")
+            and player._kei_mutatedwarg_protocol_active ~= nil
+            and player._kei_mutatedwarg_protocol_active:value()
+            and not player:HasTag("playerghost")
+            and not player:HasTag("kei_dormant")
+            and player.replica.inventory ~= nil
+            and player.replica.inventory:GetActiveItem() == nil
+        then
+            local pos = TheInput:GetWorldPosition()
+            if pos ~= nil then
+                SendModRPCToServer(MOD_RPC[KEI_RPC_NAMESPACE].MutatedWargFlame, pos.x, pos.z)
+            end
+        end
+    end)
+    TheInput:AddKeyUpHandler(KEY_R, function()
+        kei_mutatedwarg_key_down = false
+    end)
+end
 
 -- 注册可选角色。
 AddModCharacter("kei", "FEMALE")
