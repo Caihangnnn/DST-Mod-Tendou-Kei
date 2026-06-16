@@ -55,7 +55,7 @@ local COMBAT_PROTOCOLS = {
         kind = "combat",
         protocol = "daywalker2",
         display_name = "拾荒疯猪",
-        description = "拾荒疯猪数据：免疫受击僵直、击飞、击退与束缚，但仍会正常承受伤害。",
+        description = "拾荒疯猪数据：免疫受击僵直、击飞、击退，但仍会正常承受伤害。",
     },
     lordfruitfly = {
         kind = "combat",
@@ -74,6 +74,12 @@ local COMBAT_PROTOCOLS = {
         protocol = "vault_pillar_guard",
         display_name = "远古戍卫塔",
         description = "远古戍卫塔数据：攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击，并伤害旋转范围内的敌对生物。",
+    },
+    wagboss_robot = {
+        kind = "combat",
+        protocol = "wagboss_robot",
+        display_name = "战争瓦器人",
+        description = "战争瓦器人数据：攻击时对目标触发会追踪目标的月能轨道打击，冷却 20 秒。",
     },
     malbatross = {
         kind = "combat",
@@ -118,6 +124,12 @@ local COMBAT_PROTOCOLS = {
         display_name = "天体英雄",
         record_prefabs = { "alterguardian_phase1", "alterguardian_phase2", "alterguardian_phase3" },
         description = "天体英雄数据：电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。",
+    },
+    alterguardian_phase4_lunarrift = {
+        kind = "combat",
+        protocol = "alterguardian_phase4_lunarrift",
+        display_name = "天体后裔",
+        description = "天体后裔数据：五个天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 20% 的额外伤害。",
     },
 }
 

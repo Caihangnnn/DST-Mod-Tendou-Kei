@@ -2,7 +2,7 @@
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 author = "StellarVoyage"
-version = "0.1.0"
+version = "0.1.1"
 
 -- DST 模组基础兼容配置。
 api_version = 10

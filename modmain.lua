@@ -13,6 +13,8 @@ PrefabFiles = {
     "kei_protocol_container",
     "kei_mutateddeerclops_aura",
     "kei_mutatedwarg_flamethrower",
+    "kei_wagboss_beam",
+    "kei_celestial_orb",
 }
 
 Assets = {
@@ -231,6 +233,17 @@ TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡眠炸弹弹
 TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡眠炸弹弹药后的内置冷却
 TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT = 1.3 -- 装甲熊獾协议攻击速度倍率
 TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT = 1.2 -- 远古戍卫塔协议攻击速度倍率
+TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN = 20 -- 战争瓦器人协议轨道打击冷却时间
+TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_MAX_HEALTH_DPS = 0.03 -- 战争瓦器人协议月能灼烧每秒按目标最大生命值计算的比例
+TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_BONUS_DPS = 50 -- 战争瓦器人协议月能灼烧每秒追加伤害
+TUNING.KEI_CELESTIAL_ORB_COUNT = 3 -- 天体后裔协议环绕宝珠数量
+TUNING.KEI_CELESTIAL_ORB_RADIUS = 2.7 -- 天体后裔协议宝珠环绕半径
+TUNING.KEI_CELESTIAL_ORB_HEIGHT = 1.35 -- 天体后裔协议宝珠显示高度
+TUNING.KEI_CELESTIAL_ORB_IDLE_SPEED = 0.012 -- 天体后裔协议宝珠常态旋转速度
+TUNING.KEI_CELESTIAL_ORB_ATTACK_SPEED = 0.22 -- 天体后裔协议宝珠攻击触发后的旋转速度
+TUNING.KEI_CELESTIAL_ORB_ACCEL_DURATION = 1.25 -- 天体后裔协议攻击后宝珠加速持续时间
+TUNING.KEI_CELESTIAL_ORB_DAMAGE_MULT = 0.5 -- 天体后裔协议追加伤害占本次伤害的比例
+TUNING.KEI_CELESTIAL_ORB_HIT_RADIUS = 1.35 -- 天体后裔协议宝珠命中半径
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_RADIUS = 5.5 -- 独眼晶体巨鹿协议寒冷圈半径
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_DURATION = 5 -- 独眼晶体巨鹿协议寒冷圈持续时间
 TUNING.KEI_MUTATEDDEERCLOPS_AURA_COOLDOWN = 3 -- 独眼晶体巨鹿协议寒冷圈触发冷却

@@ -6,6 +6,10 @@ local MUTATEDDEERCLOPS_AURA_FOLLOW_PERIOD = FRAMES
 local MUTATEDDEERCLOPS_AURA_UPDATE_PERIOD = 0.25
 local MUTATEDDEERCLOPS_AURA_MUST_TAGS = { "_combat", "_health" }
 local MUTATEDDEERCLOPS_AURA_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "playerghost" }
+local WAGBOSS_PROTOCOL_COOLDOWN = 20
+local CELESTIAL_ORB_FOLLOW_PERIOD = FRAMES
+local CELESTIAL_ORB_TARGET_MUST_TAGS = { "_combat", "_health" }
+local CELESTIAL_ORB_TARGET_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "companion" }
 
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
@@ -18,6 +22,9 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_worker_action_old_values = {}
     self._kei_tool_action_old_tags = {}
     self._kei_mutateddeerclops_slowed = {}
+    self._kei_celestial_orbs = {}
+    self._kei_celestial_orb_angles = {}
+    self._kei_celestial_orb_hit_times = setmetatable({}, { __mode = "k" })
 
     self:SyncUnlockedSlots()
 
@@ -643,6 +650,7 @@ function KeiProtocolSlots:ClearModifiers()
     self:DisableMalbatrossProtocol()
     self:DisableToadstoolProtocol()
     self:DisableMutatedDeerclopsProtocol()
+    self:DisableCelestialOrbProtocol()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
@@ -1137,6 +1145,7 @@ function KeiProtocolSlots:Refresh()
     self:RefreshMooseProtocol()
     self:RefreshMalbatrossProtocol()
     self:RefreshToadstoolProtocol()
+    self:RefreshCelestialOrbProtocol()
     if not self.active_combat.mutateddeerclops then
         self:DisableMutatedDeerclopsProtocol()
     end
@@ -1221,6 +1230,189 @@ function KeiProtocolSlots:DrainProtocols()
     end
 
     self:Refresh()
+end
+
+function KeiProtocolSlots:SpawnCelestialOrb(index)
+    local orb = SpawnPrefab("kei_celestial_orb_fx")
+    if orb == nil then
+        return nil
+    end
+
+    orb.persists = false
+    self._kei_celestial_orbs[index] = orb
+    return orb
+end
+
+function KeiProtocolSlots:EnsureCelestialOrbs()
+    local count = TUNING.KEI_CELESTIAL_ORB_COUNT or 5
+    self._kei_celestial_orbs = self._kei_celestial_orbs or {}
+    self._kei_celestial_orb_angles = self._kei_celestial_orb_angles or {}
+
+    for index = 1, count do
+        local orb = self._kei_celestial_orbs[index]
+        if orb == nil or not orb:IsValid() then
+            orb = self:SpawnCelestialOrb(index)
+        end
+        if self._kei_celestial_orb_angles[index] == nil then
+            self._kei_celestial_orb_angles[index] = (index - 1) * TWOPI / count
+        end
+    end
+
+    for index = count + 1, #(self._kei_celestial_orbs or {}) do
+        local orb = self._kei_celestial_orbs[index]
+        if orb ~= nil and orb:IsValid() then
+            orb:Remove()
+        end
+        self._kei_celestial_orbs[index] = nil
+        self._kei_celestial_orb_angles[index] = nil
+    end
+end
+
+function KeiProtocolSlots:UpdateCelestialOrbs()
+    if not self:IsFunctional() or not self.active_combat.alterguardian_phase4_lunarrift then
+        self:DisableCelestialOrbProtocol()
+        return
+    end
+
+    self:EnsureCelestialOrbs()
+
+    local count = TUNING.KEI_CELESTIAL_ORB_COUNT or 5
+    local radius = TUNING.KEI_CELESTIAL_ORB_RADIUS or 2.7
+    local height = TUNING.KEI_CELESTIAL_ORB_HEIGHT or 1.35
+    local now = GetTime()
+    local accelerated = (self._kei_celestial_orb_accel_until or 0) > now
+    local speed = accelerated
+        and (TUNING.KEI_CELESTIAL_ORB_ATTACK_SPEED or 0.22)
+        or (TUNING.KEI_CELESTIAL_ORB_IDLE_SPEED or 0.012)
+    local x, y, z = self.inst.Transform:GetWorldPosition()
+
+    for index = 1, count do
+        local angle = (self._kei_celestial_orb_angles[index] or ((index - 1) * TWOPI / count))
+            + speed * CELESTIAL_ORB_FOLLOW_PERIOD * 60
+        self._kei_celestial_orb_angles[index] = angle
+
+        local orb = self._kei_celestial_orbs[index]
+        if orb ~= nil and orb:IsValid() then
+            local orb_x = x + math.cos(angle) * radius
+            local orb_z = z + math.sin(angle) * radius
+            orb.Transform:SetPosition(
+                orb_x,
+                y + height,
+                orb_z
+            )
+            if accelerated then
+                self:DealCelestialOrbDamageAtPoint(index, orb_x, y, orb_z)
+            end
+        end
+    end
+end
+
+function KeiProtocolSlots:EnableCelestialOrbProtocol()
+    self:EnsureCelestialOrbs()
+    self:UpdateCelestialOrbs()
+
+    if self._kei_celestial_orb_task == nil then
+        self._kei_celestial_orb_task = self.inst:DoPeriodicTask(CELESTIAL_ORB_FOLLOW_PERIOD, function()
+            self:UpdateCelestialOrbs()
+        end)
+    end
+end
+
+function KeiProtocolSlots:DisableCelestialOrbProtocol()
+    if self._kei_celestial_orb_task ~= nil then
+        self._kei_celestial_orb_task:Cancel()
+        self._kei_celestial_orb_task = nil
+    end
+
+    for index, orb in pairs(self._kei_celestial_orbs or {}) do
+        if orb ~= nil and orb:IsValid() then
+            orb:Remove()
+        end
+        self._kei_celestial_orbs[index] = nil
+    end
+
+    self._kei_celestial_orb_angles = {}
+    self._kei_celestial_orb_accel_until = nil
+    self._kei_celestial_orb_damage = nil
+    self._kei_celestial_orb_weapon = nil
+    self._kei_celestial_orb_hit_times = setmetatable({}, { __mode = "k" })
+end
+
+function KeiProtocolSlots:RefreshCelestialOrbProtocol()
+    if self.active_combat.alterguardian_phase4_lunarrift then
+        self:EnableCelestialOrbProtocol()
+    else
+        self:DisableCelestialOrbProtocol()
+    end
+end
+
+local function IsValidCelestialOrbTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and owner.components.combat ~= nil
+        and target ~= nil
+        and target:IsValid()
+        and target.entity:IsVisible()
+        and target.components.combat ~= nil
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and owner.components.combat:CanTarget(target)
+        and not owner.components.combat:IsAlly(target)
+end
+
+function KeiProtocolSlots:DealCelestialOrbDamageAtPoint(orb_index, x, y, z)
+    local damage = self._kei_celestial_orb_damage or 0
+    if self._doing_celestial_orb_damage or damage <= 0 then
+        return
+    end
+
+    local now = GetTime()
+    local hit_radius = TUNING.KEI_CELESTIAL_ORB_HIT_RADIUS or 1.35
+    local targets = TheSim:FindEntities(
+        x,
+        y,
+        z,
+        hit_radius,
+        CELESTIAL_ORB_TARGET_MUST_TAGS,
+        CELESTIAL_ORB_TARGET_EXCLUDE_TAGS
+    )
+
+    for _, target in ipairs(targets) do
+        local target_hits = self._kei_celestial_orb_hit_times[target]
+        if target_hits == nil then
+            target_hits = {}
+            self._kei_celestial_orb_hit_times[target] = target_hits
+        end
+
+        if IsValidCelestialOrbTarget(self.inst, target) and (target_hits[orb_index] or 0) <= now then
+            target_hits[orb_index] = self._kei_celestial_orb_accel_until or now
+            self._doing_celestial_orb_damage = true
+            target.components.combat:GetAttacked(self.inst, damage, self._kei_celestial_orb_weapon)
+            self._doing_celestial_orb_damage = nil
+        end
+    end
+end
+
+function KeiProtocolSlots:DoCelestialOrbProtocol(target, damage, weapon)
+    if self._doing_celestial_orb_damage
+        or (damage or 0) <= 0
+        or not IsValidCelestialOrbTarget(self.inst, target)
+    then
+        return
+    end
+
+    local orb_damage = damage * (TUNING.KEI_CELESTIAL_ORB_DAMAGE_MULT or 0.2)
+    if orb_damage <= 0 then
+        return
+    end
+
+    self._kei_celestial_orb_accel_until = math.max(
+        self._kei_celestial_orb_accel_until or 0,
+        GetTime() + (TUNING.KEI_CELESTIAL_ORB_ACCEL_DURATION or 1.25)
+    )
+    self._kei_celestial_orb_damage = orb_damage
+    self._kei_celestial_orb_weapon = weapon
+    self._kei_celestial_orb_hit_times = setmetatable({}, { __mode = "k" })
 end
 
 local AREA_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "playerghost" }
@@ -1453,6 +1645,43 @@ function KeiProtocolSlots:DoAntlionProtocol(target)
             self:SpawnAntlionSpikeTriangle(center, target)
         end
     end)
+end
+
+local function IsValidWagbossBeamTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and owner.components.combat ~= nil
+        and target ~= nil
+        and target:IsValid()
+        and not target:IsInLimbo()
+        and target.entity:IsVisible()
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and target.components.combat ~= nil
+        and owner.components.combat:CanTarget(target)
+        and not owner.components.combat:IsAlly(target)
+end
+
+function KeiProtocolSlots:DoWagbossProtocol(target)
+    local now = GetTime()
+    if (self._kei_wagboss_beam_ready_time or 0) > now
+        or not IsValidWagbossBeamTarget(self.inst, target)
+    then
+        return
+    end
+
+    local beam = SpawnPrefab("kei_wagboss_beam_fx")
+    if beam == nil or beam.TrackTarget == nil then
+        if beam ~= nil then
+            beam:Remove()
+        end
+        return
+    end
+
+    local x, _, z = self.inst.Transform:GetWorldPosition()
+    beam:SetCaster(self.inst)
+    beam:TrackTarget(target, x, z)
+    self._kei_wagboss_beam_ready_time = now + (TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN or WAGBOSS_PROTOCOL_COOLDOWN)
 end
 
 function KeiProtocolSlots:SpawnMinotaurTentacle(target)
@@ -1789,6 +2018,14 @@ function KeiProtocolSlots:OnHitOther(data)
 
     if self.active_combat.antlion then
         self:DoAntlionProtocol(target)
+    end
+
+    if self.active_combat.wagboss_robot then
+        self:DoWagbossProtocol(target)
+    end
+
+    if self.active_combat.alterguardian_phase4_lunarrift then
+        self:DoCelestialOrbProtocol(target, damage, weapon)
     end
 end
 

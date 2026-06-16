@@ -20,6 +20,7 @@ local prefabs = {
     "reticuleline",
     "reticulelineping",
     "kei_mutatedwarg_flamethrower",
+    "kei_celestial_orb_fx",
     "warg_mutated_breath_fx",
     "warg_mutated_ember_fx",
     "daywalker_sinkhole",
