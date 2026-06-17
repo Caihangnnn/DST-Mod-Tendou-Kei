@@ -28,6 +28,7 @@ Assets = {
     Asset("ANIM", "anim/kei_blank_cd.zip"),
     Asset("ANIM", "anim/kei_combat_cd.zip"),
     Asset("ANIM", "anim/kei_protocol_binder.zip"),
+    Asset("ANIM", "anim/kei_protocol_popup.zip"),
     Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),
     Asset("ANIM", "anim/wx_chassis.zip"),
 
@@ -52,9 +53,15 @@ Assets = {
     Asset("ATLAS", "images/kei_combat_cd.xml"),
     Asset("ATLAS", "images/kei_protocol_binder.xml"),
     Asset("ATLAS", "images/kei_protocol_binder_open.xml"),
+    Asset("ATLAS", "images/kei_protocol_slot_closed.xml"),
+    Asset("ATLAS", "images/kei_protocol_slot_locked.xml"),
+    Asset("ATLAS", "images/kei_protocol_slot_openable.xml"),
     Asset("ATLAS", "images/transparent_slot.xml"),
     Asset("IMAGE", "images/kei_protocol_binder.tex"),
     Asset("IMAGE", "images/kei_protocol_binder_open.tex"),
+    Asset("IMAGE", "images/kei_protocol_slot_closed.tex"),
+    Asset("IMAGE", "images/kei_protocol_slot_locked.tex"),
+    Asset("IMAGE", "images/kei_protocol_slot_openable.tex"),
     Asset("IMAGE", "images/transparent_slot.tex"),
 }
 
@@ -309,6 +316,28 @@ containers.params.kei_protocol_container.itemtestfn = function(container, item, 
     return item ~= nil and item:HasTag("kei_protocol_cd")
 end
 containers.params.kei_protocol_container.priorityfn = nil
+containers.params.kei_protocol_container.widget.animbank = "kei_protocol_popup"
+containers.params.kei_protocol_container.widget.animbuild = "kei_protocol_popup"
+containers.params.kei_protocol_container.widget.slotpos = {
+    Vector3(0, -5, 0),
+}
+containers.params.kei_protocol_container.widget.slotscale = 1.3
+containers.params.kei_protocol_container.widget.slothighlightscale = 1.15
+containers.params.kei_protocol_container.widget.animloop = nil
+containers.params.kei_protocol_container.widget.slotbg = {
+    {
+        atlas = "images/transparent_slot.xml",
+        image = "transparent_slot.tex",
+    },
+}
+containers.params.kei_protocol_container.widget.animfn = function(container, doer, anim)
+    if anim == "open" then
+        return "opening"
+    elseif anim == "close" then
+        return "closing"
+    end
+    return anim
+end
 
 local function MakeProtocolBinderSlotPositions(count)
     local slots = {}

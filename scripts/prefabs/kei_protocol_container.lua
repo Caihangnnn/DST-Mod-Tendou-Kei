@@ -1,13 +1,51 @@
 local assets =
 {
-    Asset("ANIM", "anim/wx78_inventorycontainer.zip"),
-    Asset("INV_IMAGE", "wx78_inventorycontainer"),
-    Asset("INV_IMAGE", "wx78_inventorycontainer_open"),
-    Asset("INV_IMAGE", "wx78_inventorycontainer_powered"),
-    Asset("ANIM", "anim/ui_wx78_inventorycontainer_1x1.zip"),
+    Asset("ANIM", "anim/kei_protocol_popup.zip"),
+    Asset("ATLAS", "images/kei_protocol_slot_closed.xml"),
+    Asset("ATLAS", "images/kei_protocol_slot_locked.xml"),
+    Asset("ATLAS", "images/kei_protocol_slot_openable.xml"),
+    Asset("IMAGE", "images/kei_protocol_slot_closed.tex"),
+    Asset("IMAGE", "images/kei_protocol_slot_locked.tex"),
+    Asset("IMAGE", "images/kei_protocol_slot_openable.tex"),
 }
 
+local SLOT_BANK = "kei_protocol_popup"
+local SLOT_BUILD = "kei_protocol_popup"
+local SLOT_ANIM_OPENING = "opening"
+local SLOT_ANIM_CLOSING = "closing"
+
+local SLOT_ICON_ATLAS_CLOSED = "images/kei_protocol_slot_closed.xml"
+local SLOT_ICON_IMAGE_CLOSED = "kei_protocol_slot_closed"
+local SLOT_ICON_ATLAS_LOCKED = "images/kei_protocol_slot_locked.xml"
+local SLOT_ICON_IMAGE_LOCKED = "kei_protocol_slot_locked"
+local SLOT_ICON_ATLAS_OPENABLE = "images/kei_protocol_slot_openable.xml"
+local SLOT_ICON_IMAGE_OPENABLE = "kei_protocol_slot_openable"
+
 local RefreshIcon
+
+local function SetAnimPose(inst, anim, at_end)
+    inst.AnimState:PlayAnimation(anim, false)
+    local len = inst.AnimState:GetCurrentAnimationLength() or 0
+    inst.AnimState:SetTime(at_end and len or 0)
+end
+
+local function FreezeOnAnimOver(inst, anim)
+    if inst._kei_slot_animover_fn ~= nil then
+        inst:RemoveEventCallback("animover", inst._kei_slot_animover_fn)
+        inst._kei_slot_animover_fn = nil
+    end
+
+    inst._kei_slot_animover_fn = function()
+        if inst.AnimState:IsCurrentAnimation(anim) then
+            SetAnimPose(inst, anim, true)
+            if inst._kei_slot_animover_fn ~= nil then
+                inst:RemoveEventCallback("animover", inst._kei_slot_animover_fn)
+                inst._kei_slot_animover_fn = nil
+            end
+        end
+    end
+    inst:ListenForEvent("animover", inst._kei_slot_animover_fn)
+end
 
 local function OnPutInInventory(inst)
     inst:RemoveTag("no_container_store")
@@ -24,17 +62,30 @@ local function OnDropped(inst)
 end
 
 function RefreshIcon(inst)
-    local image = inst.components.container:IsOpen()
-        and "wx78_inventorycontainer_open"
-        or (inst.components.container.canbeopened and "wx78_inventorycontainer_powered" or "wx78_inventorycontainer")
+    local atlas, image
+    if inst.components.container:IsOpen() then
+        atlas = SLOT_ICON_ATLAS_OPENABLE
+        image = SLOT_ICON_IMAGE_OPENABLE
+    elseif inst.components.container.canbeopened then
+        atlas = SLOT_ICON_ATLAS_CLOSED
+        image = SLOT_ICON_IMAGE_CLOSED
+    else
+        atlas = SLOT_ICON_ATLAS_LOCKED
+        image = SLOT_ICON_IMAGE_LOCKED
+    end
+    inst.components.inventoryitem.atlasname = atlas
     inst.components.inventoryitem:ChangeImageName(image)
 end
 
 local function OnOpen(inst)
+    inst.AnimState:PlayAnimation(SLOT_ANIM_OPENING)
+    FreezeOnAnimOver(inst, SLOT_ANIM_OPENING)
     RefreshIcon(inst)
 end
 
 local function OnClose(inst)
+    inst.AnimState:PlayAnimation(SLOT_ANIM_CLOSING)
+    FreezeOnAnimOver(inst, SLOT_ANIM_CLOSING)
     RefreshIcon(inst)
 end
 
@@ -105,7 +156,7 @@ local function DisplayNameFn(inst)
         or STRINGS.NAMES.WX78_INVENTORYCONTAINER
 end
 
-local FLOATER_SWAP_DATA = { bank = "wx78_inventorycontainer", anim = "dropped_idle" }
+local FLOATER_SWAP_DATA = { bank = SLOT_BANK, anim = SLOT_ANIM_CLOSING }
 
 local function fn()
     local inst = CreateEntity()
@@ -115,9 +166,9 @@ local function fn()
     inst.entity:AddSoundEmitter()
     inst.entity:AddNetwork()
 
-    inst.AnimState:SetBank("wx78_inventorycontainer")
-    inst.AnimState:SetBuild("wx78_inventorycontainer")
-    inst.AnimState:PlayAnimation("dropped_idle")
+    inst.AnimState:SetBank(SLOT_BANK)
+    inst.AnimState:SetBuild(SLOT_BUILD)
+    SetAnimPose(inst, SLOT_ANIM_CLOSING, true)
 
     MakeInventoryPhysics(inst)
     MakeInventoryFloatable(inst, "small", 0.35, 1.15, nil, nil, FLOATER_SWAP_DATA)
