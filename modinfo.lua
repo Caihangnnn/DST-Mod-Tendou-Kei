@@ -76,6 +76,24 @@ configuration_options = {
         default = true,
     },
     {
+        name = "KEI_ALLOW_DATA_COPY",
+        label = "允许拷贝协议数据",
+        hover = "开启后，可用空白数据记录 CD 拷贝战斗数据 CD，也可用装备解析工具拷贝数据化装备。",
+        options = {
+            {
+                description = "允许",
+                hover = "允许消耗对应材料复制已有协议 CD。",
+                data = true,
+            },
+            {
+                description = "禁止",
+                hover = "禁止通过右键拷贝已有协议 CD。",
+                data = false,
+            },
+        },
+        default = true,
+    },
+    {
         name = "KEI_BEEQUEEN_PRESTIGE_MODE",
         label = "蜂后协议威压",
         hover = "设置蜂后战斗协议威压被动的触发方式。",

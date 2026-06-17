@@ -27,6 +27,8 @@ Assets = {
     Asset("ANIM", "anim/kei_analysis_tool.zip"),
     Asset("ANIM", "anim/kei_blank_cd.zip"),
     Asset("ANIM", "anim/kei_combat_cd.zip"),
+    Asset("ANIM", "anim/kei_data_recorder.zip"),
+    Asset("ANIM", "anim/kei_data_recorder_item.zip"),
     Asset("ANIM", "anim/kei_protocol_binder.zip"),
     Asset("ANIM", "anim/kei_protocol_popup.zip"),
     Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),
@@ -51,6 +53,7 @@ Assets = {
     Asset("ATLAS", "images/kei_analysis_tool.xml"),
     Asset("ATLAS", "images/kei_blank_cd.xml"),
     Asset("ATLAS", "images/kei_combat_cd.xml"),
+    Asset("ATLAS", "images/kei_data_recorder_item.xml"),
     Asset("ATLAS", "images/kei_protocol_binder.xml"),
     Asset("ATLAS", "images/kei_protocol_binder_open.xml"),
     Asset("ATLAS", "images/kei_protocol_slot_closed.xml"),
@@ -58,6 +61,7 @@ Assets = {
     Asset("ATLAS", "images/kei_protocol_slot_openable.xml"),
     Asset("ATLAS", "images/transparent_slot.xml"),
     Asset("IMAGE", "images/kei_protocol_binder.tex"),
+    Asset("IMAGE", "images/kei_data_recorder_item.tex"),
     Asset("IMAGE", "images/kei_protocol_binder_open.tex"),
     Asset("IMAGE", "images/kei_protocol_slot_closed.tex"),
     Asset("IMAGE", "images/kei_protocol_slot_locked.tex"),
@@ -78,6 +82,7 @@ local protocol_slot_settings = {
 local protocol_slot_setting = protocol_slot_settings[protocol_slot_mode] or protocol_slot_settings["7_2"]
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
+TUNING.KEI_ALLOW_DATA_COPY = GetModConfigData("KEI_ALLOW_DATA_COPY") ~= false
 TUNING.KEI_BEEQUEEN_PRESTIGE_MODE = GetModConfigData("KEI_BEEQUEEN_PRESTIGE_MODE") or "area"
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_DURATION = 5
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_COOLDOWN = 10
@@ -319,7 +324,7 @@ containers.params.kei_protocol_container.priorityfn = nil
 containers.params.kei_protocol_container.widget.animbank = "kei_protocol_popup"
 containers.params.kei_protocol_container.widget.animbuild = "kei_protocol_popup"
 containers.params.kei_protocol_container.widget.slotpos = {
-    Vector3(0, -5, 0),
+    Vector3(0, -7, 0),
 }
 containers.params.kei_protocol_container.widget.slotscale = 1.3
 containers.params.kei_protocol_container.widget.slothighlightscale = 1.15
@@ -362,6 +367,40 @@ end
 
 local protocol_binder_slots = TUNING.KEI_PROTOCOL_SLOT_MAX or 7
 local protocol_binder_width = 75 * math.max(protocol_binder_slots - 1, 0)
+local PROTOCOL_BINDER_BUTTON_COOLDOWN = 0.5
+
+local function RefreshProtocolBinderButton(inst)
+    if inst ~= nil and ThePlayer ~= nil then
+        inst:PushEvent("itemget", {})
+    end
+end
+
+local function IsProtocolBinderButtonCoolingDown(inst)
+    return inst ~= nil
+        and inst._kei_protocol_binder_button_ready_time ~= nil
+        and GetTime() < inst._kei_protocol_binder_button_ready_time
+end
+
+local function StartProtocolBinderButtonCooldown(inst)
+    if inst == nil or IsProtocolBinderButtonCoolingDown(inst) then
+        return false
+    end
+
+    inst._kei_protocol_binder_button_ready_time = GetTime() + PROTOCOL_BINDER_BUTTON_COOLDOWN
+    RefreshProtocolBinderButton(inst)
+
+    if inst._kei_protocol_binder_button_task ~= nil then
+        inst._kei_protocol_binder_button_task:Cancel()
+    end
+    inst._kei_protocol_binder_button_task = inst:DoTaskInTime(PROTOCOL_BINDER_BUTTON_COOLDOWN, function()
+        inst._kei_protocol_binder_button_ready_time = nil
+        inst._kei_protocol_binder_button_task = nil
+        RefreshProtocolBinderButton(inst)
+    end)
+
+    return true
+end
+
 containers.params.kei_protocol_binder = {
     widget = {
         slotpos = {
@@ -401,9 +440,13 @@ function containers.params.kei_protocol_binder.itemtestfn(container, item, slot)
 end
 
 function containers.params.kei_protocol_binder.widget.buttoninfo.fn(inst, doer)
-    if inst ~= nil and inst.SwapWithProtocolSlots ~= nil then
+    if not StartProtocolBinderButtonCooldown(inst) then
+        return
+    end
+
+    if inst.SwapWithProtocolSlots ~= nil then
         inst:SwapWithProtocolSlots(doer)
-    elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then
+    elseif inst.replica.container ~= nil then
         SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
     end
 end
@@ -411,7 +454,7 @@ end
 function containers.params.kei_protocol_binder.widget.buttoninfo.validfn(inst)
     return inst ~= nil
         and inst.replica.container ~= nil
-        and not inst.replica.container:IsBusy()
+        and not IsProtocolBinderButtonCoolingDown(inst)
 end
 
 local KEI_CONTROL_IMMUNE_EVENTS = {

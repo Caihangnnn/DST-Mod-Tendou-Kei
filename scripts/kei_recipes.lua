@@ -104,7 +104,10 @@ AddRecipe2(
     "kei_data_recorder_item",
     { Ingredient("transistor", 2), Ingredient("gears", 1) },
     TECH.NONE,
-    kei_config("wagstaff_item_2.tex"),
+    kei_config({
+        atlas = "images/kei_data_recorder_item.xml",
+        image = "kei_data_recorder_item.tex",
+    }),
     filters
 )
 

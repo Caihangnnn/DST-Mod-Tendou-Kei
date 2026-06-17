@@ -2,28 +2,47 @@ require("prefabutil")
 local CombatProtocolDefs = require("kei_combat_protocol_defs")
 
 local assets = {
-    Asset("ANIM", "anim/vault_key_pedestal.zip"),
+    Asset("ANIM", "anim/kei_data_recorder.zip"),
     Asset("ANIM", "anim/wx78_shadowdrone_debuffer.zip"),
     Asset("ANIM", "anim/wx78_shadowdrone_harvester.zip"),
+    Asset("ANIM", "anim/wagboss_fissure.zip", ALT_RENDERPATH),
 }
 
 local item_assets = {
-    Asset("ANIM", "anim/vault_decon_mister.zip"),
-    Asset("INV_IMAGE", "wagstaff_item_2"),
+    Asset("ANIM", "anim/kei_data_recorder_item.zip"),
+    Asset("ATLAS", "images/kei_data_recorder_item.xml"),
+    Asset("IMAGE", "images/kei_data_recorder_item.tex"),
 }
 
-local RECORDER_BANK = "vault_key_pedestal"
-local RECORDER_BUILD = "vault_key_pedestal"
-local RECORDER_ANIM_OFF = "refiner_idle"
-local RECORDER_ANIM_OFF_APPEAR = "refiner_appear"
-local RECORDER_ANIM_ON = "pedestal_idle_key"
-local RECORDER_ANIM_ACTIVATE = "pedestal_appear"
-local RECORDER_ANIM_DEACTIVATE = "refiner_use"
+local RECORDER_BANK = "kei_data_recorder"
+local RECORDER_BUILD = "kei_data_recorder"
+local RECORDER_ANIM_OFF = "closed"
+local RECORDER_ANIM_OFF_APPEAR = "closed"
+local RECORDER_ANIM_ON = "opened"
+local RECORDER_ANIM_ACTIVATE = "opened"
+local RECORDER_ANIM_DEACTIVATE = "closed"
 local RECORDER_WORLD_SCALE = 1
 
-local RECORDER_KIT_BANK = "vault_decon_mister"
-local RECORDER_KIT_BUILD = "vault_decon_mister"
-local RECORDER_KIT_ANIM = "misting_closed"
+local RECORDER_KIT_BANK = "kei_data_recorder_item"
+local RECORDER_KIT_BUILD = "kei_data_recorder_item"
+local RECORDER_KIT_ANIM = "idle"
+
+-- Terrarium 光柱对齐参数：按记录器实体本地坐标偏移，方便后续微调贴图中心。
+local RECORDER_BEAM_OFFSET_X = 0
+local RECORDER_BEAM_OFFSET_Y = 1
+local RECORDER_BEAM_OFFSET_Z = 0
+local RECORDER_BEAM_SCALE = 0.5
+local RECORDER_BEAM_POSITION_UPDATE_PERIOD = 0.25
+
+local RECORDER_FISSURE_RADIUS = 8
+local RECORDER_FISSURE_STEP = 4
+local RECORDER_FISSURE_ALPHA = 0.35
+local RECORDER_FISSURE_COLOUR_R = 1
+local RECORDER_FISSURE_COLOUR_G = 0.55
+local RECORDER_FISSURE_COLOUR_B = 0.8
+local RECORDER_FISSURE_ADD_R = 0.08
+local RECORDER_FISSURE_ADD_G = 0
+local RECORDER_FISSURE_ADD_B = 0.05
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
 local GetRecordProtocol = CombatProtocolDefs.GetRecordProtocol
@@ -171,24 +190,106 @@ local function CreateForceField(inst)
     end
 end
 
-local function EnableRecorderMistFx(inst)
-    if inst.kei_mistfx == nil then
-        inst.kei_mistfx = SpawnPrefab("vault_decon_mister_fx")
-        if inst.kei_mistfx ~= nil then
-            inst.kei_mistfx.entity:SetParent(inst.entity)
-            if inst.kei_mistfx.AnimState ~= nil then
-                inst.kei_mistfx.AnimState:SetScale(RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE, RECORDER_WORLD_SCALE)
-            end
+local function UpdateRecorderBeamFxPosition(inst)
+    if inst.kei_beamfx ~= nil and inst.kei_beamfx:IsValid() then
+        inst.kei_beamfx.Transform:SetPosition(
+            RECORDER_BEAM_OFFSET_X,
+            RECORDER_BEAM_OFFSET_Y,
+            RECORDER_BEAM_OFFSET_Z
+        )
+    end
+end
+
+local function EnableRecorderBeamFx(inst)
+    if inst.kei_beamfx == nil then
+        inst.kei_beamfx = SpawnPrefab("terrarium_fx")
+        if inst.kei_beamfx ~= nil then
+            inst.kei_beamfx.persists = false
+            inst.kei_beamfx.entity:SetParent(inst.entity)
+            UpdateRecorderBeamFxPosition(inst)
+            inst.kei_beamfx.AnimState:SetScale(
+                RECORDER_BEAM_SCALE,
+                RECORDER_BEAM_SCALE,
+                RECORDER_BEAM_SCALE
+            )
+            inst.kei_beamfx.AnimState:PlayAnimation("activate_fx")
+            inst.kei_beamfx.AnimState:PushAnimation("activated_idle_fx", true)
+        end
+    end
+    if inst.kei_beam_position_task == nil then
+        inst.kei_beam_position_task = inst:DoPeriodicTask(
+            RECORDER_BEAM_POSITION_UPDATE_PERIOD,
+            UpdateRecorderBeamFxPosition
+        )
+    end
+end
+
+local function DisableRecorderBeamFx(inst)
+    if inst.kei_beam_position_task ~= nil then
+        inst.kei_beam_position_task:Cancel()
+        inst.kei_beam_position_task = nil
+    end
+    if inst.kei_beamfx ~= nil then
+        local fx = inst.kei_beamfx
+        inst.kei_beamfx = nil
+        if fx:IsValid() then
+            fx.AnimState:PlayAnimation("deactivate_fx")
+            fx:DoTaskInTime(10 * FRAMES, fx.Remove)
         end
     end
 end
 
-local function DisableRecorderMistFx(inst)
-    if inst.kei_mistfx ~= nil then
-        if inst.kei_mistfx:IsValid() then
-            inst.kei_mistfx:Remove()
+local function KillRecorderFissureFx(fx)
+    if fx == nil or not fx:IsValid() or fx.kei_killed then
+        return
+    end
+
+    fx.kei_killed = true
+    fx.persists = false
+    fx.AnimState:PlayAnimation((fx.kei_base_anim or "tile1").."_pst")
+    fx:ListenForEvent("animover", fx.Remove)
+    fx:DoTaskInTime(1.5, fx.Remove)
+end
+
+local function ClearRecorderFissures(inst)
+    if inst.kei_lunar_fissures ~= nil then
+        for _, fx in ipairs(inst.kei_lunar_fissures) do
+            if fx ~= nil and fx:IsValid() then
+                if fx.KillRecorderFissureFx ~= nil then
+                    fx:KillRecorderFissureFx()
+                else
+                    fx:Remove()
+                end
+            end
         end
-        inst.kei_mistfx = nil
+        inst.kei_lunar_fissures = nil
+    end
+end
+
+local function CanSpawnRecorderFissureAtPoint(x, z)
+    local map = TheWorld.Map
+    return map == nil
+        or (map.IsPassableAtPoint ~= nil and map:IsPassableAtPoint(x, 0, z))
+        or (map.IsOceanAtPoint ~= nil and map:IsOceanAtPoint(x, 0, z))
+end
+
+local function SpawnRecorderFissures(inst)
+    ClearRecorderFissures(inst)
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local radius_sq = RECORDER_FISSURE_RADIUS * RECORDER_FISSURE_RADIUS
+    inst.kei_lunar_fissures = {}
+
+    for dx = -RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_STEP do
+        for dz = -RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_STEP do
+            if dx * dx + dz * dz <= radius_sq and CanSpawnRecorderFissureAtPoint(x + dx, z + dz) then
+                local fx = SpawnPrefab("kei_recorder_lunar_fissure_fx")
+                if fx ~= nil then
+                    fx.Transform:SetPosition(x + dx, 0, z + dz)
+                    table.insert(inst.kei_lunar_fissures, fx)
+                end
+            end
+        end
     end
 end
 
@@ -204,17 +305,20 @@ local function SetRecorderState(inst, state)
         inst:AddTag("kei_recording")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ACTIVATE)
         inst.AnimState:PushAnimation(RECORDER_ANIM_ON, true)
-        EnableRecorderMistFx(inst)
+        EnableRecorderBeamFx(inst)
+        SpawnRecorderFissures(inst)
         CreateForceField(inst)
     elseif state == "complete" then
         inst:AddTag("kei_record_complete")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ON, true)
-        EnableRecorderMistFx(inst)
+        DisableRecorderBeamFx(inst)
+        ClearRecorderFissures(inst)
         ClearRecordDrones(inst)
         ClearForceField(inst)
     else
         inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
-        DisableRecorderMistFx(inst)
+        DisableRecorderBeamFx(inst)
+        ClearRecorderFissures(inst)
         ClearRecordDrones(inst)
         ClearForceField(inst)
     end
@@ -359,7 +463,6 @@ local function FinishPackUp(inst)
         inst.kei_packup_finish_fn = nil
     end
     if inst:IsValid() then
-        DisableRecorderMistFx(inst)
         inst:Remove()
     end
 end
@@ -386,8 +489,8 @@ local function PackUpKeiRecorder(inst, doer)
     inst.kei_packing_up = true
     inst.persists = false
     inst:AddTag("NOCLICK")
-    DisableRecorderMistFx(inst)
     ClearRecordDrones(inst)
+    ClearRecorderFissures(inst)
     ClearForceField(inst)
     ClearTargetListener(inst)
     PlayPackUpAnimation(inst)
@@ -481,7 +584,8 @@ local function recorder_fn()
     inst.PackUpKeiRecorder = PackUpKeiRecorder
 
     inst:ListenForEvent("onbuilt", OnBuilt)
-    inst:ListenForEvent("onremove", DisableRecorderMistFx)
+    inst:ListenForEvent("onremove", DisableRecorderBeamFx)
+    inst:ListenForEvent("onremove", ClearRecorderFissures)
     inst:ListenForEvent("onremove", ClearRecordDrones)
 
     inst.OnSave = OnSave
@@ -491,7 +595,8 @@ local function recorder_fn()
 end
 
 local function kit_postinit(inst)
-    inst.components.inventoryitem:ChangeImageName("wagstaff_item_2")
+    inst.components.inventoryitem.atlasname = "images/kei_data_recorder_item.xml"
+    inst.components.inventoryitem:ChangeImageName("kei_data_recorder_item")
 end
 
 local function UpdateRecordDronePosition(inst)
@@ -561,6 +666,56 @@ local function CreateRecordDroneShadowFx()
     return inst
 end
 
+local function recorder_lunar_fissure_fx_fn()
+    local inst = CreateEntity()
+
+    inst.entity:AddTransform()
+    inst.entity:AddAnimState()
+    inst.entity:AddNetwork()
+
+    inst:AddTag("FX")
+    inst:AddTag("NOCLICK")
+    inst:AddTag("NOBLOCK")
+
+    local variation = math.random(4)
+    local base_anim = "tile"..tostring(variation)
+
+    inst.AnimState:SetBank("wagboss_fissure")
+    inst.AnimState:SetBuild("wagboss_fissure")
+    inst.AnimState:PlayAnimation(base_anim.."_pre")
+    inst.AnimState:PushAnimation(base_anim.."_loop", true)
+    inst.AnimState:SetBloomEffectHandle("shaders/anim.ksh")
+    inst.AnimState:SetLightOverride(0.3)
+    inst.AnimState:SetOrientation(ANIM_ORIENTATION.OnGround)
+    inst.AnimState:SetLayer(LAYER_BACKGROUND)
+    inst.AnimState:SetSortOrder(2)
+    inst.AnimState:SetMultColour(
+        RECORDER_FISSURE_COLOUR_R,
+        RECORDER_FISSURE_COLOUR_G,
+        RECORDER_FISSURE_COLOUR_B,
+        RECORDER_FISSURE_ALPHA
+    )
+    inst.AnimState:SetAddColour(
+        RECORDER_FISSURE_ADD_R,
+        RECORDER_FISSURE_ADD_G,
+        RECORDER_FISSURE_ADD_B,
+        0
+    )
+    inst.AnimState:SetForceSinglePass(true)
+
+    inst.entity:SetPristine()
+
+    if not TheWorld.ismastersim then
+        return inst
+    end
+
+    inst.persists = false
+    inst.kei_base_anim = base_anim
+    inst.KillRecorderFissureFx = KillRecorderFissureFx
+
+    return inst
+end
+
 local function record_drone_fn()
     local inst = CreateEntity()
 
@@ -607,7 +762,8 @@ local function record_drone_fn()
 end
 
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "kei_record_drone", "vault_decon_mister_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "kei_record_drone", "kei_recorder_lunar_fissure_fx", "terrarium_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+    Prefab("kei_recorder_lunar_fissure_fx", recorder_lunar_fissure_fx_fn, assets),
     Prefab("kei_record_drone", record_drone_fn, assets),
     MakeDeployableKitItem(
         "kei_data_recorder_item",

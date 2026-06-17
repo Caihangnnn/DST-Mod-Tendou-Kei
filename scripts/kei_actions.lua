@@ -50,6 +50,18 @@ local function ConsumeOne(item)
     end
 end
 
+local function DeepCopyTable(value)
+    if type(value) ~= "table" then
+        return value
+    end
+
+    local result = {}
+    for k, v in pairs(value) do
+        result[DeepCopyTable(k)] = DeepCopyTable(v)
+    end
+    return result
+end
+
 local function Say(doer, key)
     -- 所有提示都走 Kei 的角色语音表，避免在动作里散落硬编码文本。
     if doer ~= nil and doer.components.talker ~= nil and STRINGS.CHARACTERS.KEI[key] ~= nil then
@@ -1215,6 +1227,74 @@ packup_record_action.rmb = true
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
 AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
 
+local function GiveCopiedCD(doer, cd)
+    if cd == nil then
+        return false
+    end
+
+    if doer.components.inventory ~= nil then
+        doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
+    else
+        cd.Transform:SetPosition(doer.Transform:GetWorldPosition())
+    end
+    return true
+end
+
+local function CopyProtocolCD(material, target, doer)
+    if TUNING.KEI_ALLOW_DATA_COPY == false or material == nil or target == nil then
+        return false
+    end
+
+    local cd = nil
+    if material:HasTag("kei_blank_cd")
+        and material.kei_bound_prefab == nil
+        and target:HasTag("kei_combat_protocol")
+    then
+        local protocol = target.kei_combat_protocol
+            or (target.kei_protocol_data ~= nil and target.kei_protocol_data.protocol or nil)
+        if protocol == nil then
+            return false
+        end
+        cd = SpawnPrefab("kei_combat_data_cd")
+        if cd ~= nil then
+            cd:SetCombatData(protocol)
+        end
+    elseif material:HasTag("kei_analysis_tool")
+        and target:HasTag("kei_analysis_protocol")
+        and target.kei_protocol_data ~= nil
+        and target.kei_protocol_data.kind == "analysis"
+    then
+        cd = SpawnPrefab("kei_analysis_cd")
+        if cd ~= nil then
+            cd:SetAnalysisData(DeepCopyTable(target.kei_protocol_data))
+        end
+    end
+
+    if cd == nil then
+        return false
+    end
+
+    if not GiveCopiedCD(doer, cd) then
+        cd:Remove()
+        return false
+    end
+
+    ConsumeOne(material)
+    Say(doer, "ANNOUNCE_KEI_COPY_DONE")
+    return true
+end
+
+local copy_cd_action = AddAction("KEI_COPY_DATA_CD", "拷贝数据", function(act)
+    if not IsKei(act.doer) or act.invobject == nil or act.target == nil then
+        return false
+    end
+    return CopyProtocolCD(act.invobject, act.target, act.doer)
+end)
+copy_cd_action.mount_valid = true
+copy_cd_action.rmb = true
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give"))
+
 local function AnalyzeEquipment(tool, target, doer)
     if IsAnalysisBlacklisted(target) then
         return false
@@ -1306,8 +1386,19 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
     end
     if inst:HasTag("kei_blank_cd") and target:HasTag("kei_data_recorder") then
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)
+    elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
+        and inst:HasTag("kei_blank_cd")
+        and inst.kei_bound_prefab == nil
+        and target:HasTag("kei_combat_protocol")
+    then
+        table.insert(actions, ACTIONS.KEI_COPY_DATA_CD)
     elseif inst:HasTag("kei_blank_cd") and inst.kei_bound_prefab == nil and target:HasTag("epic") then
         table.insert(actions, ACTIONS.KEI_BIND_CD)
+    elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
+        and inst:HasTag("kei_analysis_tool")
+        and target:HasTag("kei_analysis_protocol")
+    then
+        table.insert(actions, ACTIONS.KEI_COPY_DATA_CD)
     elseif inst:HasTag("kei_analysis_tool") and target.replica.equippable ~= nil and not IsAnalysisBlacklisted(target) then
         table.insert(actions, ACTIONS.KEI_ANALYZE_EQUIP)
     end
