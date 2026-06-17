@@ -11,6 +11,7 @@ PrefabFiles = {
     "kei_items",
     "kei_data_recorder",
     "kei_protocol_container",
+    "kei_protocol_binder",
     "kei_mutateddeerclops_aura",
     "kei_mutatedwarg_flamethrower",
     "kei_wagboss_beam",
@@ -26,6 +27,8 @@ Assets = {
     Asset("ANIM", "anim/kei_analysis_tool.zip"),
     Asset("ANIM", "anim/kei_blank_cd.zip"),
     Asset("ANIM", "anim/kei_combat_cd.zip"),
+    Asset("ANIM", "anim/kei_protocol_binder.zip"),
+    Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),
     Asset("ANIM", "anim/wx_chassis.zip"),
 
     Asset("ATLAS", "bigportraits/kei.xml"),  --人物大图（方形的那个）
@@ -47,6 +50,12 @@ Assets = {
     Asset("ATLAS", "images/kei_analysis_tool.xml"),
     Asset("ATLAS", "images/kei_blank_cd.xml"),
     Asset("ATLAS", "images/kei_combat_cd.xml"),
+    Asset("ATLAS", "images/kei_protocol_binder.xml"),
+    Asset("ATLAS", "images/kei_protocol_binder_open.xml"),
+    Asset("ATLAS", "images/transparent_slot.xml"),
+    Asset("IMAGE", "images/kei_protocol_binder.tex"),
+    Asset("IMAGE", "images/kei_protocol_binder_open.tex"),
+    Asset("IMAGE", "images/transparent_slot.tex"),
 }
 
 AddMinimapAtlas("images/map_icons/kei.xml")
@@ -294,13 +303,87 @@ AddComponentPostInit("temperature", function(self)
     end
 end)
 
--- Kei 专用协议容器：复用 WX-78 扩展存储单元 UI，但只允许协议 CD 放入。
 local containers = require("containers")
 containers.params.kei_protocol_container = deepcopy(containers.params.wx78_inventorycontainer)
 containers.params.kei_protocol_container.itemtestfn = function(container, item, slot)
     return item ~= nil and item:HasTag("kei_protocol_cd")
 end
 containers.params.kei_protocol_container.priorityfn = nil
+
+local function MakeProtocolBinderSlotPositions(count)
+    local slots = {}
+    local spacing = 75
+    local start = -spacing * (count - 1) * 0.5
+    for i = 1, count do
+        slots[i] = Vector3(start + spacing * (i - 1), 0, 0)
+    end
+    return slots
+end
+
+local function MakeProtocolBinderSlotBgs(count)
+    local slotbgs = {}
+    for i = 1, count do
+        slotbgs[i] = {
+            atlas = "images/transparent_slot.xml",
+            image = "transparent_slot.tex",
+        }
+    end
+    return slotbgs
+end
+
+local protocol_binder_slots = TUNING.KEI_PROTOCOL_SLOT_MAX or 7
+local protocol_binder_width = 75 * math.max(protocol_binder_slots - 1, 0)
+containers.params.kei_protocol_binder = {
+    widget = {
+        slotpos = {
+            Vector3(-267, 3, 0),
+            Vector3(-190, 3, 0),
+            Vector3(-113, 3, 0),
+            Vector3(-36, 3, 0),
+            Vector3(41, 3, 0),
+            Vector3(118, 3, 0),
+            Vector3(195, 3, 0),
+        },
+        slotbg = MakeProtocolBinderSlotBgs(protocol_binder_slots),
+        animbank = "ui_kei_protocol_box_7x1",
+        animbuild = "ui_kei_protocol_box_7x1",
+        animfn = function(container, doer, anim)
+            if anim == "open" then
+                return "opening"
+            elseif anim == "close" then
+                return "closing"
+            end
+            return anim
+        end,
+        pos = Vector3(0, 200, 0),
+        side_align_tip = math.max(160, protocol_binder_width * 0.5 + 120),
+        buttoninfo = {
+            text = "交换",
+            position = Vector3(305, 5, 0),
+        },
+    },
+    type = "kei_protocol_binder",
+    openlimit = 1,
+    acceptsstacks = false,
+}
+
+function containers.params.kei_protocol_binder.itemtestfn(container, item, slot)
+    return item ~= nil and item:HasTag("kei_protocol_cd")
+end
+
+function containers.params.kei_protocol_binder.widget.buttoninfo.fn(inst, doer)
+    if inst ~= nil and inst.SwapWithProtocolSlots ~= nil then
+        inst:SwapWithProtocolSlots(doer)
+    elseif inst.replica.container ~= nil and not inst.replica.container:IsBusy() then
+        SendRPCToServer(RPC.DoWidgetButtonAction, nil, inst, nil)
+    end
+end
+
+function containers.params.kei_protocol_binder.widget.buttoninfo.validfn(inst)
+    return inst ~= nil
+        and inst.replica.container ~= nil
+        and not inst.replica.container:IsBusy()
+end
 
 local KEI_CONTROL_IMMUNE_EVENTS = {
     suspended = true,

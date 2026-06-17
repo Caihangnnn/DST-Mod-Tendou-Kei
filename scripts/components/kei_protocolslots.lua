@@ -458,6 +458,58 @@ function KeiProtocolSlots:GetProtocolSlotItems()
     return items
 end
 
+function KeiProtocolSlots:SwapWithProtocolBinder(binder)
+    if binder == nil
+        or binder.components.container == nil
+        or self.inst.components.inventory == nil
+        or not self:IsFunctional()
+    then
+        return false
+    end
+
+    self:EnsureProtocolContainers()
+
+    local swapped = false
+    local inventory = self.inst.components.inventory
+    local binder_container = binder.components.container
+    local max_slots = math.min(GetMaxSlots(), binder_container.numslots or 0)
+
+    for slot = 1, max_slots do
+        if slot <= self.unlocked_slots then
+            local protocol_container = inventory:GetItemInSlot(slot)
+            if IsProtocolContainer(protocol_container) and protocol_container.components.container ~= nil then
+                local slot_container = protocol_container.components.container
+                local equipped_cd = slot_container:GetItemInSlot(1)
+                local stored_cd = binder_container:GetItemInSlot(slot)
+
+                if equipped_cd ~= nil or stored_cd ~= nil then
+                    equipped_cd = equipped_cd ~= nil and slot_container:RemoveItemBySlot(1, true) or nil
+                    stored_cd = stored_cd ~= nil and binder_container:RemoveItemBySlot(slot, true) or nil
+
+                    local stored_ok = stored_cd == nil or slot_container:GiveItem(stored_cd, 1)
+                    local equipped_ok = equipped_cd == nil or binder_container:GiveItem(equipped_cd, slot)
+
+                    if not stored_ok and stored_cd ~= nil then
+                        binder_container:GiveItem(stored_cd, slot)
+                    end
+                    if not equipped_ok and equipped_cd ~= nil then
+                        slot_container:GiveItem(equipped_cd, 1)
+                    end
+
+                    swapped = swapped
+                        or (stored_cd ~= nil and stored_ok)
+                        or (equipped_cd ~= nil and equipped_ok)
+                end
+            end
+        end
+    end
+
+    if swapped then
+        self:Refresh()
+    end
+    return swapped
+end
+
 local function CleanVirtualEquipment(item, equipslot)
     item.persists = false
     item:AddTag("kei_virtual_equipment")

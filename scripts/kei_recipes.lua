@@ -145,6 +145,18 @@ AddRecipe2(
     filters
 )
 
+-- 协议预设盒：保存一组协议 CD，并可与当前已解锁协议槽一键交换。
+AddRecipe2(
+    "kei_protocol_binder",
+    { Ingredient("boards", 2), Ingredient("transistor", 2) },
+    TECH.NONE,
+    kei_config({
+        atlas = "images/kei_protocol_binder.xml",
+        image = "kei_protocol_binder.tex",
+    }),
+    filters
+)
+
 -- 三个解锁模块共用同一套初版材料；实际解锁数量由模组配置决定。
 local mk_data = {
     { image = "kei_mk1.tex", atlas = "images/kei_mk1.xml" },

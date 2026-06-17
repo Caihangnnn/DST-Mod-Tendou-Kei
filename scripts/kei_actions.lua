@@ -448,6 +448,22 @@ local function GetTargetWorldAnim(target, slot)
     return slot == EQUIPSLOTS.HANDS and "idle" or "anim"
 end
 
+local function GetTargetSkinName(target)
+    if target == nil or target.GetSkinName == nil then
+        return nil
+    end
+    local success, skin_name = pcall(target.GetSkinName, target)
+    return success and skin_name or nil
+end
+
+local function GetTargetSkinBuild(target)
+    if target == nil or target.GetSkinBuild == nil then
+        return nil
+    end
+    local success, skin_build = pcall(target.GetSkinBuild, target)
+    return success and skin_build or nil
+end
+
 local function FindRecorderForTarget(target)
     -- 手持空白 CD 点巨兽时，寻找能覆盖该巨兽的空闲记录仪。
     if not IsValidRecordTarget(target) then
@@ -1222,6 +1238,8 @@ local function AnalyzeEquipment(tool, target, doer)
         visual_bank = target.AnimState ~= nil and target.AnimState:GetBankHash() or nil,
         visual_build = target.AnimState ~= nil and target.AnimState:GetBuild() or nil,
         visual_anim = GetTargetWorldAnim(target, slot),
+        skin_name = GetTargetSkinName(target),
+        skin_build = GetTargetSkinBuild(target),
     }
 
     -- 头部和身体装备提取护甲吸收率；手部装备提取武器、移速和平面伤害信息。

@@ -15,6 +15,7 @@ local prefabs = {
     "kei_battery",
     "kei_dormant_chassis",
     "kei_protocol_container",
+    "kei_protocol_binder",
     "reticuleaoe",
     "reticuleaoeping",
     "reticuleline",

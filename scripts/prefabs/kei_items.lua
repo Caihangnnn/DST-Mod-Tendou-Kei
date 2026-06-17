@@ -340,10 +340,86 @@ local function SetAnalysisWorldAnimation(inst, bank, build, anim)
     end
 end
 
+local WORLD_ANIM_CANDIDATES = {
+    "anim",
+    "idle",
+    "idle_loop",
+    "idle1",
+    "idle2",
+    "idle3",
+    "idle4",
+}
+
+local function GetCurrentOrFallbackAnim(source, fallback)
+    if source ~= nil and source.AnimState ~= nil then
+        for _, anim in ipairs(WORLD_ANIM_CANDIDATES) do
+            if source.AnimState:IsCurrentAnimation(anim) then
+                return anim
+            end
+        end
+    end
+    return fallback or "anim"
+end
+
+local function GetSkinBuild(source)
+    if source == nil or source.GetSkinBuild == nil then
+        return nil
+    end
+    local success, skin_build = pcall(source.GetSkinBuild, source)
+    return success and skin_build or nil
+end
+
+local function GetAnalysisVisualFromSource(data)
+    if data == nil or data.source == nil then
+        return nil
+    end
+
+    local success, source = pcall(SpawnPrefab, data.source, data.skin_name)
+    if not success then
+        source = nil
+    end
+    if source == nil then
+        return nil
+    end
+
+    source:AddTag("INLIMBO")
+    if source.Hide ~= nil then
+        source:Hide()
+    elseif source.entity ~= nil and source.entity.Hide ~= nil then
+        source.entity:Hide()
+    end
+    if source.components.inventoryitem ~= nil and source.components.inventoryitem.Hide ~= nil then
+        source.components.inventoryitem:Hide()
+    end
+
+    local visual = nil
+    if source.AnimState ~= nil then
+        local visual_success, visual_data = pcall(function()
+            return {
+                bank = source.AnimState:GetBankHash(),
+                build = data.skin_build or GetSkinBuild(source) or source.AnimState:GetBuild(),
+                anim = GetCurrentOrFallbackAnim(source, data.visual_anim),
+            }
+        end)
+        visual = visual_success and visual_data or nil
+    end
+
+    if source.Remove ~= nil then
+        source:Remove()
+    end
+    return visual
+end
+
 local function ApplyAnalysisAppearance(inst, data, icon_image)
     if UseEquipmentVisual() and data.source ~= nil then
         SetInventoryImage(inst, icon_image, data.icon_atlas, DEFAULT_ANALYSIS_VISUAL.image)
-        SetAnalysisWorldAnimation(inst, data.visual_bank, data.visual_build, data.visual_anim)
+        local visual = GetAnalysisVisualFromSource(data)
+        SetAnalysisWorldAnimation(
+            inst,
+            (visual ~= nil and visual.bank or nil) or data.visual_bank,
+            (visual ~= nil and visual.build or nil) or data.skin_build or data.visual_build,
+            (visual ~= nil and visual.anim or nil) or data.visual_anim
+        )
     else
         SetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.image, DEFAULT_ANALYSIS_VISUAL.atlas)
         SetAnalysisWorldAnimation(inst)
@@ -449,6 +525,8 @@ local function SetAnalysisData(inst, data)
         visual_bank = data.visual_bank,
         visual_build = data.visual_build,
         visual_anim = data.visual_anim,
+        skin_name = data.skin_name,
+        skin_build = data.skin_build,
         absorb = data.absorb or 0,
         damage_bonus = damage_bonus or 0,
         speed_mult = data.speed_mult or 1,
