@@ -1457,3 +1457,25 @@ AddComponentAction("SCENE", "workable", function(inst, doer, actions, right)
         end
     end
 end)
+
+AddComponentAction("SCENE", "portablestructure", function(inst, doer, actions, right)
+    if not right
+        or not IsKei(doer)
+        or not inst:HasTag("engineering")
+        or inst:HasTag("burnt")
+        or (inst:HasTag("fire") and not inst:HasTag("campfire"))
+    then
+        return
+    end
+
+    if inst.candismantle ~= nil and not inst:candismantle(doer) then
+        return
+    end
+
+    local container = inst.replica ~= nil and inst.replica.container or nil
+    if container ~= nil and (not container:CanBeOpened() or container:IsOpenedBy(doer)) then
+        return
+    end
+
+    table.insert(actions, ACTIONS.DISMANTLE)
+end)

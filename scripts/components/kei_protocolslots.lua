@@ -351,7 +351,7 @@ function KeiProtocolSlots:IsDisabledByHealth()
 end
 
 function KeiProtocolSlots:IsFunctional()
-    return not self:IsDisabledByHealth()
+    return not self:IsDisabledByHealth() and not self.inst:HasTag("kei_dormant")
 end
 
 function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)

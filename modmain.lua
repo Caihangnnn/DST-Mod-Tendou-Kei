@@ -220,6 +220,8 @@ TUNING.KEI_REPAIR_VALUE = 50 -- 修复物品恢复的机体完整度
 TUNING.KEI_DORMANT_POWER_DRAIN = 1 -- 休眠状态每秒消耗的电量
 TUNING.KEI_DORMANT_STABILITY_REGEN = 3 -- 休眠状态每秒恢复的数据稳定性
 TUNING.KEI_DORMANT_INTEGRITY_REGEN = 3 -- 休眠状态每秒恢复的机体完整度
+TUNING.KEI_DORMANT_BATTERY_CHARGE_RATE = 3 -- 休眠时从薇诺娜发电机获得的每秒充电量
+TUNING.KEI_DORMANT_ZERO_POWER_GRACE_TIME = 3 -- 休眠时电量为0后强制退出前的宽限时间
 
 -- 低电量 / 自动修复 / 协议消耗相关数值集中放在 TUNING，方便后续平衡。
 TUNING.KEI_LOW_POWER_DAMAGE = 3 -- 低电量时每秒受到的伤害值
@@ -342,6 +344,200 @@ containers.params.kei_protocol_container.widget.animfn = function(container, doe
         return "closing"
     end
     return anim
+end
+
+local function ContainerHasRoomForItem(container, item)
+    if container == nil
+        or item == nil
+        or not container:CanTakeItemInSlot(item)
+    then
+        return false
+    end
+
+    for slot = 1, container:GetNumSlots() do
+        local stored = container:GetItemInSlot(slot)
+        if stored == nil then
+            if container:CanTakeItemInSlot(item, slot) then
+                return true
+            end
+        elseif container:AcceptsStacks()
+            and stored.components.stackable ~= nil
+            and not stored.components.stackable:IsFull()
+            and stored.components.stackable:CanStackWith(item)
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function InventoryHasNonProtocolRoomForItem(inventory, item)
+    if inventory == nil
+        or item == nil
+        or not inventory:IsOpenedBy(inventory.inst)
+    then
+        return false
+    end
+
+    local slot, target = inventory:GetNextAvailableSlot(item)
+    return slot ~= nil
+        and not (target ~= nil and target.inst ~= nil and target.inst:HasTag("kei_protocol_slot"))
+end
+
+local function FindOpenProtocolBinderWithRoom(opener, item)
+    local inventory = opener ~= nil and opener.components.inventory or nil
+    if inventory == nil then
+        return nil
+    end
+
+    for container_inst in pairs(inventory.opencontainers) do
+        local container = container_inst.components.container
+        if container_inst:HasTag("kei_protocol_binder")
+            and container ~= nil
+            and container:IsOpenedBy(opener)
+            and ContainerHasRoomForItem(container, item)
+        then
+            return container_inst
+        end
+    end
+end
+
+AddComponentPostInit("container", function(self)
+    local old_MoveItemFromAllOfSlot = self.MoveItemFromAllOfSlot
+
+    function self:MoveItemFromAllOfSlot(slot, container, opener, ...)
+        local item = self:GetItemInSlot(slot)
+        if opener ~= nil
+            and self.inst:HasTag("kei_protocol_slot")
+            and item ~= nil
+            and item:HasTag("kei_protocol_cd")
+            and item.components.inventoryitem ~= nil
+            and not item.components.inventoryitem.islockedinslot
+        then
+            local binder = FindOpenProtocolBinderWithRoom(opener, item)
+            if binder ~= nil then
+                old_MoveItemFromAllOfSlot(self, slot, binder, opener, ...)
+                return
+            end
+
+            if InventoryHasNonProtocolRoomForItem(opener.components.inventory, item) then
+                old_MoveItemFromAllOfSlot(self, slot, opener, opener, ...)
+                return
+            end
+
+            return
+        end
+
+        old_MoveItemFromAllOfSlot(self, slot, container, opener, ...)
+    end
+end)
+
+local function ClientContainerHasRoomForItem(container, item)
+    if container == nil
+        or item == nil
+        or not container:CanTakeItemInSlot(item)
+    then
+        return false
+    end
+
+    local item_stackable = item.replica.stackable
+    if container:AcceptsStacks() and item_stackable ~= nil then
+        for _, stored in pairs(container:GetItems()) do
+            local stored_stackable = stored.replica.stackable
+            if stored_stackable ~= nil
+                and not stored_stackable:IsFull()
+                and stored_stackable:CanStackWith(item)
+            then
+                return true
+            end
+        end
+    end
+
+    for slot = 1, container:GetNumSlots() do
+        if container:GetItemInSlot(slot) == nil and container:CanTakeItemInSlot(item, slot) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function ClientFindOpenProtocolBinderWithRoom(character, item)
+    local inventory = character ~= nil and character.replica.inventory or nil
+    local opencontainers = inventory ~= nil and inventory:GetOpenContainers() or nil
+    if opencontainers == nil then
+        return nil
+    end
+
+    for container_inst in pairs(opencontainers) do
+        local container = container_inst.replica.container
+        if container_inst:HasTag("kei_protocol_binder")
+            and container ~= nil
+            and container:IsOpenedBy(character)
+            and ClientContainerHasRoomForItem(container, item)
+        then
+            return container_inst
+        end
+    end
+end
+
+local function ClientInventoryHasRoomForItem(character, item)
+    local inventory = character ~= nil and character.replica.inventory or nil
+    if inventory == nil or item == nil then
+        return false
+    end
+
+    if ClientContainerHasRoomForItem(inventory, item) then
+        return true
+    end
+
+    local overflow = inventory:GetOverflowContainer()
+    return overflow ~= nil and ClientContainerHasRoomForItem(overflow, item)
+end
+
+if not TheNet:IsDedicated() then
+    AddClassPostConstruct("widgets/invslot", function(self)
+        local old_TradeItem = self.TradeItem
+
+        function self:TradeItem(stack_mod, ...)
+            local slot_number = self.num
+            local character = self.owner
+            local inventory = character ~= nil and character.replica.inventory or nil
+            local container = self.container
+            local container_inst = container ~= nil and container.inst or nil
+            local container_item = container ~= nil
+                and (container.IsReadOnlyContainer == nil or not container:IsReadOnlyContainer())
+                and container:GetItemInSlot(slot_number)
+                or nil
+
+            if not stack_mod
+                and character ~= nil
+                and inventory ~= nil
+                and container_inst ~= nil
+                and container_inst:HasTag("kei_protocol_slot")
+                and container_item ~= nil
+                and container_item:HasTag("kei_protocol_cd")
+                and container_item.replica.inventoryitem ~= nil
+                and not container_item.replica.inventoryitem:IsLockedInSlot()
+            then
+                local dest_inst = ClientFindOpenProtocolBinderWithRoom(character, container_item)
+                if dest_inst == nil and ClientInventoryHasRoomForItem(character, container_item) then
+                    dest_inst = character
+                end
+
+                if dest_inst ~= nil then
+                    container:MoveItemFromAllOfSlot(slot_number, dest_inst)
+                    TheFocalPoint.SoundEmitter:PlaySound("dontstarve/HUD/click_object")
+                else
+                    TheFocalPoint.SoundEmitter:PlaySound("dontstarve/HUD/click_negative")
+                end
+                return
+            end
+
+            return old_TradeItem(self, stack_mod, ...)
+        end
+    end)
 end
 
 local function MakeProtocolBinderSlotPositions(count)
@@ -829,6 +1025,7 @@ end)
 modimport("scripts/kei_strings.lua")
 modimport("scripts/kei_assets.lua")
 modimport("scripts/kei_actions.lua")
+modimport("scripts/kei_winona_compat.lua")
 modimport("scripts/kei_recipes.lua")
 
 if not TheNet:IsDedicated() and TheInput ~= nil then

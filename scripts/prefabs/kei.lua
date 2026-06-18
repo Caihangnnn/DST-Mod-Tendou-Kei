@@ -466,6 +466,171 @@ local function ClearDormantAttackers(inst)
     end
 end
 
+local function StopDormantBatteryCharge(inst)
+    local node = inst.kei_dormant_charge_node
+    if node ~= nil then
+        if node:IsValid() then
+            if node.components.circuitnode ~= nil then
+                node.components.circuitnode:Disconnect()
+            end
+            node:Remove()
+        end
+        inst.kei_dormant_charge_node = nil
+        inst.kei_dormant_charge_battery = nil
+    end
+end
+
+local function CancelDormantZeroPowerExit(inst)
+    if inst.kei_dormant_zero_power_exit_task ~= nil then
+        inst.kei_dormant_zero_power_exit_task:Cancel()
+        inst.kei_dormant_zero_power_exit_task = nil
+    end
+end
+
+local function ScheduleDormantZeroPowerExit(inst)
+    if inst.kei_dormant_zero_power_exit_task ~= nil then
+        return
+    end
+
+    inst.kei_dormant_zero_power_exit_task = inst:DoTaskInTime(TUNING.KEI_DORMANT_ZERO_POWER_GRACE_TIME or 3, function(inst)
+        inst.kei_dormant_zero_power_exit_task = nil
+        if inst.kei_dormant_active
+            and inst.components ~= nil
+            and inst.components.hunger ~= nil
+            and inst.components.hunger.current <= 0
+        then
+            inst:StopKeiDormant()
+        end
+    end)
+end
+
+local function IsDormantBatteryUsable(inst, battery)
+    if battery == nil
+        or not battery:IsValid()
+        or battery:HasTag("burnt")
+        or battery.components == nil
+        or battery.components.circuitnode == nil
+        or not battery.components.circuitnode:IsEnabled()
+        or battery.components.fueled == nil
+        or battery.components.fueled:IsEmpty()
+        or (battery.IsOverloaded ~= nil and battery:IsOverloaded())
+    then
+        return false
+    end
+
+    if not battery.components.circuitnode.connectsacrossplatforms
+        and battery:GetCurrentPlatform() ~= inst:GetCurrentPlatform()
+    then
+        return false
+    end
+
+    local range = battery.components.circuitnode.range or TUNING.WINONA_BATTERY_RANGE or 16
+    return battery:GetDistanceSqToInst(inst) <= range * range
+end
+
+local function FindDormantChargeBattery(inst)
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local range = TUNING.WINONA_BATTERY_RANGE or 16
+    local batteries = TheSim:FindEntities(x, y, z, range, { "engineeringbattery" }, { "INLIMBO", "burnt" })
+    for _, battery in ipairs(batteries) do
+        if IsDormantBatteryUsable(inst, battery) then
+            return battery
+        end
+    end
+end
+
+local function CreateDormantChargeNode(inst)
+    local node = CreateEntity()
+
+    node.entity:SetCanSleep(false)
+    node.persists = false
+
+    node.entity:AddTransform()
+    node:AddTag("CLASSIFIED")
+    node:AddTag("NOCLICK")
+    node:AddTag("engineeringbatterypowered")
+
+    node:AddComponent("circuitnode")
+    node.components.circuitnode:SetFootprint(0)
+    node.components.circuitnode.connectsacrossplatforms = false
+    node.components.circuitnode:ConnectTo(nil)
+
+    node:AddComponent("powerload")
+    node.components.powerload:SetLoad(1)
+
+    node.kei_owner = inst
+    node.AddBatteryPower = function(node)
+        local owner = node.kei_owner
+        if owner == nil
+            or not owner:IsValid()
+            or not owner.kei_dormant_active
+            or owner.components == nil
+            or owner.components.hunger == nil
+        then
+            if owner ~= nil and owner.StopDormantBatteryCharge ~= nil then
+                owner:StopDormantBatteryCharge()
+            elseif node:IsValid() then
+                node:Remove()
+            end
+            return
+        end
+
+        local hunger = owner.components.hunger
+        local max_power = hunger.max or TUNING.KEI_MAX_POWER or 120
+        if hunger.current >= max_power then
+            owner:StopDormantBatteryCharge()
+            return
+        end
+
+        local delta = math.min(max_power - hunger.current, (TUNING.KEI_DORMANT_BATTERY_CHARGE_RATE or 3) * 0.5)
+        if delta > 0 then
+            hunger:DoDelta(delta, nil, true)
+            if hunger.current > 0 then
+                CancelDormantZeroPowerExit(owner)
+            end
+        end
+        if hunger.current >= max_power then
+            owner:StopDormantBatteryCharge()
+        end
+    end
+
+    inst.kei_dormant_charge_node = node
+    return node
+end
+
+local function UpdateDormantBatteryCharge(inst)
+    local hunger = inst.components.hunger
+    if hunger == nil or hunger.current >= (hunger.max or TUNING.KEI_MAX_POWER or 120) then
+        StopDormantBatteryCharge(inst)
+        return false
+    end
+
+    local battery = inst.kei_dormant_charge_battery
+    if not IsDormantBatteryUsable(inst, battery) then
+        battery = FindDormantChargeBattery(inst)
+    end
+    if battery == nil then
+        StopDormantBatteryCharge(inst)
+        return false
+    end
+
+    local node = inst.kei_dormant_charge_node
+    if node == nil or not node:IsValid() then
+        node = CreateDormantChargeNode(inst)
+    end
+    node.Transform:SetPosition(inst.Transform:GetWorldPosition())
+
+    if inst.kei_dormant_charge_battery ~= battery or node.components.circuitnode.numnodes <= 0 then
+        node.components.circuitnode:Disconnect()
+        node.components.circuitnode:ConnectTo(nil)
+        node.components.circuitnode:AddNode(battery)
+        inst.kei_dormant_charge_battery = battery
+        battery:PushEvent("engineeringcircuitchanged")
+    end
+
+    return true
+end
+
 local function DoDormantTick(inst)
     if not inst.kei_dormant_active
         or inst.components.health == nil
@@ -479,16 +644,38 @@ local function DoDormantTick(inst)
     end
 
     if inst.components.hunger.current <= 0 then
-        inst:StopKeiDormant()
+        UpdateDormantBatteryCharge(inst)
+        ScheduleDormantZeroPowerExit(inst)
         return
     end
 
+    CancelDormantZeroPowerExit(inst)
     ClearDormantAttackers(inst)
-    inst.components.hunger:DoDelta(-(TUNING.KEI_DORMANT_POWER_DRAIN or 1))
-    if inst.components.sanity ~= nil then
+    UpdateDormantBatteryCharge(inst)
+
+    local health = inst.components.health
+    local sanity = inst.components.sanity
+    local health_before = health.currenthealth or 0
+    local sanity_before = sanity ~= nil and sanity.current or nil
+    local needs_integrity = health_before < (health.maxhealth or TUNING.KEI_MAX_INTEGRITY)
+    local needs_stability = sanity ~= nil and sanity_before < (sanity.max or TUNING.KEI_MAX_STABILITY)
+
+    if not needs_integrity and not needs_stability then
+        return
+    end
+
+    if needs_stability then
         inst.components.sanity:DoDelta(TUNING.KEI_DORMANT_STABILITY_REGEN or 3)
     end
-    inst.components.health:DoDelta(TUNING.KEI_DORMANT_INTEGRITY_REGEN or 3, true, "kei_dormant", true)
+    if needs_integrity then
+        health:DoDelta(TUNING.KEI_DORMANT_INTEGRITY_REGEN or 3, true, "kei_dormant", true)
+    end
+
+    if (sanity ~= nil and sanity_before ~= nil and sanity.current > sanity_before)
+        or (health.currenthealth or 0) > health_before
+    then
+        inst.components.hunger:DoDelta(-(TUNING.KEI_DORMANT_POWER_DRAIN or 1), nil, true)
+    end
 end
 
 local function StopDormantTask(inst)
@@ -507,7 +694,7 @@ local function StartKeiDormant(inst, playfx)
         return false
     end
 
-    if inst.components.hunger == nil or inst.components.hunger.current <= 0 then
+    if inst.components.hunger == nil then
         return false
     end
 
@@ -516,6 +703,9 @@ local function StartKeiDormant(inst, playfx)
     inst:AddTag("notarget")
     inst:AddTag("noattack")
     inst:AddTag("NOBLOCK")
+    if inst.components.kei_protocolslots ~= nil then
+        inst.components.kei_protocolslots:DisableAllProtocols()
+    end
 
     if inst.components.health ~= nil then
         inst.kei_dormant_old_invincible = inst.components.health.invincible
@@ -551,6 +741,10 @@ local function StartKeiDormant(inst, playfx)
     end
     StopDormantTask(inst)
     inst.kei_dormant_task = inst:DoPeriodicTask(1, DoDormantTick, 1)
+    if inst.components.hunger.current <= 0 then
+        UpdateDormantBatteryCharge(inst)
+        ScheduleDormantZeroPowerExit(inst)
+    end
     UpdateDormantActionFilter(inst)
 
     return true
@@ -561,9 +755,14 @@ local function StopKeiDormant(inst, playfx)
         return false
     end
 
+    CancelDormantZeroPowerExit(inst)
+    StopDormantBatteryCharge(inst)
     StopDormantTask(inst)
     inst.kei_dormant_active = nil
     inst:RemoveTag("kei_dormant")
+    if inst.components.kei_protocolslots ~= nil then
+        inst.components.kei_protocolslots:Refresh()
+    end
     inst:RemoveTag("notarget")
     inst:RemoveTag("noattack")
     inst:RemoveTag("NOBLOCK")
@@ -688,6 +887,9 @@ local function master_postinit(inst)
 
     inst.StartKeiDormant = StartKeiDormant
     inst.StopKeiDormant = StopKeiDormant
+    inst.StopDormantBatteryCharge = StopDormantBatteryCharge
+    inst.CancelDormantZeroPowerExit = CancelDormantZeroPowerExit
+    inst.ScheduleDormantZeroPowerExit = ScheduleDormantZeroPowerExit
 
     inst:DoPeriodicTask(TUNING.KEI_SELF_REPAIR_PERIOD, UpdateIntegrityState)
     inst:ListenForEvent("death", StopKeiDormant)
