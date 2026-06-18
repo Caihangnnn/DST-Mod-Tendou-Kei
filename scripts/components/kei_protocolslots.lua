@@ -10,6 +10,10 @@ local WAGBOSS_PROTOCOL_COOLDOWN = 20
 local CELESTIAL_ORB_FOLLOW_PERIOD = FRAMES
 local CELESTIAL_ORB_TARGET_MUST_TAGS = { "_combat", "_health" }
 local CELESTIAL_ORB_TARGET_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "companion" }
+local DRAGONFLY_BURN_COLOUR = { 242 / 255, 144 / 255, 186 / 255, 1 }
+local DRAGONFLY_BURN_DURATION = 30
+local DRAGONFLY_BURN_DAMAGE_PERIOD = 1
+local DRAGONFLY_BURN_MAX_HEALTH_DAMAGE = 0.001
 
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
@@ -25,6 +29,9 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_celestial_orbs = {}
     self._kei_celestial_orb_angles = {}
     self._kei_celestial_orb_hit_times = setmetatable({}, { __mode = "k" })
+    self._kei_daywalker2_shield_fx = nil
+    self._kei_wagboss_target_fx = nil
+    self._kei_wagboss_target_ready_task = nil
 
     self:SyncUnlockedSlots()
 
@@ -686,6 +693,74 @@ function KeiProtocolSlots:SetAnalysisToolActions(actions, tough)
     self.analysis_tool_tough = tough or nil
 end
 
+function KeiProtocolSlots:EnableDaywalker2ShieldFx()
+    if self._kei_daywalker2_shield_fx ~= nil and self._kei_daywalker2_shield_fx:IsValid() then
+        return
+    end
+
+    local fx = SpawnPrefab("kei_daywalker2_shield_fx")
+    if fx ~= nil then
+        fx.entity:SetParent(self.inst.entity)
+        fx.Transform:SetPosition(0, 1.5, 0)
+        self._kei_daywalker2_shield_fx = fx
+    end
+end
+
+function KeiProtocolSlots:DisableDaywalker2ShieldFx()
+    if self._kei_daywalker2_shield_fx ~= nil then
+        if self._kei_daywalker2_shield_fx:IsValid() then
+            self._kei_daywalker2_shield_fx:Remove()
+        end
+        self._kei_daywalker2_shield_fx = nil
+    end
+end
+
+function KeiProtocolSlots:EnableWagbossTargetFx()
+    if self._kei_wagboss_target_fx ~= nil and self._kei_wagboss_target_fx:IsValid() then
+        return
+    end
+
+    local fx = SpawnPrefab("kei_wagboss_target_fx")
+    if fx ~= nil then
+        fx.entity:SetParent(self.inst.entity)
+        fx.Transform:SetPosition(0, 0, 0)
+        self._kei_wagboss_target_fx = fx
+    end
+end
+
+function KeiProtocolSlots:DisableWagbossTargetFx()
+    if self._kei_wagboss_target_ready_task ~= nil then
+        self._kei_wagboss_target_ready_task:Cancel()
+        self._kei_wagboss_target_ready_task = nil
+    end
+    if self._kei_wagboss_target_fx ~= nil then
+        if self._kei_wagboss_target_fx:IsValid() then
+            self._kei_wagboss_target_fx:Remove()
+        end
+        self._kei_wagboss_target_fx = nil
+    end
+end
+
+function KeiProtocolSlots:RefreshWagbossTargetFx()
+    if not self:IsFunctional() or not self.active_combat.wagboss_robot then
+        self:DisableWagbossTargetFx()
+        return
+    end
+
+    local now = GetTime()
+    local ready_time = self._kei_wagboss_beam_ready_time or 0
+    if ready_time > now then
+        self:DisableWagbossTargetFx()
+        self._kei_wagboss_target_ready_task = self.inst:DoTaskInTime(ready_time - now, function()
+            self._kei_wagboss_target_ready_task = nil
+            self:RefreshWagbossTargetFx()
+        end)
+        return
+    end
+
+    self:EnableWagbossTargetFx()
+end
+
 function KeiProtocolSlots:ClearModifiers()
     self:ClearVirtualEquips()
     self:ClearAnalysisToolActions()
@@ -703,6 +778,8 @@ function KeiProtocolSlots:ClearModifiers()
     self:DisableToadstoolProtocol()
     self:DisableMutatedDeerclopsProtocol()
     self:DisableCelestialOrbProtocol()
+    self:DisableDaywalker2ShieldFx()
+    self:DisableWagbossTargetFx()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
@@ -1198,15 +1275,18 @@ function KeiProtocolSlots:Refresh()
     self:RefreshMalbatrossProtocol()
     self:RefreshToadstoolProtocol()
     self:RefreshCelestialOrbProtocol()
+    self:RefreshWagbossTargetFx()
     if not self.active_combat.mutateddeerclops then
         self:DisableMutatedDeerclopsProtocol()
     end
     if self.active_combat.daywalker2 then
         self.inst:AddTag("kei_stagger_immune")
         self.inst:AddTag("kei_control_immune")
+        self:EnableDaywalker2ShieldFx()
     else
         self.inst:RemoveTag("kei_stagger_immune")
         self.inst:RemoveTag("kei_control_immune")
+        self:DisableDaywalker2ShieldFx()
     end
     if self.active_combat.mutatedbearger then
         self.inst:AddTag("kei_attack_speed_boost")
@@ -1274,11 +1354,12 @@ function KeiProtocolSlots:DrainProtocols()
     power_cost = math.min(power_cost, drain.cap)
     stability_cost = math.min(stability_cost, drain.cap)
 
+    local silent_drain = not TUNING.KEI_PROTOCOL_DRAIN_SOUND
     if power_cost > 0 and self.inst.components.hunger ~= nil then
-        self.inst.components.hunger:DoDelta(-power_cost)
+        self.inst.components.hunger:DoDelta(-power_cost, silent_drain)
     end
     if stability_cost > 0 and self.inst.components.sanity ~= nil then
-        self.inst.components.sanity:DoDelta(-stability_cost)
+        self.inst.components.sanity:DoDelta(-stability_cost, silent_drain)
     end
 
     self:Refresh()
@@ -1734,6 +1815,14 @@ function KeiProtocolSlots:DoWagbossProtocol(target)
     beam:SetCaster(self.inst)
     beam:TrackTarget(target, x, z)
     self._kei_wagboss_beam_ready_time = now + (TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN or WAGBOSS_PROTOCOL_COOLDOWN)
+    self:DisableWagbossTargetFx()
+    self._kei_wagboss_target_ready_task = self.inst:DoTaskInTime(
+        TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN or WAGBOSS_PROTOCOL_COOLDOWN,
+        function()
+            self._kei_wagboss_target_ready_task = nil
+            self:RefreshWagbossTargetFx()
+        end
+    )
 end
 
 function KeiProtocolSlots:SpawnMinotaurTentacle(target)
@@ -1755,6 +1844,11 @@ function KeiProtocolSlots:SpawnMinotaurTentacle(target)
     tentacle.kei_owner = self.inst
     tentacle.kei_target = target
     tentacle.Transform:SetPosition(pt.x + offset.x, 0, pt.z + offset.z)
+    tentacle:DoTaskInTime(TUNING.KEI_MINOTAUR_TENTACLE_LIFETIME or 30, function(inst)
+        if inst:IsValid() then
+            inst:Remove()
+        end
+    end)
     if tentacle.components.combat ~= nil then
         tentacle.components.combat:SetRetargetFunction(0.5, function(inst)
             return IsValidMinotaurProtocolTarget(inst.kei_owner, inst.kei_target) and inst.kei_target or nil
@@ -2008,6 +2102,129 @@ function KeiProtocolSlots:DoBeequeenProtocol(attacker)
     end
 end
 
+local function ApplyDragonflyBurnVisuals(target)
+    local burnable = target ~= nil and target.components.burnable or nil
+    if burnable == nil or burnable.fxchildren == nil then
+        return
+    end
+
+    for _, fx in ipairs(burnable.fxchildren) do
+        if fx.AnimState ~= nil then
+            fx.AnimState:SetMultColour(
+                DRAGONFLY_BURN_COLOUR[1],
+                DRAGONFLY_BURN_COLOUR[2],
+                DRAGONFLY_BURN_COLOUR[3],
+                DRAGONFLY_BURN_COLOUR[4]
+            )
+        end
+        if fx.components.firefx ~= nil and fx.components.firefx.light ~= nil then
+            fx.components.firefx.light.Light:SetColour(
+                DRAGONFLY_BURN_COLOUR[1],
+                DRAGONFLY_BURN_COLOUR[2],
+                DRAGONFLY_BURN_COLOUR[3]
+            )
+        end
+    end
+end
+
+local function StopDragonflyBurn(target)
+    local data = target ~= nil and target._kei_dragonfly_burn_data or nil
+    if data == nil then
+        return
+    end
+
+    target._kei_dragonfly_burn_data = nil
+    if data.task ~= nil then
+        data.task:Cancel()
+    end
+    if data.has_old_burntime and target.components.burnable ~= nil then
+        target.components.burnable.burntime = data.old_burntime
+    end
+    if data.onextinguish ~= nil then
+        target:RemoveEventCallback("onextinguish", data.onextinguish)
+    end
+    if data.ondeath ~= nil then
+        target:RemoveEventCallback("death", data.ondeath)
+    end
+    if data.onremove ~= nil then
+        target:RemoveEventCallback("onremove", data.onremove)
+    end
+end
+
+local function StartDragonflyBurn(owner, target)
+    if owner == nil
+        or target == nil
+        or not target:IsValid()
+        or target.components.burnable == nil
+    then
+        return
+    end
+
+    local burnable = target.components.burnable
+    if burnable:IsBurning() then
+        local data = target._kei_dragonfly_burn_data
+        if data == nil then
+            return
+        end
+
+        burnable.burntime = DRAGONFLY_BURN_DURATION
+        burnable:ExtendBurning()
+        ApplyDragonflyBurnVisuals(target)
+        return
+    end
+
+    local had_tag = owner:HasTag("controlled_burner")
+    if not had_tag then
+        owner:AddTag("controlled_burner")
+    end
+    burnable:Ignite(nil, owner, owner)
+    if not had_tag then
+        owner:RemoveTag("controlled_burner")
+    end
+
+    if not burnable:IsBurning() then
+        return
+    end
+
+    ApplyDragonflyBurnVisuals(target)
+    StopDragonflyBurn(target)
+
+    local data = { old_burntime = burnable.burntime, has_old_burntime = true }
+    burnable.burntime = DRAGONFLY_BURN_DURATION
+    burnable:ExtendBurning()
+    data.onextinguish = function(inst)
+        StopDragonflyBurn(inst)
+    end
+    data.onremove = function(inst)
+        StopDragonflyBurn(inst)
+    end
+    data.ondeath = function(inst)
+        StopDragonflyBurn(inst)
+    end
+    data.task = target:DoPeriodicTask(DRAGONFLY_BURN_DAMAGE_PERIOD, function(inst)
+        if inst.components.health == nil or inst.components.health:IsDead() then
+            StopDragonflyBurn(inst)
+            return
+        end
+        if inst.components.burnable == nil or not inst.components.burnable:IsBurning() then
+            StopDragonflyBurn(inst)
+            return
+        end
+
+        local max_health = inst.components.health.maxhealth or 0
+        local damage = max_health * DRAGONFLY_BURN_MAX_HEALTH_DAMAGE
+        if damage > 0 then
+            inst.components.health:DoFireDamage(damage, owner, true)
+        end
+        ApplyDragonflyBurnVisuals(inst)
+    end, DRAGONFLY_BURN_DAMAGE_PERIOD)
+
+    target._kei_dragonfly_burn_data = data
+    target:ListenForEvent("onextinguish", data.onextinguish)
+    target:ListenForEvent("death", data.ondeath)
+    target:ListenForEvent("onremove", data.onremove)
+end
+
 function KeiProtocolSlots:OnAttacked(data)
     if not self:IsFunctional() or not self.active_combat.beequeen then
         return
@@ -2037,15 +2254,8 @@ function KeiProtocolSlots:OnHitOther(data)
         self:DoMutatedDeerclopsProtocol()
     end
 
-    if self.active_combat.dragonfly and target.components.burnable ~= nil and not target.components.burnable:IsBurning() then
-        local had_tag = self.inst:HasTag("controlled_burner")
-        if not had_tag then
-            self.inst:AddTag("controlled_burner")
-        end
-        target.components.burnable:Ignite(nil, self.inst, self.inst)
-        if not had_tag then
-            self.inst:RemoveTag("controlled_burner")
-        end
+    if self.active_combat.dragonfly then
+        StartDragonflyBurn(self.inst, target)
     end
 
     if self.active_combat.bearger then

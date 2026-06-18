@@ -10,6 +10,14 @@ function EyeOfTerrorDash.HasProtocol(inst)
     return inst._kei_eyeofterror_protocol_active ~= nil and inst._kei_eyeofterror_protocol_active:value()
 end
 
+function EyeOfTerrorDash.IsReady(inst)
+    if inst == nil then
+        return false
+    end
+    return inst.kei_eyeofterror_dash_on_cooldown ~= true
+        and not (inst._kei_eyeofterror_dash_on_cooldown ~= nil and inst._kei_eyeofterror_dash_on_cooldown:value())
+end
+
 function EyeOfTerrorDash.GetTargetPoint(inst, targetpos)
     if inst == nil or targetpos == nil then
         return nil

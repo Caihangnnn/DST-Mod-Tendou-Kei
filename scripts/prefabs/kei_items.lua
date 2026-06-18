@@ -124,11 +124,36 @@ local function MakeSimpleInventoryItem(name, build, bank, anim, tags, image, pos
     return Prefab(name, fn, assets)
 end
 
+local function ClearBoundTarget(inst)
+    if inst.kei_bound_target ~= nil and inst.kei_bound_clear_fn ~= nil then
+        inst:RemoveEventCallback("death", inst.kei_bound_clear_fn, inst.kei_bound_target)
+        inst:RemoveEventCallback("onremove", inst.kei_bound_clear_fn, inst.kei_bound_target)
+    end
+
+    inst.kei_bound_prefab = nil
+    inst.kei_bound_guid = nil
+    inst.kei_bound_target = nil
+    inst.kei_bound_clear_fn = nil
+end
+
 local function SetBoundTarget(inst, target)
-    -- 空白 CD 记录一次绑定目标；GUID 用于同一局内追踪实体。
-    inst.kei_bound_prefab = target ~= nil and target.prefab or nil
-    inst.kei_bound_guid = target ~= nil and target.GUID or nil
+    -- 空白 CD 记录一次绑定目标；目标死亡或移除后自动回到可重新绑定状态。
+    ClearBoundTarget(inst)
+
+    if target == nil then
+        return
+    end
+
+    inst.kei_bound_prefab = target.prefab
+    inst.kei_bound_guid = target.GUID
     inst.kei_bound_target = target
+    inst.kei_bound_clear_fn = function(target_inst)
+        if inst:IsValid() and inst.kei_bound_guid == target_inst.GUID then
+            ClearBoundTarget(inst)
+        end
+    end
+    inst:ListenForEvent("death", inst.kei_bound_clear_fn, target)
+    inst:ListenForEvent("onremove", inst.kei_bound_clear_fn, target)
 end
 
 local function BlankCDOnSave(inst, data)
@@ -274,9 +299,11 @@ local function MakeBlankCD()
         inst.components.inventoryitem:ChangeImageName(visual.image)
 
         inst.SetBoundTarget = SetBoundTarget
+        inst.ClearBoundTarget = ClearBoundTarget
         -- 空白 CD 的绑定状态需要跨存档保留。
         inst.OnSave = BlankCDOnSave
         inst.OnLoad = BlankCDOnLoad
+        inst:ListenForEvent("onremove", ClearBoundTarget)
 
         MakeHauntableLaunch(inst)
 

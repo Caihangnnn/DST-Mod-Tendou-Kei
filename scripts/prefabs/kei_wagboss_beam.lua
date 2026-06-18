@@ -398,4 +398,38 @@ local function fn()
     return inst
 end
 
-return Prefab("kei_wagboss_beam_fx", fn, assets)
+local function targetfn()
+    local inst = CreateEntity()
+
+    inst.entity:AddTransform()
+    inst.entity:AddAnimState()
+    inst.entity:AddNetwork()
+
+    inst:AddTag("FX")
+    inst:AddTag("NOCLICK")
+    inst:AddTag("NOBLOCK")
+
+    inst.AnimState:SetBank("wagboss_beam")
+    inst.AnimState:SetBuild("wagboss_beam")
+    inst.AnimState:PlayAnimation("ground_marker_pre")
+    inst.AnimState:PushAnimation("ground_marker_loop", true)
+    inst.AnimState:SetMultColour(242 / 255, 144 / 255, 186 / 255, 0.7)
+    inst.AnimState:SetBloomEffectHandle("shaders/anim.ksh")
+    inst.AnimState:SetLightOverride(0.3)
+    inst.AnimState:SetOrientation(ANIM_ORIENTATION.OnGround)
+    inst.AnimState:SetLayer(LAYER_BACKGROUND)
+    inst.AnimState:SetSortOrder(3)
+
+    inst.entity:SetPristine()
+
+    if not TheWorld.ismastersim then
+        return inst
+    end
+
+    inst.persists = false
+
+    return inst
+end
+
+return Prefab("kei_wagboss_beam_fx", fn, assets),
+    Prefab("kei_wagboss_target_fx", targetfn, assets)

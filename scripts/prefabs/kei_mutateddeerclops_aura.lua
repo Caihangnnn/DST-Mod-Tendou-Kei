@@ -43,8 +43,6 @@ local function fn()
     inst.AnimState:SetSortOrder(3)
     inst.AnimState:SetScale(2.2, 2.2)
     inst.AnimState:SetMultColour(0.7, 0.25, 1, 1)
-    inst.AnimState:SetBloomEffectHandle("shaders/anim.ksh")
-    inst.AnimState:SetLightOverride(0.15)
 
     inst.entity:SetPristine()
 

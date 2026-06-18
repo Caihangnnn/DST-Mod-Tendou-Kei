@@ -2,7 +2,7 @@
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 author = "StellarVoyage"
-version = "0.1.1"
+version = "0.1.2"
 
 -- DST 模组基础兼容配置。
 api_version = 10
@@ -69,7 +69,7 @@ configuration_options = {
             },
             {
                 description = "默认显示",
-                hover = "数据化装备使用统一使用瓦格斯塔夫的剪切板显示。",
+                hover = "数据化装备使用统一使用 CD 显示。",
                 data = false,
             },
         },
@@ -88,6 +88,24 @@ configuration_options = {
             {
                 description = "禁止",
                 hover = "禁止通过右键拷贝已有协议 CD。",
+                data = false,
+            },
+        },
+        default = true,
+    },
+    {
+        name = "KEI_PROTOCOL_DRAIN_SOUND",
+        label = "协议消耗音效",
+        hover = "设置战斗协议和解析协议每 10 秒扣除电量/数据稳定性时，是否播放资源下降音效。",
+        options = {
+            {
+                description = "开启",
+                hover = "协议周期扣除资源时播放电量/数据稳定性下降音效。",
+                data = true,
+            },
+            {
+                description = "关闭",
+                hover = "协议周期扣除资源时不播放资源下降音效。",
                 data = false,
             },
         },

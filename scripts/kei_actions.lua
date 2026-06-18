@@ -216,6 +216,10 @@ local function DoEyeOfTerrorDashDamage(doer, startpt, endpt)
 end
 
 local function DoEyeOfTerrorDash(doer, targetpos)
+    if not EyeOfTerrorDash.IsReady(doer) then
+        return false
+    end
+
     local pt = EyeOfTerrorDash.GetTargetPoint(doer, targetpos)
     if pt == nil then
         return false
@@ -234,6 +238,22 @@ local function DoEyeOfTerrorDash(doer, targetpos)
 
     DoEyeOfTerrorDashDamage(doer, startpt, pt)
     doer.Physics:Teleport(pt.x, 0, pt.z)
+
+    doer.kei_eyeofterror_dash_on_cooldown = true
+    if doer._kei_eyeofterror_dash_on_cooldown ~= nil then
+        doer._kei_eyeofterror_dash_on_cooldown:set(true)
+    end
+    if doer._kei_eyeofterror_dash_cd_task ~= nil then
+        doer._kei_eyeofterror_dash_cd_task:Cancel()
+    end
+    doer._kei_eyeofterror_dash_cd_task = doer:DoTaskInTime(TUNING.KEI_EYEOFTERROR_DASH_COOLDOWN or 1, function(inst)
+        inst.kei_eyeofterror_dash_on_cooldown = nil
+        inst._kei_eyeofterror_dash_cd_task = nil
+        if inst._kei_eyeofterror_dash_on_cooldown ~= nil then
+            inst._kei_eyeofterror_dash_on_cooldown:set(false)
+        end
+    end)
+
     return true
 end
 
@@ -422,6 +442,39 @@ local function IsValidRecordTarget(target)
         and target.components.health ~= nil
         and not target.components.health:IsDead()
         and not target:HasTag("INLIMBO")
+end
+
+local function GetBlankCDBoundTarget(cd)
+    if cd == nil then
+        return nil
+    end
+    if cd.kei_bound_target ~= nil and cd.kei_bound_target:IsValid() then
+        return cd.kei_bound_target
+    end
+    if cd.kei_bound_guid ~= nil then
+        local target = Ents[cd.kei_bound_guid]
+        if target ~= nil and target:IsValid() then
+            cd.kei_bound_target = target
+            return target
+        end
+    end
+    return nil
+end
+
+local function IsBlankCDReadyForNewBinding(cd)
+    if cd == nil or not cd:HasTag("kei_blank_cd") then
+        return false
+    end
+    if cd.kei_bound_prefab == nil then
+        return true
+    end
+
+    local target = GetBlankCDBoundTarget(cd)
+    local ready = not IsValidRecordTarget(target)
+    if ready and cd.ClearBoundTarget ~= nil then
+        cd:ClearBoundTarget()
+    end
+    return ready
 end
 
 local function IsAnalysisBlacklisted(target)
@@ -831,7 +884,7 @@ local EYEOFTERROR_DASH_POST_ANIM_SPEED = 4
 
 -- 克眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置并造成路径伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
-    if not IsKei(act.doer) or not EyeOfTerrorDash.HasProtocol(act.doer) then
+    if not IsKei(act.doer) or not EyeOfTerrorDash.HasProtocol(act.doer) or not EyeOfTerrorDash.IsReady(act.doer) then
         return false
     end
     local pt = act:GetActionPoint()
@@ -1166,6 +1219,11 @@ local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
         Say(act.doer, "ANNOUNCE_KEI_NO_RECORDER")
         return false
     end
+    local old_target = GetBlankCDBoundTarget(act.invobject)
+    if not IsBlankCDReadyForNewBinding(act.invobject) and old_target ~= target then
+        Say(act.doer, "ANNOUNCE_KEI_CD_NOT_BOUND")
+        return false
+    end
     act.invobject:SetBoundTarget(target)
     Say(act.doer, "ANNOUNCE_KEI_BOUND")
     return true
@@ -1247,7 +1305,7 @@ local function CopyProtocolCD(material, target, doer)
 
     local cd = nil
     if material:HasTag("kei_blank_cd")
-        and material.kei_bound_prefab == nil
+        and IsBlankCDReadyForNewBinding(material)
         and target:HasTag("kei_combat_protocol")
     then
         local protocol = target.kei_combat_protocol
@@ -1388,11 +1446,11 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)
     elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
         and inst:HasTag("kei_blank_cd")
-        and inst.kei_bound_prefab == nil
+        and IsBlankCDReadyForNewBinding(inst)
         and target:HasTag("kei_combat_protocol")
     then
         table.insert(actions, ACTIONS.KEI_COPY_DATA_CD)
-    elseif inst:HasTag("kei_blank_cd") and inst.kei_bound_prefab == nil and target:HasTag("epic") then
+    elseif inst:HasTag("kei_blank_cd") and IsBlankCDReadyForNewBinding(inst) and target:HasTag("epic") then
         table.insert(actions, ACTIONS.KEI_BIND_CD)
     elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
         and inst:HasTag("kei_analysis_tool")

@@ -169,6 +169,7 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
         and useitem == nil
         and ACTIONS.KEI_EYEOFTERROR_DASH ~= nil
         and EyeOfTerrorDash.HasProtocol(inst)
+        and EyeOfTerrorDash.IsReady(inst)
         and not inst:HasTag("playerghost")
     then
         ConfigureEyeOfTerrorReticule(inst)
@@ -200,6 +201,7 @@ end
 local function GetRightClickDashPoint(inst, target, position)
     if ACTIONS.KEI_EYEOFTERROR_DASH == nil
         or not EyeOfTerrorDash.HasProtocol(inst)
+        or not EyeOfTerrorDash.IsReady(inst)
         or inst:HasTag("playerghost")
         or target == nil
         or target == inst
@@ -289,6 +291,7 @@ local function common_postinit(inst)
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
+    inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
     inst._kei_malbatross_protocol_active = net_bool(inst.GUID, "kei.malbatross_protocol_active", "kei_malbatross_protocol_dirty")
     inst._kei_mutatedwarg_protocol_active = net_bool(inst.GUID, "kei.mutatedwarg_protocol_active", "kei_mutatedwarg_protocol_dirty")
