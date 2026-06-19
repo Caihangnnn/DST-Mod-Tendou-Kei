@@ -5,6 +5,11 @@ local SpDamageUtil = require("components/spdamageutil")
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
 
+local function AddKeiActionHandler(action, state)
+    AddStategraphActionHandler("wilson", ActionHandler(action, state))
+    AddStategraphActionHandler("wilson_client", ActionHandler(action, state))
+end
+
 local ANALYSIS_BLACKLIST = {
     armorwagpunk = true,
     batnosehat = true,
@@ -569,8 +574,7 @@ end)
 charge_action.mount_valid = true
 charge_action.rmb = true
 charge_action.priority = 2
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_CHARGE, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_CHARGE, "doshortaction")
 
 -- 右键修理工具：恢复机体完整度，也就是 health 组件。
 local repair_action = AddAction("KEI_REPAIR", "修复", function(act)
@@ -587,8 +591,7 @@ end)
 repair_action.mount_valid = true
 repair_action.rmb = true
 repair_action.priority = 2
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_REPAIR, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_REPAIR, "doshortaction")
 
 local dormant_action = AddAction("KEI_DORMANT", "休眠", function(act)
     if not IsKei(act.doer) or act.target ~= act.doer or act.doer.StartKeiDormant == nil then
@@ -599,8 +602,7 @@ end)
 dormant_action.mount_valid = false
 dormant_action.rmb = true
 dormant_action.priority = 5
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DORMANT, "kei_dormant_poweroff"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DORMANT, "kei_dormant_poweroff"))
+AddKeiActionHandler(ACTIONS.KEI_DORMANT, "kei_dormant_poweroff")
 
 local wake_action = AddAction("KEI_WAKE", "唤醒", function(act)
     if not IsKei(act.doer) or act.target ~= act.doer or act.doer.StopKeiDormant == nil then
@@ -611,8 +613,7 @@ end)
 wake_action.mount_valid = false
 wake_action.rmb = true
 wake_action.priority = 5
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron"))
+AddKeiActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron")
 
 local function SetKeiDormantControls(inst, enabled)
     if inst.components.inventory ~= nil then
@@ -896,8 +897,7 @@ eyeofterror_dash_action.distance = math.huge
 eyeofterror_dash_action.priority = 3
 eyeofterror_dash_action.invalid_hold_action = true
 
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_EYEOFTERROR_DASH, "kei_eyeofterror_dash_pre"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_EYEOFTERROR_DASH, "kei_eyeofterror_dash_pre"))
+AddKeiActionHandler(ACTIONS.KEI_EYEOFTERROR_DASH, "kei_eyeofterror_dash_pre")
 
 AddStategraphState("wilson", State{
     name = "kei_eyeofterror_dash_pre",
@@ -1039,12 +1039,9 @@ daywalker_leap_action.distance = math.huge
 daywalker_leap_action.priority = 4
 daywalker_leap_action.invalid_hold_action = true
 
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_AIM, "kei_daywalker_aim"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_AIM, "kei_daywalker_aim"))
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_CANCEL_AIM, "kei_daywalker_aim"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_CANCEL_AIM, "kei_daywalker_aim"))
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre"))
+AddKeiActionHandler(ACTIONS.KEI_DAYWALKER_AIM, "kei_daywalker_aim")
+AddKeiActionHandler(ACTIONS.KEI_DAYWALKER_CANCEL_AIM, "kei_daywalker_aim")
+AddKeiActionHandler(ACTIONS.KEI_DAYWALKER_LEAP, "kei_daywalker_leap_pre")
 
 local DAYWALKER_LEAP_PRE_ANIM_SPEED = 3
 local DAYWALKER_LEAP_POST_ANIM_SPEED = 4
@@ -1230,8 +1227,7 @@ local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
 end)
 bind_cd_action.mount_valid = true
 bind_cd_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction")
 
 -- 把已绑定目标的空白 CD 交给数据记录仪。
 local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act)
@@ -1246,8 +1242,7 @@ local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act
 end)
 submit_cd_action.mount_valid = true
 submit_cd_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_SUBMIT_CD, "give"))
+AddKeiActionHandler(ACTIONS.KEI_SUBMIT_CD, "give")
 
 -- 记录中途取消会返还一张空白 CD，记录仪回到 idle。
 local stop_record_action = AddAction("KEI_STOP_RECORD", "停止记录", function(act)
@@ -1258,8 +1253,7 @@ local stop_record_action = AddAction("KEI_STOP_RECORD", "停止记录", function
 end)
 stop_record_action.mount_valid = true
 stop_record_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_STOP_RECORD, "doshortaction")
 
 -- 巨兽死亡后，从记录仪收获对应的战斗协议 CD。
 local harvest_action = AddAction("KEI_HARVEST_RECORD", "收获数据", function(act)
@@ -1270,8 +1264,7 @@ local harvest_action = AddAction("KEI_HARVEST_RECORD", "收获数据", function(
 end)
 harvest_action.mount_valid = true
 harvest_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_HARVEST_RECORD, "doshortaction")
 
 -- 未激活的数据记录器可以空手右键收回为部署包。
 local packup_record_action = AddAction("KEI_PACKUP_RECORDER", "收回", function(act)
@@ -1282,8 +1275,7 @@ local packup_record_action = AddAction("KEI_PACKUP_RECORDER", "收回", function
 end)
 packup_record_action.mount_valid = true
 packup_record_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction"))
+AddKeiActionHandler(ACTIONS.KEI_PACKUP_RECORDER, "doshortaction")
 
 local function GiveCopiedCD(doer, cd)
     if cd == nil then
@@ -1350,8 +1342,7 @@ local copy_cd_action = AddAction("KEI_COPY_DATA_CD", "拷贝数据", function(ac
 end)
 copy_cd_action.mount_valid = true
 copy_cd_action.rmb = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give"))
+AddKeiActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give")
 
 local function AnalyzeEquipment(tool, target, doer)
     if IsAnalysisBlacklisted(target) then
@@ -1434,8 +1425,7 @@ local analyze_action = AddAction("KEI_ANALYZE_EQUIP", "解析装备", function(a
     return false
 end)
 analyze_action.mount_valid = true
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give"))
+AddKeiActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give")
 
 -- USEITEM：拿着某个物品点另一个目标时添加动作，例如 CD -> 记录仪、解析工具 -> 装备。
 AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, actions, right)

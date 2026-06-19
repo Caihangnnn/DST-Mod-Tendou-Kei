@@ -1,5 +1,6 @@
 local Badge = require "widgets/badge"
 local UIAnim = require "widgets/uianim"
+local StatusBadgeHelpers = require "widgets/kei_statusbadge_helpers"
 
 local POWER_TINT = { 255 / 255, 203 / 255, 229 / 255, 1 }
 local PULSE_GAIN_COLOUR = { 120 / 255, 255 / 255, 170 / 255, 0.6 }
@@ -8,31 +9,6 @@ local PULSE_LOSS_COLOUR = { 255 / 255, 92 / 255, 155 / 255, 0.6 }
 local function ApplyMeterBuild(self)
     self.backing:GetAnimState():OverrideSymbol("bg", "kei_status_power_meter", "bg")
     self.circleframe:GetAnimState():OverrideSymbol("frame_circle", "kei_status_power_meter", "frame_circle")
-end
-
-local function PlayStatusPulse(self, colour, speed)
-    speed = speed or 1
-    if self.kei_status_pulse_task ~= nil then
-        self.kei_status_pulse_task:Cancel()
-        self.kei_status_pulse_task = nil
-    end
-
-    self.warning:GetAnimState():SetDeltaTimeMultiplier(speed)
-    self.warning:GetAnimState():SetMultColour(unpack(colour))
-    self.warning:Show()
-    self.warning:GetAnimState():PlayAnimation("pulse")
-
-    local duration = self.warning:GetAnimState():GetCurrentAnimationLength() / speed
-    self.kei_status_pulse_task = self.inst:DoTaskInTime(duration, function()
-        self.kei_status_pulse_task = nil
-        self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
-        if self.warningstarted then
-            self.warning:GetAnimState():SetMultColour(unpack(PULSE_LOSS_COLOUR))
-            self.warning:GetAnimState():PlayAnimation("pulse", true)
-        else
-            self.warning:Hide()
-        end
-    end)
 end
 
 local KeiPowerBadge = Class(Badge, function(self, owner)
@@ -123,20 +99,15 @@ function KeiPowerBadge:OnUpdate(dt)
 end
 
 function KeiPowerBadge:PulseGreen()
-    PlayStatusPulse(self, PULSE_GAIN_COLOUR, 3)
+    StatusBadgeHelpers.PlayPulse(self, PULSE_GAIN_COLOUR, PULSE_LOSS_COLOUR, 3)
 end
 
 function KeiPowerBadge:PulseRed()
-    PlayStatusPulse(self, PULSE_LOSS_COLOUR, 1)
+    StatusBadgeHelpers.PlayPulse(self, PULSE_LOSS_COLOUR, PULSE_LOSS_COLOUR, 1)
 end
 
 function KeiPowerBadge:StartWarning(r, g, b, a)
-    if self.kei_status_pulse_task ~= nil then
-        self.kei_status_pulse_task:Cancel()
-        self.kei_status_pulse_task = nil
-    end
-    self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
-    Badge.StartWarning(self, unpack(PULSE_LOSS_COLOUR))
+    StatusBadgeHelpers.StartWarning(self, Badge, PULSE_LOSS_COLOUR)
 end
 
 return KeiPowerBadge

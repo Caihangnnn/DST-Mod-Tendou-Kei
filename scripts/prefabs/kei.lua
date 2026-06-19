@@ -276,57 +276,8 @@ local function CreateKeiStabilityBadge(owner)
 end
 
 local function CreateKeiIntegrityBadge(owner)
-    local Badge = require "widgets/badge"
-    local HealthBadge = require "widgets/healthbadge"
-    local pulse_gain_colour = { 120 / 255, 255 / 255, 170 / 255, 0.6 }
-    local pulse_loss_colour = { 255 / 255, 92 / 255, 155 / 255, 0.6 }
-    local function PlayStatusPulse(self, colour, speed)
-        speed = speed or 1
-        if self.kei_status_pulse_task ~= nil then
-            self.kei_status_pulse_task:Cancel()
-            self.kei_status_pulse_task = nil
-        end
-
-        self.warning:GetAnimState():SetDeltaTimeMultiplier(speed)
-        self.warning:GetAnimState():SetMultColour(unpack(colour))
-        self.warning:Show()
-        self.warning:GetAnimState():PlayAnimation("pulse")
-
-        local duration = self.warning:GetAnimState():GetCurrentAnimationLength() / speed
-        self.kei_status_pulse_task = self.inst:DoTaskInTime(duration, function()
-            self.kei_status_pulse_task = nil
-            self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
-            if self.warningstarted then
-                self.warning:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
-                self.warning:GetAnimState():PlayAnimation("pulse", true)
-            else
-                self.warning:Hide()
-            end
-        end)
-    end
-    local badge = HealthBadge(owner, nil, "status_abigail")
-    badge.pulse:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
-    badge.warning:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
-    badge.backing:GetAnimState():OverrideSymbol("bg", "kei_status_integrity_meter", "bg")
-    badge.circleframe:GetAnimState():OverrideSymbol("frame_circle", "kei_status_integrity_meter", "frame_circle")
-    badge.circleframe2:GetAnimState():OverrideSymbol("frame_circle", "kei_status_integrity_meter", "frame_circle")
-    badge.anim:GetAnimState():SetMultColour(255 / 255, 234 / 255, 56 / 255, 1)
-    badge.circleframe:GetAnimState():OverrideSymbol("icon", "kei_status_integrity", "icon")
-    badge.PulseGreen = function(self)
-        PlayStatusPulse(self, pulse_gain_colour, 3)
-    end
-    badge.PulseRed = function(self)
-        PlayStatusPulse(self, pulse_loss_colour, 1)
-    end
-    badge.StartWarning = function(self, r, g, b, a)
-        if self.kei_status_pulse_task ~= nil then
-            self.kei_status_pulse_task:Cancel()
-            self.kei_status_pulse_task = nil
-        end
-        self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
-        Badge.StartWarning(self, unpack(pulse_loss_colour))
-    end
-    return badge
+    local KeiIntegrityBadge = require "widgets/kei_integritybadge"
+    return KeiIntegrityBadge(owner)
 end
 
 local function PatchKeiChannelCastingFns(inst)
