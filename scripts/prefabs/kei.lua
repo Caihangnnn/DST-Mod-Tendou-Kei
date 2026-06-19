@@ -9,6 +9,12 @@ local assets = {
     Asset("ANIM", "anim/ghost_kei_build.zip"),
     Asset("ANIM", "anim/player_idles_kei.zip"),
     Asset("ANIM", "anim/wx_chassis.zip"),
+    Asset("ANIM", "anim/kei_status_power.zip"),
+    Asset("ANIM", "anim/kei_status_stability.zip"),
+    Asset("ANIM", "anim/kei_status_integrity.zip"),
+    Asset("ANIM", "anim/kei_status_power_meter.zip"),
+    Asset("ANIM", "anim/kei_status_stability_meter.zip"),
+    Asset("ANIM", "anim/kei_status_integrity_meter.zip"),
 }
 
 local prefabs = {
@@ -259,6 +265,70 @@ local function ConfigureVisuals(inst)
     inst.MiniMapEntity:SetIcon("kei.tex")
 end
 
+local function CreateKeiPowerBadge(owner)
+    local KeiPowerBadge = require "widgets/kei_powerbadge"
+    return KeiPowerBadge(owner)
+end
+
+local function CreateKeiStabilityBadge(owner)
+    local KeiStabilityBadge = require "widgets/kei_stabilitybadge"
+    return KeiStabilityBadge(owner)
+end
+
+local function CreateKeiIntegrityBadge(owner)
+    local Badge = require "widgets/badge"
+    local HealthBadge = require "widgets/healthbadge"
+    local pulse_gain_colour = { 120 / 255, 255 / 255, 170 / 255, 0.6 }
+    local pulse_loss_colour = { 255 / 255, 92 / 255, 155 / 255, 0.6 }
+    local function PlayStatusPulse(self, colour, speed)
+        speed = speed or 1
+        if self.kei_status_pulse_task ~= nil then
+            self.kei_status_pulse_task:Cancel()
+            self.kei_status_pulse_task = nil
+        end
+
+        self.warning:GetAnimState():SetDeltaTimeMultiplier(speed)
+        self.warning:GetAnimState():SetMultColour(unpack(colour))
+        self.warning:Show()
+        self.warning:GetAnimState():PlayAnimation("pulse")
+
+        local duration = self.warning:GetAnimState():GetCurrentAnimationLength() / speed
+        self.kei_status_pulse_task = self.inst:DoTaskInTime(duration, function()
+            self.kei_status_pulse_task = nil
+            self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
+            if self.warningstarted then
+                self.warning:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
+                self.warning:GetAnimState():PlayAnimation("pulse", true)
+            else
+                self.warning:Hide()
+            end
+        end)
+    end
+    local badge = HealthBadge(owner, nil, "status_abigail")
+    badge.pulse:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
+    badge.warning:GetAnimState():SetMultColour(unpack(pulse_loss_colour))
+    badge.backing:GetAnimState():OverrideSymbol("bg", "kei_status_integrity_meter", "bg")
+    badge.circleframe:GetAnimState():OverrideSymbol("frame_circle", "kei_status_integrity_meter", "frame_circle")
+    badge.circleframe2:GetAnimState():OverrideSymbol("frame_circle", "kei_status_integrity_meter", "frame_circle")
+    badge.anim:GetAnimState():SetMultColour(255 / 255, 234 / 255, 56 / 255, 1)
+    badge.circleframe:GetAnimState():OverrideSymbol("icon", "kei_status_integrity", "icon")
+    badge.PulseGreen = function(self)
+        PlayStatusPulse(self, pulse_gain_colour, 3)
+    end
+    badge.PulseRed = function(self)
+        PlayStatusPulse(self, pulse_loss_colour, 1)
+    end
+    badge.StartWarning = function(self, r, g, b, a)
+        if self.kei_status_pulse_task ~= nil then
+            self.kei_status_pulse_task:Cancel()
+            self.kei_status_pulse_task = nil
+        end
+        self.warning:GetAnimState():SetDeltaTimeMultiplier(1)
+        Badge.StartWarning(self, unpack(pulse_loss_colour))
+    end
+    return badge
+end
+
 local function PatchKeiChannelCastingFns(inst)
     if inst._kei_old_IsChannelCasting ~= nil then
         return
@@ -288,6 +358,9 @@ local function common_postinit(inst)
     inst:AddTag("electricdamageimmune")
     inst:AddTag("batteryuser")
     inst:AddTag(FOODTYPE.KEI_DEVICE .. "_eater")
+    inst.CreateHungerBadge = CreateKeiPowerBadge
+    inst.CreateSanityBadge = CreateKeiStabilityBadge
+    inst.CreateHealthBadge = CreateKeiIntegrityBadge
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")

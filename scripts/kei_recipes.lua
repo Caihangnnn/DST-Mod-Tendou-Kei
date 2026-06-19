@@ -114,11 +114,12 @@ AddRecipe2(
 -- 便携电池：直接补充电量。
 AddRecipe2(
     "kei_battery",
-    { Ingredient("transistor", 1) },
+    { Ingredient("transistor", 1), Ingredient("glommerfuel", 1) },
     TECH.NONE,
     kei_config({
-    atlas = "images/kei_battery.xml",
-    image = "kei_battery.tex",
+        atlas = "images/kei_battery.xml",
+        image = "kei_battery.tex",
+        numtogive = 3,
     }),
     filters
 )
@@ -131,7 +132,7 @@ AddRecipe2(
     kei_config({
         atlas = "images/kei_repair_tool.xml",
         image = "kei_repair_tool.tex",
-        numtogive = 5,
+        numtogive = 3,
     }),
     filters
 )

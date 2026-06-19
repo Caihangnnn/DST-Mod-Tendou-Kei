@@ -10,6 +10,8 @@ local WAGBOSS_PROTOCOL_COOLDOWN = 20
 local CELESTIAL_ORB_FOLLOW_PERIOD = FRAMES
 local CELESTIAL_ORB_TARGET_MUST_TAGS = { "_combat", "_health" }
 local CELESTIAL_ORB_TARGET_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "companion" }
+local DAYWALKER2_SHIELD_FOLLOW_PERIOD = FRAMES
+local WAGBOSS_TARGET_FOLLOW_PERIOD = FRAMES
 local DRAGONFLY_BURN_COLOUR = { 242 / 255, 144 / 255, 186 / 255, 1 }
 local DRAGONFLY_BURN_DURATION = 30
 local DRAGONFLY_BURN_DAMAGE_PERIOD = 1
@@ -30,7 +32,9 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_celestial_orb_angles = {}
     self._kei_celestial_orb_hit_times = setmetatable({}, { __mode = "k" })
     self._kei_daywalker2_shield_fx = nil
+    self._kei_daywalker2_shield_follow_task = nil
     self._kei_wagboss_target_fx = nil
+    self._kei_wagboss_target_follow_task = nil
     self._kei_wagboss_target_ready_task = nil
 
     self:SyncUnlockedSlots()
@@ -693,6 +697,15 @@ function KeiProtocolSlots:SetAnalysisToolActions(actions, tough)
     self.analysis_tool_tough = tough or nil
 end
 
+function KeiProtocolSlots:PositionDaywalker2ShieldFx()
+    local fx = self._kei_daywalker2_shield_fx
+    if fx ~= nil and fx:IsValid() then
+        local x, y, z = self.inst.Transform:GetWorldPosition()
+        fx.Transform:SetPosition(x, y + 1.5, z)
+        fx.Transform:SetRotation(0)
+    end
+end
+
 function KeiProtocolSlots:EnableDaywalker2ShieldFx()
     if self._kei_daywalker2_shield_fx ~= nil and self._kei_daywalker2_shield_fx:IsValid() then
         return
@@ -700,18 +713,32 @@ function KeiProtocolSlots:EnableDaywalker2ShieldFx()
 
     local fx = SpawnPrefab("kei_daywalker2_shield_fx")
     if fx ~= nil then
-        fx.entity:SetParent(self.inst.entity)
-        fx.Transform:SetPosition(0, 1.5, 0)
         self._kei_daywalker2_shield_fx = fx
+        self:PositionDaywalker2ShieldFx()
+        self._kei_daywalker2_shield_follow_task = self.inst:DoPeriodicTask(DAYWALKER2_SHIELD_FOLLOW_PERIOD, function()
+            self:PositionDaywalker2ShieldFx()
+        end)
     end
 end
 
 function KeiProtocolSlots:DisableDaywalker2ShieldFx()
+    if self._kei_daywalker2_shield_follow_task ~= nil then
+        self._kei_daywalker2_shield_follow_task:Cancel()
+        self._kei_daywalker2_shield_follow_task = nil
+    end
     if self._kei_daywalker2_shield_fx ~= nil then
         if self._kei_daywalker2_shield_fx:IsValid() then
             self._kei_daywalker2_shield_fx:Remove()
         end
         self._kei_daywalker2_shield_fx = nil
+    end
+end
+
+function KeiProtocolSlots:PositionWagbossTargetFx()
+    local fx = self._kei_wagboss_target_fx
+    if fx ~= nil and fx:IsValid() then
+        fx.Transform:SetPosition(self.inst.Transform:GetWorldPosition())
+        fx.Transform:SetRotation(0)
     end
 end
 
@@ -722,13 +749,19 @@ function KeiProtocolSlots:EnableWagbossTargetFx()
 
     local fx = SpawnPrefab("kei_wagboss_target_fx")
     if fx ~= nil then
-        fx.entity:SetParent(self.inst.entity)
-        fx.Transform:SetPosition(0, 0, 0)
         self._kei_wagboss_target_fx = fx
+        self:PositionWagbossTargetFx()
+        self._kei_wagboss_target_follow_task = self.inst:DoPeriodicTask(WAGBOSS_TARGET_FOLLOW_PERIOD, function()
+            self:PositionWagbossTargetFx()
+        end)
     end
 end
 
 function KeiProtocolSlots:DisableWagbossTargetFx()
+    if self._kei_wagboss_target_follow_task ~= nil then
+        self._kei_wagboss_target_follow_task:Cancel()
+        self._kei_wagboss_target_follow_task = nil
+    end
     if self._kei_wagboss_target_ready_task ~= nil then
         self._kei_wagboss_target_ready_task:Cancel()
         self._kei_wagboss_target_ready_task = nil

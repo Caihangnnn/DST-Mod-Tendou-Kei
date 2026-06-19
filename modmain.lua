@@ -34,6 +34,12 @@ Assets = {
     Asset("ANIM", "anim/kei_protocol_popup.zip"),
     Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),
     Asset("ANIM", "anim/wx_chassis.zip"),
+    Asset("ANIM", "anim/kei_status_power.zip"),
+    Asset("ANIM", "anim/kei_status_stability.zip"),
+    Asset("ANIM", "anim/kei_status_integrity.zip"),
+    Asset("ANIM", "anim/kei_status_power_meter.zip"),
+    Asset("ANIM", "anim/kei_status_stability_meter.zip"),
+    Asset("ANIM", "anim/kei_status_integrity_meter.zip"),
     Asset("ANIM", "anim/status_meter_wx_shield.zip"),
 
     Asset("ATLAS", "bigportraits/kei.xml"),  --人物大图（方形的那个）
@@ -69,6 +75,15 @@ Assets = {
     Asset("IMAGE", "images/kei_protocol_slot_locked.tex"),
     Asset("IMAGE", "images/kei_protocol_slot_openable.tex"),
     Asset("IMAGE", "images/transparent_slot.tex"),
+}
+
+PreloadAssets = {
+    Asset("ANIM", "anim/kei_status_power.zip"),
+    Asset("ANIM", "anim/kei_status_stability.zip"),
+    Asset("ANIM", "anim/kei_status_integrity.zip"),
+    Asset("ANIM", "anim/kei_status_power_meter.zip"),
+    Asset("ANIM", "anim/kei_status_stability_meter.zip"),
+    Asset("ANIM", "anim/kei_status_integrity_meter.zip"),
 }
 
 AddMinimapAtlas("images/map_icons/kei.xml")

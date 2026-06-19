@@ -13,7 +13,7 @@ local function fn()
     inst.entity:AddNetwork()
 
     inst:AddTag("FX")
-    inst:AddTag("NOCLICK")
+    inst:AddTag("DECOR")
     inst:AddTag("NOBLOCK")
 
     inst.AnimState:SetBank("status_meter_wx_shield")

@@ -406,8 +406,8 @@ local function targetfn()
     inst.entity:AddNetwork()
 
     inst:AddTag("FX")
-    inst:AddTag("NOCLICK")
     inst:AddTag("NOBLOCK")
+    inst:AddTag("DECOR")
 
     inst.AnimState:SetBank("wagboss_beam")
     inst.AnimState:SetBuild("wagboss_beam")
