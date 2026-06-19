@@ -22,6 +22,7 @@ local prefabs = {
     "kei_dormant_chassis",
     "kei_protocol_container",
     "kei_protocol_binder",
+    "minerhatlight",
     "reticuleaoe",
     "reticuleaoeping",
     "reticuleline",
@@ -48,7 +49,14 @@ local prefabs = {
     "battlesong_instant_panic_fx",
     "collapse_small",
     "wx78_big_spark",
+    "hermitcrab_fx_med",
 }
+
+local KEI_LIGHT_CHECK_PERIOD = 0.5
+local KEI_LIGHT_RADIUS = 1
+local KEI_LIGHT_FALLOFF = 0.6
+local KEI_LIGHT_INTENSITY = 0.35
+local KEI_LIGHT_COLOUR = { 240 / 255, 187 / 255, 203 / 255 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
 local start_inv = {
@@ -280,6 +288,58 @@ local function CreateKeiIntegrityBadge(owner)
     return KeiIntegrityBadge(owner)
 end
 
+local function IsKeiSleeping(inst)
+    if inst:HasTag("kei_dormant") or inst:HasTag("playerghost") then
+        return true
+    end
+    if inst.components.health ~= nil and inst.components.health:IsDead() then
+        return true
+    end
+    if inst.sg ~= nil then
+        if inst.sg:HasStateTag("sleeping") or inst.sg:HasStateTag("yawn") then
+            return true
+        end
+        if inst.sg.currentstate ~= nil and inst.sg.currentstate.name == "knockout" then
+            return true
+        end
+    end
+    return false
+end
+
+local function RemoveKeiPersonalLight(inst)
+    if inst.kei_personal_light ~= nil then
+        if inst.kei_personal_light:IsValid() then
+            inst.kei_personal_light:Remove()
+        end
+        inst.kei_personal_light = nil
+    end
+end
+
+local function CreateKeiPersonalLight(inst)
+    if inst.kei_personal_light ~= nil and inst.kei_personal_light:IsValid() then
+        return
+    end
+
+    local light = inst:SpawnChild("minerhatlight")
+    if light == nil then
+        return
+    end
+
+    light.Light:SetFalloff(KEI_LIGHT_FALLOFF)
+    light.Light:SetIntensity(KEI_LIGHT_INTENSITY)
+    light.Light:SetRadius(KEI_LIGHT_RADIUS)
+    light.Light:SetColour(unpack(KEI_LIGHT_COLOUR))
+    inst.kei_personal_light = light
+end
+
+local function UpdateKeiPersonalLight(inst)
+    if IsKeiSleeping(inst) then
+        RemoveKeiPersonalLight(inst)
+    else
+        CreateKeiPersonalLight(inst)
+    end
+end
+
 local function PatchKeiChannelCastingFns(inst)
     if inst._kei_old_IsChannelCasting ~= nil then
         return
@@ -298,6 +358,18 @@ local function PatchKeiChannelCastingFns(inst)
         return player.kei_mutatedwarg_channelcasting == true
             or (player._kei_old_IsChannelCastingItem ~= nil and player:_kei_old_IsChannelCastingItem(...))
             or false
+    end
+end
+
+local function PatchKeiCurseImmunity(inst)
+    local cursable = inst.components.cursable
+    if cursable == nil or cursable.kei_old_ApplyCurse ~= nil then
+        return
+    end
+
+    -- yyxk uses character-side curse immunity by swallowing ApplyCurse.
+    cursable.kei_old_ApplyCurse = cursable.ApplyCurse
+    cursable.ApplyCurse = function()
     end
 end
 
@@ -727,6 +799,7 @@ local function StartKeiDormant(inst, playfx)
 
     inst.kei_dormant_active = true
     inst:AddTag("kei_dormant")
+    RemoveKeiPersonalLight(inst)
     inst:AddTag("notarget")
     inst:AddTag("noattack")
     inst:AddTag("NOBLOCK")
@@ -787,6 +860,7 @@ local function StopKeiDormant(inst, playfx)
     StopDormantTask(inst)
     inst.kei_dormant_active = nil
     inst:RemoveTag("kei_dormant")
+    UpdateKeiPersonalLight(inst)
     if inst.components.kei_protocolslots ~= nil then
         inst.components.kei_protocolslots:Refresh()
     end
@@ -912,6 +986,8 @@ local function master_postinit(inst)
     -- 协议槽负责扫描背包前 1/3/5/7 格中的协议 CD 并施加效果。
     inst:AddComponent("kei_protocolslots")
 
+    PatchKeiCurseImmunity(inst)
+
     inst.StartKeiDormant = StartKeiDormant
     inst.StopKeiDormant = StopKeiDormant
     inst.StopDormantBatteryCharge = StopDormantBatteryCharge
@@ -919,8 +995,12 @@ local function master_postinit(inst)
     inst.ScheduleDormantZeroPowerExit = ScheduleDormantZeroPowerExit
 
     inst:DoPeriodicTask(TUNING.KEI_SELF_REPAIR_PERIOD, UpdateIntegrityState)
+    inst:DoPeriodicTask(KEI_LIGHT_CHECK_PERIOD, UpdateKeiPersonalLight)
+    inst:DoTaskInTime(0, UpdateKeiPersonalLight)
     inst:ListenForEvent("death", StopKeiDormant)
+    inst:ListenForEvent("death", RemoveKeiPersonalLight)
     inst:ListenForEvent("onremove", StopKeiDormant)
+    inst:ListenForEvent("onremove", RemoveKeiPersonalLight)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave

@@ -22,6 +22,10 @@ local RECORDER_STATE = {
     complete = 2,
 }
 
+local MAP_TELEPORT_DELAY = 12 * FRAMES
+local MAP_TELEPORT_FINISH_DELAY = 12 * FRAMES
+local MAP_TELEPORT_CANT_TAGS = { "INLIMBO", "NOCLICK", "FX" }
+
 local function GetRecorderState(inst)
     if inst == nil then
         return RECORDER_STATE.idle
@@ -76,6 +80,58 @@ end
 
 local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
+end
+
+local function IsKeiMapTeleportBlocked(doer)
+    return not IsKei(doer)
+        or doer:HasTag("playerghost")
+        or doer:HasTag("kei_dormant")
+        or doer:HasTag("noteleport")
+        or (doer.components.health ~= nil and doer.components.health:IsDead())
+        or (doer.components.rider ~= nil and doer.components.rider:IsRiding())
+        or (doer.components.inventory ~= nil and doer.components.inventory:IsHeavyLifting())
+end
+
+local function IsClearTeleportPoint(pt)
+    local x, y, z = pt:Get()
+    for _, ent in ipairs(TheSim:FindEntities(x, y, z, MAX_PHYSICS_RADIUS, nil, MAP_TELEPORT_CANT_TAGS)) do
+        local radius = ent:GetPhysicsRadius(0)
+        if radius > 0 and ent:GetDistanceSqToPoint(x, y, z) < radius * radius then
+            return false
+        end
+    end
+    return true
+end
+
+local function IsValidMapTeleportPoint(doer, pt)
+    if doer == nil or pt == nil or TheWorld == nil or TheWorld.Map == nil then
+        return false
+    end
+
+    local map = TheWorld.Map
+    local x, y, z = pt:Get()
+    local px, py, pz = doer.Transform:GetWorldPosition()
+
+    if not IsTeleportingPermittedFromPointToPoint(px, py, pz, x, y, z) then
+        return false
+    end
+
+    if map:GetPlatformAtPoint(x, z) ~= nil then
+        return true
+    end
+
+    return map:IsPassableAtPoint(x, y, z)
+        and not map:IsGroundTargetBlocked(pt)
+        and IsClearTeleportPoint(pt)
+end
+
+local function StartKeiMapTeleport(doer, pt)
+    if IsKeiMapTeleportBlocked(doer) or not IsValidMapTeleportPoint(doer, pt) then
+        return false
+    end
+
+    doer.sg:GoToState("kei_map_teleport", pt)
+    return true
 end
 
 local function GetAnalyzedWeaponDamage(target, doer)
@@ -615,6 +671,25 @@ wake_action.rmb = true
 wake_action.priority = 5
 AddKeiActionHandler(ACTIONS.KEI_WAKE, "kei_dormant_poweron")
 
+local map_teleport_action = AddAction("KEI_MAP_TELEPORT", "传送", function(act)
+    local pt = act:GetActionPoint()
+    return pt ~= nil and StartKeiMapTeleport(act.doer, pt) or false
+end)
+map_teleport_action.mount_valid = false
+map_teleport_action.rmb = true
+map_teleport_action.priority = HIGH_ACTION_PRIORITY
+map_teleport_action.customarrivecheck = ArriveAnywhere
+map_teleport_action.map_only = true
+map_teleport_action.invalid_hold_action = true
+map_teleport_action.maponly_checkvalidpos_fn = function(act)
+    local pt = act:GetActionPoint()
+    if IsKeiMapTeleportBlocked(act.doer) or not IsValidMapTeleportPoint(act.doer, pt) then
+        return false
+    end
+    return true, nil, pt.x, pt.z, nil
+end
+AddKeiActionHandler(ACTIONS.KEI_MAP_TELEPORT, "kei_map_teleport_pre")
+
 local function SetKeiDormantControls(inst, enabled)
     if inst.components.inventory ~= nil then
         if enabled then
@@ -647,6 +722,137 @@ local function ClearKeiChassisBuild(inst)
 end
 
 AddStategraphState("wilson", State{
+    name = "kei_map_teleport_pre",
+    tags = { "busy", "pausepredict", "nomorph" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        if not inst:PerformBufferedAction() then
+            inst.sg:GoToState("idle")
+        end
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_map_teleport_pre",
+    tags = { "busy", "pausepredict", "nomorph" },
+    server_states = { "kei_map_teleport_pre", "kei_map_teleport" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(2)
+    end,
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+})
+
+AddStategraphState("wilson", State{
+    name = "kei_map_teleport",
+    tags = { "busy", "nopredict", "nomorph", "noattack", "nointerrupt" },
+
+    onenter = function(inst, targetpos)
+        if targetpos == nil or not IsValidMapTeleportPoint(inst, targetpos) then
+            inst.sg:GoToState("idle")
+            return
+        end
+
+        inst.sg.statemem.targetpos = targetpos
+        inst.components.locomotor:Stop()
+        inst:AddTag("notarget")
+        if inst.components.health ~= nil then
+            inst.components.health:SetInvincible(true)
+        end
+        if inst.DynamicShadow ~= nil then
+            inst.DynamicShadow:Enable(false)
+        end
+
+        local x, y, z = inst.Transform:GetWorldPosition()
+        local fx = SpawnPrefab("hermitcrab_fx_med")
+        if fx ~= nil then
+            fx.Transform:SetPosition(x, y, z)
+        end
+        inst:Hide()
+        if inst.ScreenFade ~= nil then
+            inst:ScreenFade(false, 0.5)
+        end
+
+        inst.sg.statemem.teleport_task = inst:DoTaskInTime(MAP_TELEPORT_DELAY, function(inst)
+            local pt = inst.sg.statemem.targetpos
+            if pt == nil or not IsValidMapTeleportPoint(inst, pt) then
+                inst.sg:GoToState("idle")
+                return
+            end
+
+            local platform = TheWorld.Map:GetPlatformAtPoint(pt.x, pt.z)
+            local x, y, z = pt:Get()
+            if platform ~= nil then
+                local _, py, _ = platform.Transform:GetWorldPosition()
+                y = py
+            end
+
+            local arrival_fx = SpawnPrefab("hermitcrab_fx_med")
+            if arrival_fx ~= nil then
+                arrival_fx.Transform:SetPosition(x, y, z)
+            end
+
+            if inst.Physics ~= nil then
+                inst.Physics:Teleport(x, y, z)
+            else
+                inst.Transform:SetPosition(x, y, z)
+            end
+            inst:PushEvent("teleport_move")
+            if inst.SnapCamera ~= nil then
+                inst:SnapCamera()
+            end
+            if inst.ScreenFade ~= nil then
+                inst:ScreenFade(true, 0.5)
+            end
+
+            inst.sg.statemem.finish_task = inst:DoTaskInTime(MAP_TELEPORT_FINISH_DELAY, function(inst)
+                inst.sg:GoToState("idle")
+            end)
+        end)
+    end,
+
+    onexit = function(inst)
+        if inst.sg.statemem.teleport_task ~= nil then
+            inst.sg.statemem.teleport_task:Cancel()
+            inst.sg.statemem.teleport_task = nil
+        end
+        if inst.sg.statemem.finish_task ~= nil then
+            inst.sg.statemem.finish_task:Cancel()
+            inst.sg.statemem.finish_task = nil
+        end
+
+        inst:RemoveTag("notarget")
+        if inst.components.health ~= nil then
+            inst.components.health:SetInvincible(false)
+        end
+        if inst.DynamicShadow ~= nil then
+            inst.DynamicShadow:Enable(true)
+        end
+        inst:Show()
+        if inst.ScreenFade ~= nil then
+            inst:ScreenFade(true, 0.25)
+        end
+    end,
+})
+
+AddStategraphState("wilson", State{
     name = "kei_dormant_poweroff",
     tags = { "busy", "pausepredict", "notalking", "noattack" },
 
@@ -677,18 +883,10 @@ AddStategraphState("wilson", State{
         FrameEvent(28, function(inst)
             inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk")
         end),
-        FrameEvent(54, function(inst)
-            if inst.ScreenFade ~= nil then
-                inst:ScreenFade(false, 0)
-            end
-        end),
         FrameEvent(60, function(inst)
             inst.sg.statemem.dormant_success = inst:PerformBufferedAction()
             if inst.sg.statemem.dormant_success and inst.SnapCamera ~= nil then
                 inst:SnapCamera()
-            end
-            if inst.ScreenFade ~= nil then
-                inst:ScreenFade(true, 0.5)
             end
             inst.sg:GoToState("idle")
         end),

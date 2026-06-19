@@ -478,7 +478,10 @@ local function CombatCDOnLoad(inst, data)
     inst:SetCombatData(data ~= nil and data.protocol or nil)
 end
 
-local function MakeCombatCD()
+local function MakeCombatCD(prefabname, default_protocol)
+    prefabname = prefabname or "kei_combat_data_cd"
+    default_protocol = default_protocol or "deerclops"
+
     local visual = ITEM_VISUALS.combat_cd
     local assets = {
         Asset("ANIM", "anim/" .. visual.build .. ".zip"),
@@ -523,14 +526,22 @@ local function MakeCombatCD()
         inst.OnSave = CombatCDOnSave
         inst.OnLoad = CombatCDOnLoad
         -- 默认值保证直接生成的测试物品也能被协议槽识别。
-        inst:SetCombatData("deerclops")
+        inst:SetCombatData(default_protocol)
 
         MakeHauntableLaunch(inst)
 
         return inst
     end
 
-    return Prefab("kei_combat_data_cd", fn, assets, { "buff_electricattack" })
+    return Prefab(prefabname, fn, assets, { "buff_electricattack" })
+end
+
+local function MakeCombatShopCDs()
+    local prefabs = {}
+    for protocol in pairs(COMBAT_PROTOCOLS) do
+        table.insert(prefabs, MakeCombatCD("kei_combat_data_cd_" .. protocol, protocol))
+    end
+    return prefabs
 end
 
 local function SetAnalysisData(inst, data)
@@ -649,7 +660,8 @@ local function MakeProtocolUnlocker(name, tier)
 end
 
 -- 核心协议道具统一使用 ITEM_VISUALS 中登记的专用贴图和地面动画。
-return MakeBattery(),
+local prefabs = {
+    MakeBattery(),
     MakeRepairTool(),
     MakeSimpleInventoryItem(
         "kei_analysis_tool",
@@ -667,4 +679,11 @@ return MakeBattery(),
     MakeAnalysisCD(),
     MakeProtocolUnlocker("kei_protocol_mk1", 1),
     MakeProtocolUnlocker("kei_protocol_mk2", 2),
-    MakeProtocolUnlocker("kei_protocol_mk3", 3)
+    MakeProtocolUnlocker("kei_protocol_mk3", 3),
+}
+
+for _, prefab in ipairs(MakeCombatShopCDs()) do
+    table.insert(prefabs, prefab)
+end
+
+return unpack(prefabs)

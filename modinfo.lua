@@ -112,6 +112,24 @@ configuration_options = {
         default = true,
     },
     {
+        name = "KEI_WANDERING_TRADER_MAP_MARKER",
+        label = "流浪商人地图标记",
+        hover = "设置是否在地图上显示流浪商人的专属标记。",
+        options = {
+            {
+                description = "开启",
+                hover = "在地图上显示流浪商人的专属标记。",
+                data = true,
+            },
+            {
+                description = "关闭",
+                hover = "不为流浪商人添加地图标记。",
+                data = false,
+            },
+        },
+        default = true,
+    },
+    {
         name = "KEI_BEEQUEEN_PRESTIGE_MODE",
         label = "蜂后协议威压",
         hover = "设置蜂后战斗协议威压被动的触发方式。",

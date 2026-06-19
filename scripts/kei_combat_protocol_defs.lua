@@ -2,6 +2,7 @@ local COMBAT_PROTOCOLS = {
     deerclops = {
         kind = "combat",
         protocol = "deerclops",
+        display_name = "独眼巨鹿",
         description = "攻击附带冰冻，并免疫冰冻与过冷。",
     },
     mutateddeerclops = {
@@ -19,6 +20,7 @@ local COMBAT_PROTOCOLS = {
     bearger = {
         kind = "combat",
         protocol = "bearger",
+        display_name = "熊獾",
         description = "攻击造成衰减的群体伤害。",
     },
     mutatedbearger = {
@@ -30,6 +32,7 @@ local COMBAT_PROTOCOLS = {
     dragonfly = {
         kind = "combat",
         protocol = "dragonfly",
+        display_name = "龙蝇",
         description = "攻击会点燃目标，每秒造成最大生命值0.1%的伤害，并免疫过热与火焰伤害。",
     },
     moose = {

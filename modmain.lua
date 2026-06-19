@@ -49,6 +49,7 @@ Assets = {
     Asset("ATLAS", "images/avatars/avatar_ghost_kei.xml"),  --tab键人物列表显示的头像（死亡）
     Asset("ATLAS", "images/avatars/self_inspect_kei.xml"),  --人物检查按钮
     Asset("ATLAS", "images/map_icons/kei.xml"),  --地图图标
+    Asset("ATLAS", "images/map_icons/wandering_trader.xml"),
     Asset("ATLAS", "images/saveslot_portraits/kei.xml"),  -- 存档图片
     -- Asset("ATLAS", "images/selectscreen_portraits/kei.xml"),
     -- Asset("ATLAS", "images/selectscreen_portraits/kei_silho.xml"),
@@ -87,6 +88,28 @@ PreloadAssets = {
 }
 
 AddMinimapAtlas("images/map_icons/kei.xml")
+AddMinimapAtlas("images/map_icons/wandering_trader.xml")
+
+AddPrefabPostInit("wanderingtrader", function(inst)
+    if not TheWorld.ismastersim then
+        return
+    end
+
+    if inst.components.maprevealable == nil then
+        inst:AddComponent("maprevealable")
+    end
+    inst.components.maprevealable:SetIcon("wandering_trader.tex")
+    inst.components.maprevealable:AddRevealSource("kei_wandering_trader_compass", "compassbearer")
+end)
+
+if GetModConfigData("KEI_WANDERING_TRADER_MAP_MARKER") ~= false then
+    AddPrefabPostInit("wanderingtrader", function(inst)
+        if inst.MiniMapEntity == nil then
+            inst.entity:AddMiniMapEntity()
+        end
+        inst.MiniMapEntity:SetIcon("wandering_trader.tex")
+    end)
+end
 
 FOODTYPE.KEI_DEVICE = "KEI_DEVICE"
 
@@ -228,6 +251,25 @@ AddModRPCHandler(KEI_RPC_NAMESPACE, "MutatedWargFlame", function(player, x, z)
     if player.sg ~= nil then
         player.sg:GoToState("kei_mutatedwarg_flamethrower")
     end
+end)
+
+AddModRPCHandler(KEI_RPC_NAMESPACE, "MapTeleport", function(player, x, z)
+    if player == nil
+        or x == nil
+        or z == nil
+        or not player:HasTag("kei")
+        or player:HasTag("playerghost")
+        or player:HasTag("kei_dormant")
+        or player:HasTag("noteleport")
+        or player.sg == nil
+        or (player.components.health ~= nil and player.components.health:IsDead())
+        or (player.components.rider ~= nil and player.components.rider:IsRiding())
+        or (player.components.inventory ~= nil and player.components.inventory:IsHeavyLifting())
+    then
+        return
+    end
+
+    player.sg:GoToState("kei_map_teleport", Vector3(x, 0, z))
 end)
 
 AddModRPCHandler(KEI_RPC_NAMESPACE, "UpdateMutatedWargFlameAim", function(player, x, z)
@@ -605,7 +647,7 @@ local function MakeProtocolBinderSlotBgs(count)
     return slotbgs
 end
 
-local protocol_binder_slots = TUNING.KEI_PROTOCOL_SLOT_MAX or 7
+local protocol_binder_slots = TUNING.KEI_PROTOCOL_SLOT_HARD_MAX or 7
 local protocol_binder_width = 75 * math.max(protocol_binder_slots - 1, 0)
 local PROTOCOL_BINDER_BUTTON_COOLDOWN = 0.5
 
@@ -1071,6 +1113,39 @@ modimport("scripts/kei_assets.lua")
 modimport("scripts/kei_actions.lua")
 modimport("scripts/kei_winona_compat.lua")
 modimport("scripts/kei_recipes.lua")
+modimport("scripts/kei_wanderingtrader_trades.lua")
+
+if not TheNet:IsDedicated() then
+    AddClassPostConstruct("screens/mapscreen", function(self)
+        local old_OnMouseButton = self.OnMouseButton
+        self.OnMouseButton = function(self, button, down, ...)
+            local player = ThePlayer
+            if down
+                and button == MOUSEBUTTON_RIGHT
+                and player ~= nil
+                and player:HasTag("kei")
+                and not player:HasTag("playerghost")
+                and not player:HasTag("kei_dormant")
+                and player.replica.inventory ~= nil
+                and player.replica.inventory:GetActiveItem() == nil
+                and (player.replica.rider == nil or not player.replica.rider:IsRiding())
+                and (player.replica.inventory == nil or not player.replica.inventory:IsHeavyLifting())
+                and self.minimap ~= nil
+                and self.WidgetPosToMapPos ~= nil
+                and self.ScreenPosToWidgetPos ~= nil
+            then
+                local screenpos = TheInput:GetScreenPosition()
+                local mousemappos = self:WidgetPosToMapPos(self:ScreenPosToWidgetPos(screenpos))
+                local x, z = self.minimap:MapPosToWorldPos(mousemappos:Get())
+                SendModRPCToServer(MOD_RPC[KEI_RPC_NAMESPACE].MapTeleport, x, z)
+                TheFrontEnd:PopScreen(self)
+                return true
+            end
+
+            return old_OnMouseButton ~= nil and old_OnMouseButton(self, button, down, ...) or false
+        end
+    end)
+end
 
 if not TheNet:IsDedicated() and TheInput ~= nil then
     local kei_mutatedwarg_key_down = false
