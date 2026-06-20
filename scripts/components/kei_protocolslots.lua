@@ -1,4 +1,7 @@
 local WortoxSoulCommon = require("prefabs/wortox_soul_common")
+local LifeProtocolDefs = require("kei_life_protocol_defs")
+
+local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
 local MUTATEDDEERCLOPS_AURA_SLOW_KEY = "kei_mutateddeerclops_aura"
 local MUTATEDDEERCLOPS_AURA_SG_SLOW_TAG = "kei_mutateddeerclops_sg_slow"
@@ -16,6 +19,9 @@ local DRAGONFLY_BURN_COLOUR = { 242 / 255, 144 / 255, 186 / 255, 1 }
 local DRAGONFLY_BURN_DURATION = 30
 local DRAGONFLY_BURN_DAMAGE_PERIOD = 1
 local DRAGONFLY_BURN_MAX_HEALTH_DAMAGE = 0.001
+local GROWTH_TIMER_PREFAB_WHITELIST = {
+    rock_avocado_fruit_sprout_sapling = true,
+}
 
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
@@ -52,6 +58,14 @@ local KeiProtocolSlots = Class(function(self, inst)
 
     self._drain_task = inst:DoPeriodicTask(TUNING.KEI_PROTOCOL_DRAIN_PERIOD, function()
         self:DrainProtocols()
+    end)
+
+    self._life_growth_task = inst:DoPeriodicTask(TUNING.KEI_LIFE_GROWTH_ACCELERATION_PERIOD or 1, function()
+        self:ApplyLifeGrowthAcceleration()
+    end)
+
+    self._life_durability_task = inst:DoPeriodicTask(TUNING.KEI_LIFE_DURABILITY_RESTORE_PERIOD or 60, function()
+        self:ApplyLifeDurabilityRestore()
     end)
 
     inst:ListenForEvent("onhitother", function(_, data)
@@ -1262,6 +1276,104 @@ function KeiProtocolSlots:HasLifeProtocol(protocol)
     return self:GetLifeProtocolCount(protocol) > 0
 end
 
+function KeiProtocolSlots:ApplyLifeGrowthAcceleration()
+    local stacks = self:GetLifeProtocolCount("growth_acceleration")
+    if stacks <= 0 or TheSim == nil then
+        return
+    end
+
+    local period = TUNING.KEI_LIFE_GROWTH_ACCELERATION_PERIOD or 1
+    local speed_multiplier = stacks * (TUNING.KEI_LIFE_GROWTH_ACCELERATION_PER_STACK or 2)
+    local extra_elapsed_time = math.max(0, speed_multiplier - 1) * period
+    if extra_elapsed_time <= 0 then
+        return
+    end
+
+    local x, y, z = self.inst.Transform:GetWorldPosition()
+    local radius = TUNING.KEI_LIFE_GROWTH_ACCELERATION_RADIUS or 12
+    for _, target in ipairs(TheSim:FindEntities(x, y, z, radius)) do
+        local growable = target.components.growable
+        if growable ~= nil
+            and growable:IsGrowing()
+            and growable.stages ~= nil
+        then
+            -- Preserve the original stage time roll and only advance its remaining time.
+            growable:ExtendGrowTime(-extra_elapsed_time)
+        end
+
+        local timer = target.components.timer
+        if ((target.growprefab ~= nil and target.StartGrowing ~= nil)
+                or GROWTH_TIMER_PREFAB_WHITELIST[target.prefab])
+            and timer ~= nil
+            and timer:TimerExists("grow")
+        then
+            -- Planted tree saplings use the named "grow" timer instead of growable.
+            timer:SetTimeLeft("grow", (timer:GetTimeLeft("grow") or 0) - extra_elapsed_time)
+        end
+
+        local pickable = target.components.pickable
+        if growable == nil and pickable ~= nil then
+            -- Let pickable retain its own pause, wither, and external-timer rules.
+            pickable:LongUpdate(extra_elapsed_time)
+        end
+    end
+end
+
+function KeiProtocolSlots:ApplyLifeDurabilityRestore()
+    local stacks = self:GetLifeProtocolCount("durability_restore")
+    local inventory = self.inst.components.inventory
+    if stacks <= 0 or inventory == nil then
+        return
+    end
+
+    local restore_percent = stacks * (TUNING.KEI_LIFE_DURABILITY_RESTORE_PER_STACK or 0.1)
+    if restore_percent <= 0 then
+        return
+    end
+
+    local processed = {}
+    local function RestoreDurability(item)
+        if item == nil
+            or processed[item]
+            or not item:IsValid()
+            or item:HasTag("kei_virtual_equipment")
+        then
+            return
+        end
+
+        processed[item] = true
+        local finiteuses = item.components.finiteuses
+        if finiteuses ~= nil and finiteuses.total ~= nil and finiteuses.total > 0 then
+            local restored_uses = finiteuses.current + finiteuses.total * restore_percent
+            finiteuses:SetUses(math.min(restored_uses, finiteuses.total))
+        end
+
+        local armor = item.components.armor
+        if armor ~= nil
+            and not armor:IsIndestructible()
+            and armor.maxcondition ~= nil
+            and armor.maxcondition > 0
+        then
+            if armor._kei_life_original_maxcondition ~= nil then
+                armor.maxcondition = armor._kei_life_original_maxcondition
+                armor._kei_life_original_maxcondition = nil
+            end
+            armor:SetCondition(math.min(
+                armor.condition + armor.maxcondition * restore_percent,
+                armor.maxcondition
+            ))
+        end
+    end
+
+    for _, item in pairs(inventory.itemslots) do
+        RestoreDurability(item)
+    end
+    RestoreDurability(inventory.activeitem)
+    for _, item in pairs(inventory.equipslots) do
+        RestoreDurability(item)
+    end
+end
+
 function KeiProtocolSlots:SyncLifeProtocolFlags()
     if self.inst._kei_map_teleport_protocol_active ~= nil then
         self.inst._kei_map_teleport_protocol_active:set(self:HasLifeProtocol("map_teleport"))
@@ -1310,7 +1422,12 @@ function KeiProtocolSlots:Refresh()
         if data.kind == "combat" and data.protocol ~= nil then
             combat[data.protocol] = true
         elseif data.kind == "life" and data.protocol ~= nil then
-            life[data.protocol] = (life[data.protocol] or 0) + 1
+            local definition = LIFE_PROTOCOLS[data.protocol]
+            if definition ~= nil and definition.stackable == true then
+                life[data.protocol] = (life[data.protocol] or 0) + 1
+            else
+                life[data.protocol] = 1
+            end
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true

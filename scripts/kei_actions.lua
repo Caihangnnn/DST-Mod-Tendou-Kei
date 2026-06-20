@@ -770,6 +770,20 @@ AddStategraphState("wilson", State{
             return
         end
 
+        local protocolslots = inst.components.kei_protocolslots
+        local hunger = inst.components.hunger
+        local teleport_power_cost = TUNING.KEI_MAP_TELEPORT_POWER_COST or 30
+        if protocolslots == nil
+            or not protocolslots:HasLifeProtocol("map_teleport")
+            or hunger == nil
+            or hunger.current < teleport_power_cost
+        then
+            inst.sg:GoToState("idle")
+            return
+        end
+
+        hunger:DoDelta(-teleport_power_cost, nil, "kei_map_teleport")
+
         inst.sg.statemem.targetpos = targetpos
         inst.components.locomotor:Stop()
         inst:AddTag("notarget")

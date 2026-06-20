@@ -561,7 +561,7 @@ local function SetLifeData(inst, protocol)
         kind = "life",
         protocol = protocol,
     }
-    SetNamedName(inst, (LIFE_PROTOCOLS[protocol].display_name or protocol) .. "生活协议")
+    SetNamedName(inst, LIFE_PROTOCOLS[protocol].display_name or protocol)
 end
 
 local function LifeCDDescriptionFn(inst)
@@ -577,7 +577,9 @@ local function LifeCDOnLoad(inst, data)
     inst:SetLifeData(data ~= nil and data.protocol or nil)
 end
 
-local function MakeLifeCD()
+local function MakeLifeCD(prefabname, default_protocol)
+    prefabname = prefabname or "kei_life_cd"
+    default_protocol = default_protocol or "map_teleport"
     local visual = ITEM_VISUALS.life_cd
     local assets = {
         Asset("ANIM", "anim/" .. visual.build .. ".zip"),
@@ -620,14 +622,14 @@ local function MakeLifeCD()
         inst.SetLifeData = SetLifeData
         inst.OnSave = LifeCDOnSave
         inst.OnLoad = LifeCDOnLoad
-        inst:SetLifeData("map_teleport")
+        inst:SetLifeData(default_protocol)
 
         MakeHauntableLaunch(inst)
 
         return inst
     end
 
-    return Prefab("kei_life_cd", fn, assets)
+    return Prefab(prefabname, fn, assets)
 end
 
 local function SetAnalysisData(inst, data)
@@ -764,6 +766,8 @@ local prefabs = {
     MakeCombatCD(),
     MakeAnalysisCD(),
     MakeLifeCD(),
+    MakeLifeCD("kei_life_cd_growth_acceleration", "growth_acceleration"),
+    MakeLifeCD("kei_life_cd_durability_restore", "durability_restore"),
     MakeProtocolUnlocker("kei_protocol_mk1", 1),
     MakeProtocolUnlocker("kei_protocol_mk2", 2),
     MakeProtocolUnlocker("kei_protocol_mk3", 3),
