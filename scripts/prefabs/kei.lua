@@ -391,6 +391,7 @@ local function common_postinit(inst)
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
     inst._kei_malbatross_protocol_active = net_bool(inst.GUID, "kei.malbatross_protocol_active", "kei_malbatross_protocol_dirty")
     inst._kei_mutatedwarg_protocol_active = net_bool(inst.GUID, "kei.mutatedwarg_protocol_active", "kei_mutatedwarg_protocol_dirty")
+    inst._kei_map_teleport_protocol_active = net_bool(inst.GUID, "kei.map_teleport_protocol_active", "kei_map_teleport_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
     inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")
 

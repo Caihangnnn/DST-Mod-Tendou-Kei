@@ -1,4 +1,5 @@
 local CombatProtocolDefs = require("kei_combat_protocol_defs")
+local LifeProtocolDefs = require("kei_life_protocol_defs")
 
 local ITEM_VISUALS = {
     analysis_cd = {
@@ -31,6 +32,14 @@ local ITEM_VISUALS = {
         anim = "idle",
         atlas = "images/kei_combat_cd.xml",
         image = "kei_combat_cd",
+        scale = 1.5,
+    },
+    life_cd = {
+        bank = "kei_life_cd",
+        build = "kei_life_cd",
+        anim = "idle",
+        atlas = "images/kei_life_cd.xml",
+        image = "kei_life_cd",
         scale = 1.5,
     },
 }
@@ -314,6 +323,7 @@ local function MakeBlankCD()
 end
 
 local COMBAT_PROTOCOLS = CombatProtocolDefs.COMBAT_PROTOCOLS
+local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
 local function GetPrefabDisplayName(prefab)
     return prefab ~= nil and (STRINGS.NAMES[string.upper(prefab)] or prefab) or nil
@@ -544,6 +554,82 @@ local function MakeCombatShopCDs()
     return prefabs
 end
 
+local function SetLifeData(inst, protocol)
+    protocol = LIFE_PROTOCOLS[protocol] ~= nil and protocol or "map_teleport"
+    inst.kei_life_protocol = protocol
+    inst.kei_protocol_data = {
+        kind = "life",
+        protocol = protocol,
+    }
+    SetNamedName(inst, (LIFE_PROTOCOLS[protocol].display_name or protocol) .. "生活协议")
+end
+
+local function LifeCDDescriptionFn(inst)
+    local protocol = inst.kei_life_protocol
+    return protocol ~= nil and LIFE_PROTOCOLS[protocol] ~= nil and LIFE_PROTOCOLS[protocol].description or nil
+end
+
+local function LifeCDOnSave(inst, data)
+    data.protocol = inst.kei_life_protocol
+end
+
+local function LifeCDOnLoad(inst, data)
+    inst:SetLifeData(data ~= nil and data.protocol or nil)
+end
+
+local function MakeLifeCD()
+    local visual = ITEM_VISUALS.life_cd
+    local assets = {
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
+    }
+
+    local function fn()
+        local inst = CreateEntity()
+
+        inst.entity:AddTransform()
+        inst.entity:AddAnimState()
+        inst.entity:AddNetwork()
+
+        MakeInventoryPhysics(inst)
+        SetWorldScale(inst, visual.scale)
+        inst.AnimState:SetBank(visual.bank)
+        inst.AnimState:SetBuild(visual.build)
+        inst.AnimState:PlayAnimation(visual.anim)
+
+        inst:AddTag("kei_protocol_cd")
+        inst:AddTag("kei_life_protocol")
+
+        MakeInventoryFloatable(inst, "small", nil, 0.8)
+
+        inst.entity:SetPristine()
+
+        if not TheWorld.ismastersim then
+            return inst
+        end
+
+        inst:AddComponent("inspectable")
+        inst.components.inspectable.descriptionfn = LifeCDDescriptionFn
+        inst:AddComponent("named")
+        inst:AddComponent("inventoryitem")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(visual.image)
+        inst.components.inventoryitem.keepondeath = true
+
+        inst.SetLifeData = SetLifeData
+        inst.OnSave = LifeCDOnSave
+        inst.OnLoad = LifeCDOnLoad
+        inst:SetLifeData("map_teleport")
+
+        MakeHauntableLaunch(inst)
+
+        return inst
+    end
+
+    return Prefab("kei_life_cd", fn, assets)
+end
+
 local function SetAnalysisData(inst, data)
     -- 解析 CD 保存装备解析结果，字段由 kei_actions.lua 的 AnalyzeEquipment 生成。
     data = data or {}
@@ -677,6 +763,7 @@ local prefabs = {
     MakeBlankCD(),
     MakeCombatCD(),
     MakeAnalysisCD(),
+    MakeLifeCD(),
     MakeProtocolUnlocker("kei_protocol_mk1", 1),
     MakeProtocolUnlocker("kei_protocol_mk2", 2),
     MakeProtocolUnlocker("kei_protocol_mk3", 3),

@@ -15,7 +15,7 @@ local COMBAT_PROTOCOLS = {
         kind = "combat",
         protocol = "mutatedwarg",
         display_name = "附身座狼",
-        description = "按 R 消耗 10 点数据稳定性，向鼠标方向喷出冷火，持续 5 秒，每 0.5 秒造成 50 点伤害，冷却 10 秒。",
+        description = "按 Z 消耗 10 点数据稳定性，向鼠标方向喷出冷火，持续 5 秒，每 0.5 秒造成 50 点伤害，冷却 15 秒。",
     },
     bearger = {
         kind = "combat",

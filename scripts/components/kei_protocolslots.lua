@@ -22,6 +22,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.unlocked_slots = 1
     self.active = {}
     self.active_combat = {}
+    self.active_life = {}
     self.virtual_equips = {}
     self.analysis_damage_bonus = 0
     self.analysis_tool_actions = {}
@@ -849,7 +850,9 @@ end
 function KeiProtocolSlots:DisableAllProtocols()
     self.active = {}
     self.active_combat = {}
+    self.active_life = {}
     self:SyncCombatProtocolFlags()
+    self:SyncLifeProtocolFlags()
     self:SetProtocolContainersPowered(false)
     self:ClearModifiers()
 end
@@ -1251,6 +1254,20 @@ function KeiProtocolSlots:HasCombatProtocol(protocol)
     return self:IsFunctional() and self.active_combat[protocol] == true
 end
 
+function KeiProtocolSlots:GetLifeProtocolCount(protocol)
+    return self:IsFunctional() and (self.active_life[protocol] or 0) or 0
+end
+
+function KeiProtocolSlots:HasLifeProtocol(protocol)
+    return self:GetLifeProtocolCount(protocol) > 0
+end
+
+function KeiProtocolSlots:SyncLifeProtocolFlags()
+    if self.inst._kei_map_teleport_protocol_active ~= nil then
+        self.inst._kei_map_teleport_protocol_active:set(self:HasLifeProtocol("map_teleport"))
+    end
+end
+
 function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_eyeofterror_protocol_active ~= nil then
         self.inst._kei_eyeofterror_protocol_active:set(self:HasCombatProtocol("eyeofterror"))
@@ -1282,6 +1299,7 @@ function KeiProtocolSlots:Refresh()
 
     local items = self:GetProtocolSlotItems()
     local combat = {}
+    local life = {}
     local hand_stats = NewHandAnalysisStats()
     local desired_virtuals = {}
 
@@ -1291,6 +1309,8 @@ function KeiProtocolSlots:Refresh()
         local data = entry.data
         if data.kind == "combat" and data.protocol ~= nil then
             combat[data.protocol] = true
+        elseif data.kind == "life" and data.protocol ~= nil then
+            life[data.protocol] = (life[data.protocol] or 0) + 1
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true
@@ -1303,6 +1323,8 @@ function KeiProtocolSlots:Refresh()
 
     self:ClearVirtualEquips(desired_virtuals)
     self.active_combat = combat
+    self.active_life = life
+    self:SyncLifeProtocolFlags()
     self:RefreshTemperatureProtocols()
     self:RefreshMooseProtocol()
     self:RefreshMalbatrossProtocol()

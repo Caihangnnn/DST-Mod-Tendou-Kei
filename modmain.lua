@@ -28,6 +28,7 @@ Assets = {
     Asset("ANIM", "anim/kei_analysis_tool.zip"),
     Asset("ANIM", "anim/kei_blank_cd.zip"),
     Asset("ANIM", "anim/kei_combat_cd.zip"),
+    Asset("ANIM", "anim/kei_life_cd.zip"),
     Asset("ANIM", "anim/kei_data_recorder.zip"),
     Asset("ANIM", "anim/kei_data_recorder_item.zip"),
     Asset("ANIM", "anim/kei_protocol_binder.zip"),
@@ -62,6 +63,7 @@ Assets = {
     Asset("ATLAS", "images/kei_analysis_tool.xml"),
     Asset("ATLAS", "images/kei_blank_cd.xml"),
     Asset("ATLAS", "images/kei_combat_cd.xml"),
+    Asset("ATLAS", "images/kei_life_cd.xml"),
     Asset("ATLAS", "images/kei_data_recorder_item.xml"),
     Asset("ATLAS", "images/kei_protocol_binder.xml"),
     Asset("ATLAS", "images/kei_protocol_binder_open.xml"),
@@ -70,6 +72,7 @@ Assets = {
     Asset("ATLAS", "images/kei_protocol_slot_openable.xml"),
     Asset("ATLAS", "images/transparent_slot.xml"),
     Asset("IMAGE", "images/kei_protocol_binder.tex"),
+    Asset("IMAGE", "images/kei_life_cd.tex"),
     Asset("IMAGE", "images/kei_data_recorder_item.tex"),
     Asset("IMAGE", "images/kei_protocol_binder_open.tex"),
     Asset("IMAGE", "images/kei_protocol_slot_closed.tex"),
@@ -262,6 +265,8 @@ AddModRPCHandler(KEI_RPC_NAMESPACE, "MapTeleport", function(player, x, z)
         or player:HasTag("kei_dormant")
         or player:HasTag("noteleport")
         or player.sg == nil
+        or player.components.kei_protocolslots == nil
+        or not player.components.kei_protocolslots:HasLifeProtocol("map_teleport")
         or (player.components.health ~= nil and player.components.health:IsDead())
         or (player.components.rider ~= nil and player.components.rider:IsRiding())
         or (player.components.inventory ~= nil and player.components.inventory:IsHeavyLifting())
@@ -1125,8 +1130,10 @@ if not TheNet:IsDedicated() then
                 and player ~= nil
                 and player:HasTag("kei")
                 and not player:HasTag("playerghost")
-                and not player:HasTag("kei_dormant")
-                and player.replica.inventory ~= nil
+                   and not player:HasTag("kei_dormant")
+                   and player._kei_map_teleport_protocol_active ~= nil
+                   and player._kei_map_teleport_protocol_active:value()
+                   and player.replica.inventory ~= nil
                 and player.replica.inventory:GetActiveItem() == nil
                 and (player.replica.rider == nil or not player.replica.rider:IsRiding())
                 and (player.replica.inventory == nil or not player.replica.inventory:IsHeavyLifting())
@@ -1216,7 +1223,7 @@ if not TheNet:IsDedicated() and TheInput ~= nil then
         )
     end
 
-    TheInput:AddKeyDownHandler(KEY_R, function()
+    TheInput:AddKeyDownHandler(KEY_Z, function()
         if kei_mutatedwarg_key_down then
             return
         end
@@ -1241,7 +1248,7 @@ if not TheNet:IsDedicated() and TheInput ~= nil then
             end
         end
     end)
-    TheInput:AddKeyUpHandler(KEY_R, function()
+    TheInput:AddKeyUpHandler(KEY_Z, function()
         kei_mutatedwarg_key_down = false
     end)
 end
