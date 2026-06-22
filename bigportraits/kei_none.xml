@@ -1,6 +1,1 @@
-<Atlas>
-<Texture filename="kei_none.tex" />
-<Elements>
-<Element name="kei_none.tex" u1="0.0009765625" u2="0.9580078125" v1="0.30908203125" v2="0.99951171875" />
-</Elements>
-</Atlas>
+<Atlas><Texture filename="kei_none.tex" /><Elements><Element name="kei_none.tex" u1="0.0009765625" u2="0.9990234375" v1="0.00048828125" v2="0.99951171875" /></Elements></Atlas>

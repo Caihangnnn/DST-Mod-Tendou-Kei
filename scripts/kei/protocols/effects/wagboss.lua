@@ -1,0 +1,125 @@
+-- 瓦格机器人协议：轨道打击光束 + 目标标记 FX。
+
+local WAGBOSS_TARGET_FOLLOW_PERIOD = FRAMES
+
+local function IsValidBeamTarget(owner, target)
+    return owner ~= nil
+        and owner:IsValid()
+        and owner.components.combat ~= nil
+        and target ~= nil
+        and target:IsValid()
+        and not target:IsInLimbo()
+        and target.entity:IsVisible()
+        and target.components.health ~= nil
+        and not target.components.health:IsDead()
+        and target.components.combat ~= nil
+        and owner.components.combat:CanTarget(target)
+        and not owner.components.combat:IsAlly(target)
+end
+
+local WagbossEffect = {}
+
+-- ---------- 目标标记 FX ----------
+
+local function PositionTargetFx(slots)
+    local fx = slots._kei_wagboss_target_fx
+    if fx ~= nil and fx:IsValid() then
+        fx.Transform:SetPosition(slots.inst.Transform:GetWorldPosition())
+        fx.Transform:SetRotation(0)
+    end
+end
+
+local function EnableTargetFx(slots, inst)
+    if slots._kei_wagboss_target_fx ~= nil and slots._kei_wagboss_target_fx:IsValid() then
+        return
+    end
+
+    local fx = SpawnPrefab("kei_wagboss_target_fx")
+    if fx ~= nil then
+        slots._kei_wagboss_target_fx = fx
+        PositionTargetFx(slots)
+        slots._kei_wagboss_target_follow_task = inst:DoPeriodicTask(WAGBOSS_TARGET_FOLLOW_PERIOD, function()
+            PositionTargetFx(slots)
+        end)
+    end
+end
+
+local function DisableTargetFx(slots)
+    if slots._kei_wagboss_target_follow_task ~= nil then
+        slots._kei_wagboss_target_follow_task:Cancel()
+        slots._kei_wagboss_target_follow_task = nil
+    end
+    if slots._kei_wagboss_target_ready_task ~= nil then
+        slots._kei_wagboss_target_ready_task:Cancel()
+        slots._kei_wagboss_target_ready_task = nil
+    end
+    if slots._kei_wagboss_target_fx ~= nil then
+        if slots._kei_wagboss_target_fx:IsValid() then
+            slots._kei_wagboss_target_fx:Remove()
+        end
+        slots._kei_wagboss_target_fx = nil
+    end
+end
+
+local function RefreshTargetFx(slots, inst)
+    if not slots:IsFunctional() or not slots.active_combat.wagboss_robot then
+        DisableTargetFx(slots)
+        return
+    end
+
+    local now = GetTime()
+    local ready_time = slots._kei_wagboss_beam_ready_time or 0
+    if ready_time > now then
+        DisableTargetFx(slots)
+        slots._kei_wagboss_target_ready_task = inst:DoTaskInTime(ready_time - now, function()
+            slots._kei_wagboss_target_ready_task = nil
+            RefreshTargetFx(slots, inst)
+        end)
+        return
+    end
+
+    EnableTargetFx(slots, inst)
+end
+
+-- ---------- 接口方法 ----------
+
+function WagbossEffect.Enable(slots, inst)
+    RefreshTargetFx(slots, inst)
+end
+
+function WagbossEffect.Disable(slots, inst)
+    DisableTargetFx(slots)
+end
+
+function WagbossEffect.OnHitOther(slots, inst, data)
+    local target = data and data.target
+    local now = GetTime()
+    if (slots._kei_wagboss_beam_ready_time or 0) > now
+        or not IsValidBeamTarget(inst, target)
+    then
+        return
+    end
+
+    local beam = SpawnPrefab("kei_wagboss_beam_fx")
+    if beam == nil or beam.TrackTarget == nil then
+        if beam ~= nil then
+            beam:Remove()
+        end
+        return
+    end
+
+    local x, _, z = inst.Transform:GetWorldPosition()
+    beam:SetCaster(inst)
+    beam:TrackTarget(target, x, z)
+    slots._kei_wagboss_beam_ready_time = now + (TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN or 20)
+    DisableTargetFx(slots)
+    slots._kei_wagboss_target_ready_task = inst:DoTaskInTime(
+        TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN or 20,
+        function()
+            slots._kei_wagboss_target_ready_task = nil
+            RefreshTargetFx(slots, inst)
+        end
+    )
+end
+
+return WagbossEffect
