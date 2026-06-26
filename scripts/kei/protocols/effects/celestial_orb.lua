@@ -1,4 +1,4 @@
--- 天体宝珠协议：环绕宝珠 + 攻击加速 + AOE 伤害。
+-- 天体宝珠协议：环绕宝珠 AOE 伤害。
 
 local CELESTIAL_ORB_FOLLOW_PERIOD = FRAMES
 local CELESTIAL_ORB_TARGET_MUST_TAGS = { "_combat", "_health" }

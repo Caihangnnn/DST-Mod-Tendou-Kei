@@ -1,4 +1,4 @@
--- 瓦格机器人协议：轨道打击光束 + 目标标记 FX。
+-- 战争瓦器人协议：轨道打击光束 + 目标标记 FX。
 
 local WAGBOSS_TARGET_FOLLOW_PERIOD = FRAMES
 

@@ -1,4 +1,4 @@
--- 生活协议：加速周围植物/作物/树苗的生长。
+-- 生活协议-生长加速：加速周围植物/作物/树苗的生长。
 
 local GROWTH_TIMER_PREFAB_WHITELIST = {
     rock_avocado_fruit_sprout_sapling = true,
