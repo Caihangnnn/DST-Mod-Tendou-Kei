@@ -424,11 +424,11 @@ local function HarvestKeiData(inst, doer)
     if inst.kei_state ~= "complete" or inst.kei_completed_protocol == nil then
         return false
     end
-    local cd = SpawnPrefab("kei_combat_data_cd")
+    local cd_prefab = CombatProtocolDefs.GetProtocolPrefab(inst.kei_completed_protocol)
+    local cd = cd_prefab ~= nil and SpawnPrefab(cd_prefab) or nil
     if cd == nil then
         return false
     end
-    cd:SetCombatData(inst.kei_completed_protocol)
     if doer ~= nil and doer.components.inventory ~= nil then
         doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
     else
@@ -762,7 +762,12 @@ local function record_drone_fn()
 end
 
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-return Prefab("kei_data_recorder", recorder_fn, assets, { "kei_blank_cd", "kei_combat_data_cd", "kei_record_drone", "kei_recorder_lunar_fissure_fx", "terrarium_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }),
+local prefab_deps = { "kei_blank_cd", "kei_record_drone", "kei_recorder_lunar_fissure_fx", "terrarium_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }
+for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
+    table.insert(prefab_deps, def.prefab)
+end
+
+return Prefab("kei_data_recorder", recorder_fn, assets, prefab_deps),
     Prefab("kei_recorder_lunar_fissure_fx", recorder_lunar_fissure_fx_fn, assets),
     Prefab("kei_record_drone", record_drone_fn, assets),
     MakeDeployableKitItem(

@@ -1,4 +1,5 @@
 local KEI_FILTER = "KEI_PROTOCOLS"
+local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 
 -- 独立配方筛选栏，方便把 Kei 的协议/工具类物品集中展示。
 AddRecipeFilter({
@@ -37,51 +38,8 @@ local function kei_config(tex, extra)
     return cfg
 end
 
-local function protocol_unlock_tier(recipe)
-    local name = type(recipe) == "table" and recipe.name or recipe
-    return name ~= nil and tonumber(string.match(name, "^kei_protocol_mk(%d)$")) or nil
-end
-
-local function protocol_tier_target_slots(tier)
-    return math.min(
-        (TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1) + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2),
-        TUNING.KEI_PROTOCOL_SLOT_MAX or 7
-    )
-end
-
-local function protocol_tier_previous_slots(tier)
-    return math.min(
-        (TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1) + (tier - 1) * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2),
-        TUNING.KEI_PROTOCOL_SLOT_MAX or 7
-    )
-end
-
-local function get_unlocked_protocol_slots(builder)
-    if builder == nil then
-        return 0
-    elseif builder.components ~= nil and builder.components.kei_protocolslots ~= nil then
-        return builder.components.kei_protocolslots.unlocked_slots or 0
-    elseif builder._kei_unlocked_protocol_slots ~= nil then
-        return builder._kei_unlocked_protocol_slots:value()
-    end
-    return TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1
-end
-
 local function can_build_protocol_unlock(recipe, builder)
-    if builder == nil or not builder:HasTag("kei") then
-        return false
-    end
-    local tier = protocol_unlock_tier(recipe)
-    if tier == nil then
-        return false
-    end
-    local unlocked_slots = get_unlocked_protocol_slots(builder)
-    if unlocked_slots >= protocol_tier_target_slots(tier) then
-        return false, "KEI_PROTOCOL_ALREADY_UNLOCKED"
-    elseif unlocked_slots ~= protocol_tier_previous_slots(tier) then
-        return false, "KEI_PROTOCOL_NEED_PREVIOUS"
-    end
-    return true
+    return ProtocolSlotUnlocks.CanBuildUnlockRecipe(recipe, builder)
 end
 
 -- 同时挂到角色专属栏和 Kei 自己的协议栏。
@@ -217,20 +175,15 @@ for _, data in ipairs(winona_recipes) do
     )
 end
 
--- 三个解锁模块共用同一套初版材料；实际解锁数量由模组配置决定。
-local mk_data = {
-    { image = "kei_mk1.tex", atlas = "images/inventoryimages/kei_mk1.xml" },
-    { image = "kei_mk2.tex", atlas = "images/inventoryimages/kei_mk2.xml" },
-    { image = "kei_mk3.tex", atlas = "images/inventoryimages/kei_mk3.xml" },
-}
-for i = 1, 3 do
+-- 协议槽解锁配方：每个配方只能使用一次，每次解锁最左侧的一个锁定槽位。
+for _, def in ipairs(ProtocolSlotUnlocks.UNLOCK_RECIPE_LIST) do
     AddRecipe2(
-        "kei_protocol_mk" .. tostring(i),
-        { Ingredient("goldnugget", 10) },
+        def.id,
+        ProtocolSlotUnlocks.MakeIngredients(def),
         TECH.NONE,
         kei_config({
-            atlas = mk_data[i].atlas,
-            image = mk_data[i].image,
+            atlas = def.atlas,
+            image = def.image .. ".tex",
             canbuild = can_build_protocol_unlock,
         }),
         filters

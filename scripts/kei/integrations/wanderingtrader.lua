@@ -3,7 +3,6 @@ local CombatProtocolDefs = require("kei/protocols/combat")
 local COMBAT_PROTOCOLS = CombatProtocolDefs.COMBAT_PROTOCOLS
 
 local RECIPE_PREFIX = "kei_wanderingtradershop_combat_"
-local PRODUCT_PREFIX = "kei_combat_data_cd_"
 local STOCK_LIMIT = 3
 local REFRESH_INTERVAL_DAYS = 5
 local REFRESH_DELAY = 15
@@ -47,43 +46,17 @@ local SEASONAL_ALWAYS = {
     winter = "deerclops",
 }
 
-local PROTOCOL_DISPLAY_NAMES = {
-    deerclops = "独眼巨鹿",
-    mutateddeerclops = "独眼晶体巨鹿",
-    mutatedwarg = "附身座狼",
-    mutatedbearger = "装甲熊獾",
-    bearger = "熊獾",
-    dragonfly = "龙蝇",
-    moose = "麋鹿鹅",
-    eyeofterror = "克眼",
-    daywalker = "梦魇疯猪",
-    daywalker2 = "拾荒疯猪",
-    lordfruitfly = "果蝇王",
-    minotaur = "远古守护者",
-    vault_pillar_guard = "远古戍卫塔",
-    wagboss_robot = "战争瓦器人",
-    malbatross = "邪天翁",
-    klaus = "克劳斯",
-    toadstool = "蟾蜍",
-    antlion = "蚁狮",
-    beequeen = "蜂后",
-    stalker_atrium = "织影者",
-    alterguardian = "天体英雄",
-    alterguardian_phase4_lunarrift = "天体后裔",
-}
-
 local function RecipeName(protocol)
     return RECIPE_PREFIX .. protocol
 end
 
 local function ProductName(protocol)
-    return PRODUCT_PREFIX .. protocol
+    return CombatProtocolDefs.GetProtocolPrefab(protocol)
 end
 
 local function TradeDisplayName(protocol)
-    local name = PROTOCOL_DISPLAY_NAMES[protocol]
-        or (COMBAT_PROTOCOLS[protocol] ~= nil and COMBAT_PROTOCOLS[protocol].display_name)
-        or protocol
+    local def = COMBAT_PROTOCOLS[protocol]
+    local name = def ~= nil and (def.short_name or def.display_name) or protocol
     return name .. "战斗协议"
 end
 
@@ -151,7 +124,7 @@ for _, protocol in pairs(SEASONAL_ALWAYS) do
 end
 
 local function AddWareFromProtocol(inst, protocol)
-    if inst.AddWares ~= nil and COMBAT_PROTOCOLS[protocol] ~= nil then
+    if inst.AddWares ~= nil and COMBAT_PROTOCOLS[protocol] ~= nil and ProductName(protocol) ~= nil then
         inst:AddWares(MakeWareGroup(protocol))
     end
 end

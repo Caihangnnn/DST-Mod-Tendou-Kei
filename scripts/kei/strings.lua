@@ -2,7 +2,7 @@
 STRINGS.CHARACTER_NAMES.kei = "天童 柯伊"
 STRINGS.CHARACTER_TITLES.kei = "学习型机械 AI"
 STRINGS.CHARACTER_DESCRIPTIONS.kei = "*以电量维持运转\n*用协议槽挂载战斗与解析数据\n*普通食物恢复效率很低"
-STRINGS.CHARACTER_QUOTES.kei = "\"保护协议不是借口，是优先级。\""
+STRINGS.CHARACTER_QUOTES.kei = "保护协议不是借口，是优先级。"
 STRINGS.CHARACTER_SURVIVABILITY.kei = "可扩展"
 
 STRINGS.CHARACTERS.KEI = require("speech_wilson")
@@ -21,16 +21,15 @@ STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_COPY_DONE = "数据拷贝完成。"
 STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_CHARGED = "电量补给完成。"
 STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_REPAIRED = "机体完整度已恢复。"
 STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_MAP_TELEPORT_NO_POWER = "电量不足，无法执行地图传送。"
-STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_PROTOCOL_ALREADY_UNLOCKED = "对应协议槽已扩展。"
-STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_PROTOCOL_NEED_PREVIOUS = "需要先完成上一阶段协议槽扩展。"
+STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_PROTOCOL_ALREADY_UNLOCKED = "该协议槽扩展已完成。"
+STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_PROTOCOL_UNLOCK_RECIPE_USED = "该扩展方案已经使用过。"
+STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_PROTOCOL_SLOTS_FULL = "协议槽已经全部解锁。"
 
 STRINGS.NAMES.KEI = "天童 柯伊"
 STRINGS.NAMES.KEI_BATTERY = "便携电池"
 STRINGS.NAMES.KEI_REPAIR_TOOL = "修理工具"
 STRINGS.NAMES.KEI_BLANK_CD = "空白数据记录 CD"
-STRINGS.NAMES.KEI_COMBAT_DATA_CD = "战斗数据 CD"
 STRINGS.NAMES.KEI_ANALYSIS_CD = "解析协议 CD"
-STRINGS.NAMES.KEI_LIFE_CD = "地图传送协议"
 STRINGS.NAMES.KEI_ANALYSIS_TOOL = "装备解析工具"
 STRINGS.NAMES.KEI_DATA_RECORDER_ITEM = "数据记录器部署包"
 STRINGS.NAMES.KEI_DATA_RECORDER = "数据记录器"
@@ -43,16 +42,14 @@ STRINGS.RECIPE_DESC.KEI_REPAIR_TOOL = "修复 Kei 的机体完整度。"
 STRINGS.RECIPE_DESC.KEI_BLANK_CD = "用于绑定并记录巨兽战斗数据。"
 STRINGS.RECIPE_DESC.KEI_ANALYSIS_TOOL = "把装备解析成协议 CD。"
 STRINGS.RECIPE_DESC.KEI_DATA_RECORDER_ITEM = "部署后建立战斗数据记录领域。"
-STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK1 = "制作后立即扩展下一阶段协议槽。"
-STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK2 = "制作后立即扩展下一阶段协议槽。"
-STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK3 = "制作后立即扩展下一阶段协议槽。"
+STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK1 = "解锁最左侧的一个锁定协议槽。"
+STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK2 = "解锁最左侧的一个锁定协议槽。"
+STRINGS.RECIPE_DESC.KEI_PROTOCOL_MK3 = "解锁最左侧的一个锁定协议槽。"
 
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_BATTERY = "一个紧凑的能源包。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_REPAIR_TOOL = "看起来适合修补机械结构。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_BLANK_CD = "还没有写入数据。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_COMBAT_DATA_CD = "里面存着危险的战斗样本。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_ANALYSIS_CD = "装备数据被压缩进了协议格式。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_LIFE_CD = "记录着一条便利的生活路径。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_ANALYSIS_TOOL = "它会读懂装备，某种意义上。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_DATA_RECORDER_ITEM = "可以部署成一个数据记录器。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_DATA_RECORDER = "它正在等待战斗样本。"
@@ -62,3 +59,33 @@ STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PROTOCOL_MK3 = "协议槽扩展模块。
 STRINGS.NAMES.KEI_PROTOCOL_BINDER = "协议预设盒"
 STRINGS.RECIPE_DESC.KEI_PROTOCOL_BINDER = "保存一组协议 CD，并与当前协议槽交换。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PROTOCOL_BINDER = "里面可以整理一整组协议。"
+
+local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+for _, def in ipairs(ProtocolSlotUnlocks.UNLOCK_RECIPE_LIST) do
+    local key = string.upper(def.id)
+    STRINGS.NAMES[key] = def.display_name
+    STRINGS.RECIPE_DESC[key] = def.description
+    STRINGS.CHARACTERS.GENERIC.DESCRIBE[key] = def.description
+end
+local CombatProtocolDefs = require("kei/protocols/combat")
+local LifeProtocolDefs = require("kei/protocols/life")
+local PetProtocolDefs = require("kei/protocols/pet")
+
+local function RegisterProtocolItemStrings(def, suffix)
+    if def == nil or def.prefab == nil then
+        return
+    end
+    local key = string.upper(def.prefab)
+    STRINGS.NAMES[key] = (def.display_name or def.protocol or def.prefab) .. suffix
+    STRINGS.CHARACTERS.GENERIC.DESCRIBE[key] = def.description or "一张 Kei 协议 CD。"
+end
+
+for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
+    RegisterProtocolItemStrings(def, "战斗协议 CD")
+end
+for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
+    RegisterProtocolItemStrings(def, "生活协议 CD")
+end
+for _, def in ipairs(PetProtocolDefs.PET_PROTOCOL_LIST) do
+    RegisterProtocolItemStrings(def, "")
+end

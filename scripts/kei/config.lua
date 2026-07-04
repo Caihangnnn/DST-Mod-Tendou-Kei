@@ -1,12 +1,16 @@
 FOODTYPE.KEI_DEVICE = "KEI_DEVICE"
 
 local KEI_RPC_NAMESPACE = "TendouKei"
-local protocol_slot_mode = GetModConfigData("KEI_PROTOCOL_SLOT_MODE") or "7_2"
-local protocol_slot_settings = {
-    ["7_2"] = { max = 7, step = 2 },
-    ["4_1"] = { max = 4, step = 1 },
-}
-local protocol_slot_setting = protocol_slot_settings[protocol_slot_mode] or protocol_slot_settings["7_2"]
+
+local function ClampConfigNumber(value, fallback, min_value, max_value)
+    value = tonumber(value) or fallback
+    return math.clamp(value, min_value, max_value)
+end
+
+local protocol_slot_hard_max = 7
+local protocol_slot_max = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_SLOT_MAX"), protocol_slot_hard_max, 1, protocol_slot_hard_max)
+local protocol_slot_base_initial = 1
+local protocol_slot_initial_extra = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_INITIAL_EXTRA_SLOTS"), 0, 0, protocol_slot_max - protocol_slot_base_initial)
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
 TUNING.KEI_ALLOW_DATA_COPY = GetModConfigData("KEI_ALLOW_DATA_COPY") ~= false
@@ -20,11 +24,17 @@ TUNING.KEI_MUTATEDWARG_FLAMETHROWER_TICK = 0.5
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_STABILITY_COST = 10
 TUNING.KEI_MUTATEDWARG_FLAMETHROWER_AIM_UPDATE_PERIOD = 0.1
 
+-- 三维
+TUNING.KEI_MAX_POWER = 120
+TUNING.KEI_MAX_STABILITY = 120
+TUNING.KEI_MAX_INTEGRITY = 120
+TUNING.KEI_PROTOCOL_STAT_BONUS = 10
 
-TUNING.KEI_MAX_POWER = 120 -- 最大电量上限
-TUNING.KEI_MAX_STABILITY = 120 -- 最大稳定性上限
-TUNING.KEI_MAX_INTEGRITY = 120 -- 最大机体完整度上限
-TUNING.KEI_PROTOCOL_STAT_BONUS = 20 -- 每完成一次协议槽扩展时三维上限增加的数值
+-- 协议槽设定
+TUNING.KEI_PROTOCOL_SLOT_HARD_MAX = protocol_slot_hard_max -- 协议槽位的硬性最大数量
+TUNING.KEI_PROTOCOL_SLOT_BASE_INITIAL = protocol_slot_base_initial -- 基础解锁的协议槽位数
+TUNING.KEI_PROTOCOL_SLOT_INITIAL = protocol_slot_base_initial + protocol_slot_initial_extra -- 当前配置中初始拥有的协议槽位数
+TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_max -- 协议槽位的最大数量（根据配置）
 
 -- 设计中"普通食物转化电量效率较低"的实现参数。
 TUNING.KEI_FOOD_ABSORPTION = 0.2 -- 普通食物转化为电量的效率系数（20%）
@@ -49,10 +59,7 @@ TUNING.KEI_PROTOCOL_DRAIN_PERIOD = 10 -- 协议消耗的周期（秒）
 TUNING.KEI_PROTOCOL_DRAIN_AMOUNT = 2 -- 每个周期消耗的协议数量
 TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_PERIOD = 10 -- 协议消耗每个周期的扣除上限
 TUNING.KEI_ALTERGUARDIAN_POWER_REGEN = 10 -- 天体英雄协议每个消耗周期回复的电量
-TUNING.KEI_PROTOCOL_SLOT_HARD_MAX = 7 -- 协议槽位的硬性最大数量
-TUNING.KEI_PROTOCOL_SLOT_INITIAL = 1 -- 初始拥有的协议槽位数
-TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_setting.max -- 协议槽位的最大数量（根据配置）
-TUNING.KEI_PROTOCOL_UNLOCK_STEP = protocol_slot_setting.step -- 每次解锁的协议槽位数（根据配置）
+
 TUNING.KEI_RECORDER_RANGE = 35 -- 数据记录器的作用范围
 TUNING.KEI_DEERCLOPS_MIN_TEMPERATURE = 10 -- 独眼巨鹿协议防止过冷时的最低体温
 TUNING.KEI_DRAGONFLY_MAX_TEMPERATURE = 60 -- 龙蝇协议防止过热时的最高体温
@@ -73,8 +80,8 @@ TUNING.KEI_MINOTAUR_SHADOW_PRISON_CHANCE = 0.15 -- 远古守卫者协议触发�
 TUNING.KEI_STALKER_SHADOWSTRIKE_CHANCE = 0.30 -- 织影者协议触发影袭的概率
 TUNING.KEI_STALKER_SHADOWSTRIKE_DAMAGE_MULT = 0.5 -- 影袭造成的额外伤害比例
 TUNING.KEI_KLAUS_SOUL_CHANCE = 0.20 -- 克劳斯协议抽取灵魂并治疗周围单位的概率
-TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡眠炸弹弹药的概率
-TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡眠炸弹弹药后的内置冷却
+TUNING.KEI_TOADSTOOL_SLEEPBOMB_CHANCE = 0.3 -- 蟾蜍协议触发睡袋的概率
+TUNING.KEI_TOADSTOOL_SLEEPBOMB_COOLDOWN = 0.5 -- 蟾蜍协议投掷睡袋后的内置冷却
 TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT = 1.3 -- 装甲熊獾协议攻击速度倍率
 TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT = 1.2 -- 远古戍卫塔协议攻击速度倍率
 TUNING.KEI_WAGBOSS_ORBITAL_STRIKE_COOLDOWN = 20 -- 战争瓦器人协议轨道打击冷却时间

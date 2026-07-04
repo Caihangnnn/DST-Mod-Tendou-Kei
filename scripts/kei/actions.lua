@@ -1517,10 +1517,8 @@ local function CopyProtocolCD(material, target, doer)
         if protocol == nil then
             return false
         end
-        cd = SpawnPrefab("kei_combat_data_cd")
-        if cd ~= nil then
-            cd:SetCombatData(protocol)
-        end
+        local cd_prefab = CombatProtocolDefs.GetProtocolPrefab(protocol)
+        cd = cd_prefab ~= nil and SpawnPrefab(cd_prefab) or nil
     elseif material:HasTag("kei_analysis_tool")
         and target:HasTag("kei_analysis_protocol")
         and target.kei_protocol_data ~= nil
@@ -1581,6 +1579,7 @@ local function AnalyzeEquipment(tool, target, doer)
         visual_anim = GetTargetWorldAnim(target, slot),
         skin_name = GetTargetSkinName(target),
         skin_build = GetTargetSkinBuild(target),
+        full_equipment = true,
     }
 
     -- 头部和身体装备提取护甲吸收率；手部装备提取武器、移速和平面伤害信息。

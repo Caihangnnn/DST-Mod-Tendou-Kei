@@ -33,24 +33,6 @@ server_filter_tags = {
 
 configuration_options = {
     {
-        name = "KEI_PROTOCOL_SLOT_MODE",
-        label = "Kei 协议槽位",
-        hover = "设置 Kei 的最大协议槽数量，以及每次使用 Mk 模块解锁的槽位数量。",
-        options = {
-            {
-                description = "7 槽 / 每次 +2",
-                hover = "初始 1 个槽位，Mk1/Mk2/Mk3 分别解锁到 3/5/7 个槽位。",
-                data = "7_2",
-            },
-            {
-                description = "4 槽 / 每次 +1",
-                hover = "初始 1 个槽位，Mk1/Mk2/Mk3 分别解锁到 2/3/4 个槽位。",
-                data = "4_1",
-            },
-        },
-        default = "7_2",
-    },
-    {
         name = "KEI_ANALYSIS_CONSUME_EQUIPMENT",
         label = "解析装备消耗",
         hover = "设置装备解析成功后，是否消耗被解析的原装备。",
@@ -121,6 +103,21 @@ configuration_options = {
             },
         },
         default = true,
+    },
+    {
+        name = "KEI_PROTOCOL_INITIAL_EXTRA_SLOTS",
+        label = "初始额外协议槽",
+        hover = "设置 Kei 初始额外解锁的协议槽数量。每个额外槽位也会提高三维上限。",
+        options = {
+            { description = "0", data = 0 },
+            { description = "1", data = 1 },
+            { description = "2", data = 2 },
+            { description = "3", data = 3 },
+            { description = "4", data = 4 },
+            { description = "5", data = 5 },
+            { description = "6", data = 6 },
+        },
+        default = 0,
     },
     {
         name = "KEI_WANDERING_TRADER_MAP_MARKER",

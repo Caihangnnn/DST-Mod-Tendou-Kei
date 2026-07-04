@@ -2,6 +2,9 @@ local MakePlayerCharacter = require("prefabs/player_common")
 local PlayerCommonExtensions = require("prefabs/player_common_extensions")
 local EyeOfTerrorDash = require("kei/protocols/skills/eyeofterror_dash")
 local DaywalkerLeap = require("kei/protocols/skills/daywalker_leap")
+local PowerStat = require("kei/stats/power")
+local StabilityStat = require("kei/stats/stability")
+local IntegrityStat = require("kei/stats/integrity")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
@@ -386,6 +389,7 @@ local function common_postinit(inst)
     inst.CreateHealthBadge = CreateKeiIntegrityBadge
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
+    inst._kei_used_protocol_unlock_recipes = net_byte(inst.GUID, "kei.used_protocol_unlock_recipes", "kei_protocol_unlock_recipes_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
@@ -415,17 +419,13 @@ end
 
 local function HandleKeiDeviceEat(inst, food)
     if food:HasTag("kei_battery") then
-        if inst.components.hunger ~= nil then
-            inst.components.hunger:DoDelta(TUNING.KEI_BATTERY_POWER)
-        end
+        PowerStat.ApplyBattery(inst)
         if inst.components.talker ~= nil then
             inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_CHARGED)
         end
         return true
     elseif food:HasTag("kei_repair_tool") then
-        if inst.components.health ~= nil and not inst.components.health:IsDead() then
-            inst.components.health:DoDelta(TUNING.KEI_REPAIR_VALUE, nil, "kei_repair_tool")
-        end
+        IntegrityStat.ApplyRepair(inst)
         if inst.components.talker ~= nil then
             inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_REPAIRED)
         end
@@ -656,7 +656,7 @@ local function CreateDormantChargeNode(inst)
     node.components.circuitnode:ConnectTo(nil)
 
     node:AddComponent("powerload")
-    node.components.powerload:SetLoad(1)
+    node.components.powerload:SetLoad(3)
 
     node.kei_owner = inst
     node.AddBatteryPower = function(node)
@@ -895,52 +895,16 @@ local function StopKeiDormant(inst, playfx)
     return true
 end
 
-local function UpdateIntegrityState(inst)
-    -- 定时检查把“电量”和“机体完整度”的特殊规则挂到原生 hunger/health 上。
+local function UpdateResourceState(inst)
     if inst.components.health == nil or inst.components.hunger == nil or inst.components.locomotor == nil then
         return
     end
-
-    local health = inst.components.health
-    local hunger = inst.components.hunger
-    if health:IsDead() then
-        return
-    end
-    if inst.kei_dormant_active then
+    if inst.components.health:IsDead() or inst.kei_dormant_active then
         return
     end
 
-    local current_power = hunger.current or 0
-    local current_integrity = health.currenthealth or health.maxhealth or 0
-    local max_integrity = health.maxhealth or TUNING.KEI_MAX_INTEGRITY
-
-    if current_power <= 0 and not HasAlterguardianPowerOverride(inst) then
-        -- 电量耗尽后移动速度几乎归零，移动中还会持续损伤完整度。
-        inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_no_power", 0.1)
-        if inst.sg ~= nil and inst.sg:HasStateTag("moving") then
-            health:DoDelta(-TUNING.KEI_LOW_POWER_DAMAGE * TUNING.KEI_SELF_REPAIR_PERIOD, true, "kei_no_power")
-        end
-    else
-        inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_no_power")
-    end
-
-    local low_threshold = max_integrity / 6
-    if current_integrity <= low_threshold then
-        -- 完整度过低时进入危险状态：减速、缓慢恶化，并周期性提示玩家。
-        inst.components.locomotor:SetExternalSpeedMultiplier(inst, "kei_low_integrity", 0.5)
-        health:DoDelta(-1, true, "kei_low_integrity")
-        if inst._kei_low_integrity_say_time == nil or GetTime() - inst._kei_low_integrity_say_time > 12 then
-            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_LOW_INTEGRITY)
-            inst._kei_low_integrity_say_time = GetTime()
-        end
-    else
-        inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_low_integrity")
-    end
-
-    if current_integrity > max_integrity * 5 / 6 and current_integrity < max_integrity then
-        -- 高完整度区间允许机体自我修复，作为设计里的恢复特性。
-        health:DoDelta(1, true, "kei_self_repair")
-    end
+    PowerStat.UpdateNoPowerState(inst, HasAlterguardianPowerOverride(inst))
+    IntegrityStat.UpdateState(inst)
 end
 
 local function OnSave(inst, data)
@@ -961,18 +925,10 @@ local function master_postinit(inst)
 
     inst.starting_inventory = start_inv
 
-    -- 用原版三维组件承载设计文档中的完整度 / 电量 / 稳定性。
-    inst.components.health:SetMaxHealth(TUNING.KEI_MAX_INTEGRITY)
-    inst.components.hunger:SetMax(TUNING.KEI_MAX_POWER)
-    inst.components.sanity:SetMax(TUNING.KEI_MAX_STABILITY)
-
-    -- 稳定性不自然涨落，也不受常规光照、鬼魂和光环影响。
-    inst.components.sanity.rate_modifier = 0
-    inst.components.sanity.no_moisture_penalty = true
-    inst.components.sanity:SetFullAuraImmunity(true)
-    inst.components.sanity:SetNegativeAuraImmunity(true)
-    inst.components.sanity:SetPlayerGhostImmunity(true)
-    inst.components.sanity:SetLightDrainImmune(true)
+    -- 用原版三维组件承载设计中的完整度 / 电量 / 稳定性。
+    IntegrityStat.Configure(inst)
+    PowerStat.Configure(inst)
+    StabilityStat.Configure(inst)
 
     if inst.components.eater ~= nil then
         -- 禁用食物回血和回理智，仅保留食物转换为电量的路径。
@@ -995,7 +951,7 @@ local function master_postinit(inst)
     inst.CancelDormantZeroPowerExit = CancelDormantZeroPowerExit
     inst.ScheduleDormantZeroPowerExit = ScheduleDormantZeroPowerExit
 
-    inst:DoPeriodicTask(TUNING.KEI_SELF_REPAIR_PERIOD, UpdateIntegrityState)
+    inst:DoPeriodicTask(TUNING.KEI_SELF_REPAIR_PERIOD, UpdateResourceState)
     inst:DoPeriodicTask(KEI_LIGHT_CHECK_PERIOD, UpdateKeiPersonalLight)
     inst:DoTaskInTime(0, UpdateKeiPersonalLight)
     inst:ListenForEvent("death", StopKeiDormant)
@@ -1051,3 +1007,4 @@ end
 
 return MakePlayerCharacter("kei", prefabs, assets, common_postinit, master_postinit),
     Prefab("kei_dormant_chassis", dormant_chassis_fn, assets)
+

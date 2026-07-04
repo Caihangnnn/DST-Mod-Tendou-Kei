@@ -1,38 +1,31 @@
+local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
+local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local VirtualHandEquipment = require("kei/virtual_hand_equipment")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
+local function BuildCombatEffectHandlers()
+    local handlers = {}
+    for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
+        handlers[def.protocol] = require("kei/protocols/effects/" .. def.protocol)
+    end
+    return handlers
+end
+
+local function BuildLifeEffects()
+    local effects = {}
+    for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
+        effects[def.protocol] = require("kei/protocols/effects/" .. def.protocol)
+    end
+    return effects
+end
+
 --- 战斗协议效果处理器注册表。
-local EFFECT_HANDLERS = {
-    deerclops                      = require("kei/protocols/effects/deerclops"),
-    dragonfly                      = require("kei/protocols/effects/dragonfly"),
-    moose                          = require("kei/protocols/effects/moose"),
-    toadstool                      = require("kei/protocols/effects/toadstool"),
-    malbatross                     = require("kei/protocols/effects/malbatross"),
-    bearger                        = require("kei/protocols/effects/bearger"),
-    klaus                          = require("kei/protocols/effects/klaus"),
-    beequeen                       = require("kei/protocols/effects/beequeen"),
-    mutateddeerclops               = require("kei/protocols/effects/mutateddeerclops"),
-    stalker_atrium                 = require("kei/protocols/effects/stalker"),
-    minotaur                       = require("kei/protocols/effects/minotaur"),
-    antlion                        = require("kei/protocols/effects/antlion"),
-    alterguardian_phase4_lunarrift = require("kei/protocols/effects/celestial_orb"),
-    wagboss_robot                  = require("kei/protocols/effects/wagboss"),
-    daywalker2                     = require("kei/protocols/effects/daywalker2"),
-}
+local EFFECT_HANDLERS = BuildCombatEffectHandlers()
 
 --- 生活协议效果处理器（导出 Apply 方法，非 EffectHandler 接口）。
-local LIFE_EFFECTS = {
-    growth_acceleration = require("kei/protocols/effects/growth_acceleration"),
-    durability_restore  = require("kei/protocols/effects/durability_restore"),
-}
-
---- 仅做 tag 增删的协议效果。
-local TAG_EFFECTS = {
-    mutatedbearger   = { "kei_attack_speed_boost" },
-    vault_pillar_guard = { "kei_vault_pillar_guard_spin" },
-}
-
+local LIFE_EFFECTS = BuildLifeEffects()
 local ANALYSIS_ARMOR_MODIFIER = "kei_analysis_armor"
 local ANALYSIS_HANDS_MODIFIER = "kei_analysis_hands"
 
@@ -100,9 +93,22 @@ end
 
 local function GetProtocolDrainSettings()
     return {
-        amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
+        analysis_amount = TUNING.KEI_PROTOCOL_DRAIN_ANALYSIS_AMOUNT or TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
+        basic_amount = TUNING.KEI_PROTOCOL_DRAIN_BASIC_AMOUNT or TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
+        advanced_amount = TUNING.KEI_PROTOCOL_DRAIN_ADVANCED_AMOUNT or 1,
+        special_amount = TUNING.KEI_PROTOCOL_DRAIN_SPECIAL_AMOUNT or 0.5,
         cap = TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_PERIOD or TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_SECOND or 10,
     }
+end
+
+local function GetCombatProtocolDrainAmount(data, drain)
+    if data.tier == "special" then
+        return drain.special_amount
+    end
+    if data.tier == "advanced" then
+        return drain.advanced_amount
+    end
+    return drain.basic_amount
 end
 
 local function ReturnItemToOwner(owner, item)
@@ -114,34 +120,6 @@ local function ReturnItemToOwner(owner, item)
     if owner ~= nil then
         item.Transform:SetPosition(owner.Transform:GetWorldPosition())
     end
-end
-
-local function GetMaxSlots()
-    return TUNING.KEI_PROTOCOL_SLOT_MAX or 7
-end
-
-local function GetHardMaxSlots()
-    return TUNING.KEI_PROTOCOL_SLOT_HARD_MAX or 7
-end
-
-local function GetInitialSlots()
-    return TUNING.KEI_PROTOCOL_SLOT_INITIAL or 1
-end
-
-local function GetTierTargetSlots(tier)
-    if tier == nil then return nil end
-    return math.min(GetInitialSlots() + tier * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2), GetMaxSlots())
-end
-
-local function GetTierPreviousSlots(tier)
-    if tier == nil then return nil end
-    return math.min(GetInitialSlots() + (tier - 1) * (TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2), GetMaxSlots())
-end
-
-local function GetUnlockedTierCount(unlocked_slots)
-    local step = TUNING.KEI_PROTOCOL_UNLOCK_STEP or 2
-    if step <= 0 then return 0 end
-    return math.min(3, math.max(0, math.floor((unlocked_slots - GetInitialSlots()) / step + 0.5)))
 end
 
 local function RemoveProtocolContainer(owner, inventory, container)
@@ -168,11 +146,14 @@ end
 
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
-    self.unlocked_slots = 1
+    self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
+    self.used_unlock_recipes = {}
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
+    self.active_pet = {}
     self.virtual_equips = {}
+    self.virtual_hand_equip = nil
     self.analysis_damage_bonus = 0
     self.analysis_tool_actions = {}
     self._kei_worker_action_old_values = {}
@@ -180,6 +161,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_mutateddeerclops_slowed = {}
 
     self:SyncUnlockedSlots()
+    self:SyncUsedUnlockRecipes()
 
     inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
@@ -252,27 +234,34 @@ function KeiProtocolSlots:SyncUnlockedSlots()
     end
 end
 
+function KeiProtocolSlots:GetUsedUnlockRecipesMask()
+    return ProtocolSlotUnlocks.GetUsedRecipesMask(self.used_unlock_recipes)
+end
+
+function KeiProtocolSlots:SyncUsedUnlockRecipes()
+    if self.inst._kei_used_protocol_unlock_recipes ~= nil then
+        self.inst._kei_used_protocol_unlock_recipes:set(self:GetUsedUnlockRecipesMask())
+    end
+end
+
 function KeiProtocolSlots:GetStatBonus()
-    return GetUnlockedTierCount(self.unlocked_slots) * (TUNING.KEI_PROTOCOL_STAT_BONUS or 20)
+    return ProtocolSlotUnlocks.GetStatBonus(self.unlocked_slots)
 end
 
 function KeiProtocolSlots:ApplyStatProgression()
-    local bonus = self:GetStatBonus()
-    local max_integrity = (TUNING.KEI_MAX_INTEGRITY or 120) + bonus
-    local max_power = (TUNING.KEI_MAX_POWER or 120) + bonus
-    local max_stability = (TUNING.KEI_MAX_STABILITY or 120) + bonus
+    local max_stats = ProtocolSlotUnlocks.GetStatMaximums(self.unlocked_slots)
     local health = self.inst.components.health
     local hunger = self.inst.components.hunger
     local sanity = self.inst.components.sanity
 
-    if health ~= nil and health.maxhealth ~= max_integrity then
-        health:SetMaxHealth(max_integrity)
+    if health ~= nil and health.maxhealth ~= max_stats.integrity then
+        health:SetMaxHealth(max_stats.integrity)
     end
-    if hunger ~= nil and hunger.max ~= max_power then
-        hunger:SetMax(max_power)
+    if hunger ~= nil and hunger.max ~= max_stats.power then
+        hunger:SetMax(max_stats.power)
     end
-    if sanity ~= nil and sanity.max ~= max_stability then
-        sanity:SetMax(max_stability)
+    if sanity ~= nil and sanity.max ~= max_stats.stability then
+        sanity:SetMax(max_stats.stability)
     end
 end
 
@@ -310,8 +299,8 @@ function KeiProtocolSlots:EnsureProtocolContainers()
     local inventory = self.inst.components.inventory
     if inventory == nil then return end
 
-    local max_slots = GetMaxSlots()
-    self.unlocked_slots = math.clamp(self.unlocked_slots, GetInitialSlots(), max_slots)
+    local max_slots = ProtocolSlotUnlocks.GetMaxSlots()
+    self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(self.unlocked_slots)
     self:SyncUnlockedSlots()
     self:ApplyStatProgression()
 
@@ -344,7 +333,7 @@ function KeiProtocolSlots:EnsureProtocolContainers()
         end
     end
 
-    for slot = max_slots + 1, GetHardMaxSlots() do
+    for slot = max_slots + 1, ProtocolSlotUnlocks.GetHardMaxSlots() do
         local current = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(current) then
             RemoveProtocolContainer(self.inst, inventory, current)
@@ -356,25 +345,49 @@ function KeiProtocolSlots:OnRemoveFromEntity()
     self:ClearModifiers()
 end
 
-function KeiProtocolSlots:CanUnlockTier(tier)
-    local target_slots = GetTierTargetSlots(tier)
-    local previous_slots = GetTierPreviousSlots(tier)
-    return target_slots ~= nil and previous_slots ~= nil
-        and target_slots > self.unlocked_slots
-        and self.unlocked_slots == previous_slots
+function KeiProtocolSlots:HasUsedUnlockRecipe(recipe)
+    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
+    local id = def ~= nil and def.id or recipe
+    return id ~= nil and self.used_unlock_recipes[id] == true
 end
 
-function KeiProtocolSlots:UnlockTier(tier)
-    if not self:CanUnlockTier(tier) then
-        self:SyncUnlockedSlots()
+function KeiProtocolSlots:CanUseUnlockRecipe(recipe)
+    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
+    if def == nil then
         return false
     end
-    self.unlocked_slots = GetTierTargetSlots(tier)
+    if self.unlocked_slots >= ProtocolSlotUnlocks.GetMaxSlots() then
+        return false, "KEI_PROTOCOL_SLOTS_FULL"
+    end
+    if self:HasUsedUnlockRecipe(def.id) then
+        return false, "KEI_PROTOCOL_UNLOCK_RECIPE_USED"
+    end
+    return true
+end
+
+function KeiProtocolSlots:UnlockNextSlot(recipe)
+    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
+    local can_unlock, reason = self:CanUseUnlockRecipe(def)
+    if not can_unlock then
+        return false, reason
+    end
+
+    self.used_unlock_recipes[def.id] = true
+    self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(self.unlocked_slots + 1)
     self:SyncUnlockedSlots()
+    self:SyncUsedUnlockRecipes()
     self:ApplyStatProgression()
     self:EnsureProtocolContainers()
     self:Refresh()
     return true
+end
+
+function KeiProtocolSlots:CanUnlockTier(tier)
+    return self:CanUseUnlockRecipe("kei_protocol_mk" .. tostring(tier))
+end
+
+function KeiProtocolSlots:UnlockTier(tier)
+    return self:UnlockNextSlot("kei_protocol_mk" .. tostring(tier))
 end
 
 ----------------------------------------------------------------
@@ -395,7 +408,7 @@ function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)
     local inventory = self.inst.components.inventory
     if protocol == nil or inventory == nil then return false end
 
-    for slot = 1, GetMaxSlots() do
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil and slot <= self.unlocked_slots then
             local item = container.components.container:GetItemInSlot(1)
@@ -424,7 +437,7 @@ function KeiProtocolSlots:SetProtocolContainersPowered(powered)
     local inventory = self.inst.components.inventory
     if inventory == nil then return end
 
-    for slot = 1, GetMaxSlots() do
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil then
             local enabled = powered and slot <= self.unlocked_slots
@@ -466,7 +479,7 @@ function KeiProtocolSlots:GetProtocolSlotItems()
     local inventory = self.inst.components.inventory
     if inventory == nil then return items end
 
-    for slot = 1, GetMaxSlots() do
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil then
             local item = container.components.container:GetItemInSlot(1)
@@ -496,7 +509,7 @@ function KeiProtocolSlots:SwapWithProtocolBinder(binder)
     local swapped = false
     local inventory = self.inst.components.inventory
     local binder_container = binder.components.container
-    local max_slots = math.min(GetMaxSlots(), binder_container.numslots or 0)
+    local max_slots = math.min(ProtocolSlotUnlocks.GetMaxSlots(), binder_container.numslots or 0)
 
     for slot = 1, max_slots do
         if slot <= self.unlocked_slots then
@@ -543,11 +556,12 @@ local function CleanVirtualEquipment(item, equipslot)
     item:AddTag("kei_virtual_equipment")
     item:AddTag("NOCLICK")
     item:RemoveTag("heavy")
+    item:RemoveTag("repairable")
 
     if item.components.equippable ~= nil then
         item.components.equippable.restrictedtag = nil
         item.components.equippable.equipslot = equipslot
-        item.components.equippable:SetPreventUnequipping(true)
+        item.components.equippable:SetPreventUnequipping(equipslot ~= EQUIPSLOTS.HANDS)
     end
 
     if item.components.container ~= nil then
@@ -557,15 +571,41 @@ local function CleanVirtualEquipment(item, equipslot)
     if item.components.inventoryitem ~= nil then
         item.components.inventoryitem.canbepickedup = false
         item.components.inventoryitem.cangoincontainer = false
+        item.components.inventoryitem.keepondeath = true
+    end
+
+    if item.components.trader ~= nil then
+        item:RemoveComponent("trader")
+    end
+
+    if item.components.repairable ~= nil then
+        item:RemoveComponent("repairable")
+    end
+
+    if item.components.finiteuses ~= nil then
+        item:RemoveComponent("finiteuses")
     end
 
     if item.components.fueled ~= nil then
-        item.components.fueled:StopConsuming()
+        item:RemoveComponent("fueled")
     end
 
     if item.components.perishable ~= nil then
         item:RemoveComponent("perishable")
     end
+end
+
+local function ScheduleVirtualEquipmentRemove(item)
+    if item == nil or not item:IsValid() or item.kei_pending_virtual_remove then return end
+
+    item.kei_pending_virtual_remove = true
+    item.persists = false
+    item:Hide()
+    item:DoTaskInTime(0.1, function(inst)
+        if inst:IsValid() then
+            inst:Remove()
+        end
+    end)
 end
 
 function KeiProtocolSlots:RemoveVirtualEquip(slot)
@@ -580,7 +620,7 @@ function KeiProtocolSlots:RemoveVirtualEquip(slot)
     end
 
     if virtual:IsValid() then
-        virtual:Remove()
+        ScheduleVirtualEquipmentRemove(virtual)
     end
     self.virtual_equips[slot] = nil
 end
@@ -620,8 +660,16 @@ function KeiProtocolSlots:ApplyVirtualEquip(entry)
     if inventory:GetEquippedItem(equipslot) == virtual then
         self.virtual_equips[slot] = virtual
     else
-        virtual:Remove()
+        ScheduleVirtualEquipmentRemove(virtual)
     end
+end
+
+function KeiProtocolSlots:RemoveHandVirtualEquip()
+    return VirtualHandEquipment.Remove(self)
+end
+
+function KeiProtocolSlots:ApplyHandVirtualEquip(entry)
+    return VirtualHandEquipment.Apply(self, entry)
 end
 
 function KeiProtocolSlots:ClearVirtualEquips(keep)
@@ -715,6 +763,7 @@ end
 ----------------------------------------------------------------
 
 function KeiProtocolSlots:ClearModifiers()
+    self:RemoveHandVirtualEquip()
     self:ClearVirtualEquips()
     self:ClearAnalysisToolActions()
     self:SetAnalysisDamageBonus(0)
@@ -723,13 +772,6 @@ function KeiProtocolSlots:ClearModifiers()
     for _, handler in pairs(EFFECT_HANDLERS) do
         if handler.Disable then
             handler.Disable(self, self.inst)
-        end
-    end
-
-    -- 清除 tag-only 效果的标签。
-    for _, tags in pairs(TAG_EFFECTS) do
-        for _, tag in ipairs(tags) do
-            self.inst:RemoveTag(tag)
         end
     end
 
@@ -769,6 +811,7 @@ function KeiProtocolSlots:DisableAllProtocols()
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
+    self.active_pet = {}
     self:SyncCombatProtocolFlags()
     self:SyncLifeProtocolFlags()
     self:SetProtocolContainersPowered(false)
@@ -789,6 +832,10 @@ end
 
 function KeiProtocolSlots:HasLifeProtocol(protocol)
     return self:GetLifeProtocolCount(protocol) > 0
+end
+
+function KeiProtocolSlots:HasPetProtocol(protocol)
+    return self:IsFunctional() and self.active_pet[protocol] == true
 end
 
 ----------------------------------------------------------------
@@ -840,19 +887,6 @@ function KeiProtocolSlots:RefreshEffects()
             end
         end
     end
-
-    -- tag-only 效果。
-    for protocol, tags in pairs(TAG_EFFECTS) do
-        if self.active_combat[protocol] then
-            for _, tag in ipairs(tags) do
-                self.inst:AddTag(tag)
-            end
-        else
-            for _, tag in ipairs(tags) do
-                self.inst:RemoveTag(tag)
-            end
-        end
-    end
 end
 
 ----------------------------------------------------------------
@@ -869,8 +903,10 @@ function KeiProtocolSlots:Refresh()
     local items = self:GetProtocolSlotItems()
     local combat = {}
     local life = {}
+    local pet = {}
     local hand_stats = NewHandAnalysisStats()
     local desired_virtuals = {}
+    local wants_hand_virtual = false
 
     self.active = items
 
@@ -885,19 +921,29 @@ function KeiProtocolSlots:Refresh()
             else
                 life[data.protocol] = 1
             end
+        elseif data.kind == "pet" and data.protocol ~= nil then
+            pet[data.protocol] = true
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true
                 self:ApplyVirtualEquip(entry)
             elseif data.slot == "hands" then
-                AddHandAnalysisStats(hand_stats, data)
+                if entry.slot == 1 and not self._kei_suppress_hand_virtual and self:ApplyHandVirtualEquip(entry) then
+                    wants_hand_virtual = true
+                else
+                    AddHandAnalysisStats(hand_stats, data)
+                end
             end
         end
     end
 
     self:ClearVirtualEquips(desired_virtuals)
+    if not wants_hand_virtual then
+        self:RemoveHandVirtualEquip()
+    end
     self.active_combat = combat
     self.active_life = life
+    self.active_pet = pet
     self:RefreshEffects()
     self:SyncLifeProtocolFlags()
     self:SyncCombatProtocolFlags()
@@ -947,9 +993,9 @@ function KeiProtocolSlots:DrainProtocols()
     for _, entry in ipairs(self.active) do
         local data = entry.data
         if ProtocolNeedsPower(data) then
-            power_cost = power_cost + drain.amount
+            power_cost = power_cost + drain.analysis_amount
         elseif ProtocolNeedsStability(data) then
-            stability_cost = stability_cost + drain.amount
+            stability_cost = stability_cost + GetCombatProtocolDrainAmount(data, drain)
         end
     end
 
@@ -1000,14 +1046,17 @@ end
 function KeiProtocolSlots:OnSave()
     return {
         unlocked_slots = self.unlocked_slots,
+        used_unlock_recipes = self.used_unlock_recipes,
     }
 end
 
 function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
-        self.unlocked_slots = math.clamp(data.unlocked_slots, GetInitialSlots(), GetMaxSlots())
+        self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(data.unlocked_slots)
     end
+    self.used_unlock_recipes = data ~= nil and data.used_unlock_recipes or {}
     self:SyncUnlockedSlots()
+    self:SyncUsedUnlockRecipes()
     self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
@@ -1016,3 +1065,4 @@ function KeiProtocolSlots:OnLoad(data)
 end
 
 return KeiProtocolSlots
+

@@ -1,151 +1,123 @@
-local COMBAT_PROTOCOLS = {
-    deerclops = {
-        kind = "combat",
-        protocol = "deerclops",
-        display_name = "独眼巨鹿",
-        description = "攻击附带冰冻，并免疫冰冻与过冷。",
-    },
-    mutateddeerclops = {
-        kind = "combat",
-        protocol = "mutateddeerclops",
-        display_name = "独眼晶体巨鹿",
-        description = "攻击后在脚下生成时缓圈，使范围内非友方单位时间流速减半。",
-    },
-    mutatedwarg = {
-        kind = "combat",
-        protocol = "mutatedwarg",
-        display_name = "附身座狼",
-        description = "按 Z 消耗 10 点数据稳定性，向鼠标方向喷出冷火，持续 5 秒，每 0.5 秒造成 50 点伤害，冷却 15 秒。",
-    },
-    bearger = {
-        kind = "combat",
-        protocol = "bearger",
-        display_name = "熊獾",
-        description = "攻击造成衰减的群体伤害。",
-    },
-    mutatedbearger = {
-        kind = "combat",
-        protocol = "mutatedbearger",
-        display_name = "装甲熊獾",
-        description = "独立乘区攻击速度提高 30%。",
-    },
-    dragonfly = {
-        kind = "combat",
-        protocol = "dragonfly",
-        display_name = "龙蝇",
-        description = "攻击会点燃目标，每秒造成最大生命值0.1%的伤害，并免疫过热与火焰伤害。",
-    },
-    moose = {
-        kind = "combat",
-        protocol = "moose",
-        display_name = "麋鹿鹅",
-        description = "获得带电buff，并免疫潮湿。",
-    },
-    eyeofterror = {
-        kind = "combat",
-        protocol = "eyeofterror",
-        display_name = "克眼",
-        record_prefabs = { "twinofterror1", "twinofterror2" },
-        description = "获得冲刺能力，右键冲锋到鼠标指定位置。",
-    },
-    daywalker = {
-        kind = "combat",
-        protocol = "daywalker",
-        display_name = "梦魇疯猪",
-        description = "右键跳劈到鼠标指定位置，落地造成范围伤害并减速目标。",
-    },
-    daywalker2 = {
-        kind = "combat",
-        protocol = "daywalker2",
-        display_name = "拾荒疯猪",
-        description = "免疫受击僵直、击飞、击退。",
-    },
-    lordfruitfly = {
-        kind = "combat",
-        protocol = "lordfruitfly",
-        display_name = "果蝇王",
-        description = "战斗协议和解析协议不再额外消耗电量与数据稳定性。",
-    },
-    minotaur = {
-        kind = "combat",
-        protocol = "minotaur",
-        display_name = "远古守卫者",
-        description = "攻击有概率召唤友方守护者暗影触手，并有概率对目标释放暗影囚牢。",
-    },
-    vault_pillar_guard = {
-        kind = "combat",
-        protocol = "vault_pillar_guard",
-        display_name = "远古戍卫塔",
-        description = "独立乘区攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击。",
-    },
-    wagboss_robot = {
-        kind = "combat",
-        protocol = "wagboss_robot",
-        display_name = "战争瓦器人",
-        description = "攻击时对目标触发月能轨道打击，冷却 20 秒。",
-    },
-    malbatross = {
-        kind = "combat",
-        protocol = "malbatross",
-        display_name = "邪天翁",
-        description = "无视海岸线，在海上行走。",
-    },
-    klaus = {
-        kind = "combat",
-        protocol = "klaus",
-        display_name = "克劳斯",
-        description = "攻击有概率从目标身上抽落灵魂，灵魂会立刻消散并治疗周围玩家。",
-    },
-    toadstool = {
-        kind = "combat",
-        protocol = "toadstool",
-        display_name = "蟾蜍",
-        record_prefabs = { "toadstool_dark" },
-        description = "攻击有概率向目标脚下投掷睡袋，并免疫催眠。",
-    },
-    antlion = {
-        kind = "combat",
-        protocol = "antlion",
-        display_name = "蚁狮",
-        description = "攻击有概率在目标脚下生成沙刺。",
-    },
-    beequeen = {
-        kind = "combat",
-        protocol = "beequeen",
-        display_name = "蜂后",
-        description = "获得被动技能威压，受到攻击时，释放恐惧光环。",
-    },
-    stalker_atrium = {
-        kind = "combat",
-        protocol = "stalker_atrium",
-        display_name = "织影者",
-        description = "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50%的额外伤害。",
-    },
-    alterguardian = {
-        kind = "combat",
-        protocol = "alterguardian",
-        display_name = "天体英雄",
-        record_prefabs = { "alterguardian_phase1", "alterguardian_phase2", "alterguardian_phase3" },
-        description = "电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。",
-    },
-    alterguardian_phase4_lunarrift = {
-        kind = "combat",
-        protocol = "alterguardian_phase4_lunarrift",
-        display_name = "天体后裔",
-        description = "天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 50% 的额外伤害。",
-    },
-}
+local function CombatPrefab(protocol)
+    return "kei_combat_data_cd_" .. protocol
+end
 
+local COMBAT_PROTOCOL_LIST = {}
+
+local function AddProtocol(data)
+    data.kind = data.kind or "combat"
+    data.protocol = data.protocol or data.id
+    data.prefab = data.prefab or CombatPrefab(data.protocol)
+    table.insert(COMBAT_PROTOCOL_LIST, data)
+    return data
+end
+
+local function AddRows(rows, defaults)
+    for _, row in ipairs(rows) do
+        local data = {}
+        for k, v in pairs(defaults or {}) do
+            data[k] = v
+        end
+        data.id = row[1]
+        data.display_name = row[2]
+        data.description = row[3]
+        if row[4] ~= nil then
+            for k, v in pairs(row[4]) do
+                data[k] = v
+            end
+        end
+        AddProtocol(data)
+    end
+end
+
+-- XMind: 群系协议 CD。当前先提供稳定 prefab 和元数据，效果后续逐项接入。
+AddRows({
+    { "spider_black", "黑蜘蛛", "在蜘蛛网上移动不会减速。" },
+    { "spider_yellow", "黄蜘蛛", "在蜘蛛网上移动不会减速，并获得加速；可强化蜘蛛女王协议随从移速。" },
+    { "spider_white", "白蜘蛛", "在蜘蛛网上攻击力提高；可强化蜘蛛女王协议随从攻击力。" },
+    { "spider_cave", "洞穴蜘蛛", "在蜘蛛网上获得减伤；可强化蜘蛛女王协议随从减伤。" },
+    { "spider_spitter", "喷吐蜘蛛", "伤害敌方单位时降低目标移速；可强化蜘蛛女王协议随从攻速。" },
+    { "spider_shattered", "破碎蜘蛛", "受到攻击时反伤；可强化蜘蛛女王协议随从位面实体抵抗。" },
+    { "spider_healer", "护士蜘蛛", "可以受到护士蜘蛛治疗；可强化蜘蛛女王协议随从治疗效果。" },
+    { "spiderqueen", "蜘蛛女王", "角色附近视为蜘蛛网区域，并可吸收、召唤和强化蜘蛛随从。" },
+}, { category = "biome", family = "spider", implemented = false, recordable = false })
+
+AddRows({
+    { "gnarwail", "一角鲸", "攻击有概率触发水波，造成附加伤害并打湿周围单位。" },
+    { "sharkboi", "岩石大白鲨", "获得潮湿装甲，受伤时优先以潮湿度抵扣完整度损失。" },
+    { "otter", "水獭掠夺者", "攻击敌方单位时有概率偷取其战利品中的肉类物品。" },
+    { "grassgator", "草鳄鱼", "身上有潮湿度时自然恢复机体完整度。" },
+}, { category = "biome", family = "aquatic", implemented = false, recordable = false })
+
+AddRows({
+    { "bishop", "发条主教", "攻击附带电击效果。" },
+    { "rook", "发条战车", "右键短暂格挡，成功格挡时完全豁免本次伤害。" },
+    { "knight", "发条骑士", "受到攻击时反伤并附带电击效果。" },
+}, { category = "biome", family = "mechanical", implemented = false, recordable = false })
+
+-- XMind: 初级巨兽协议 CD。为后续初级/高级分流预留独立 prefab；暂不改变现有记录器产物。
+AddRows({
+    { "deerclops_basic", "独眼巨鹿初级", "免疫过冷和冰冻。", { source_protocol = "deerclops" } },
+    { "bearger_basic", "熊獾初级", "攻击造成衰减性群体伤害。", { source_protocol = "bearger" } },
+    { "moose_basic", "麋鹿鹅初级", "免疫潮湿。", { source_protocol = "moose" } },
+    { "antlion_basic", "蚁狮初级", "免疫沙尘暴减速和滤镜。", { source_protocol = "antlion" } },
+    { "eyeofterror_basic", "克眼初级", "获得右键冲刺能力，冷却 1 秒。", { source_protocol = "eyeofterror" } },
+    { "daywalker_basic", "梦魇疯猪初级", "获得右键砸地能力，冷却 3 秒。", { source_protocol = "daywalker" } },
+    { "daywalker2_basic", "拾荒疯猪初级", "获得霸体，免疫僵直和击飞。", { source_protocol = "daywalker2" } },
+    { "lordfruitfly_basic", "果蝇王初级", "战斗协议和解析协议的固定消耗减半。", { source_protocol = "lordfruitfly" } },
+    { "minotaur_basic", "远古守卫者初级", "攻击有概率对目标触发暗影囚笼。", { source_protocol = "minotaur" } },
+    { "vault_pillar_guard_basic", "远古戍卫塔初级", "使用攻击距离为 1 的武器时，普通攻击变为旋转攻击。", { source_protocol = "vault_pillar_guard" } },
+    { "dragonfly_basic", "龙蝇初级", "免疫燃烧和过热。", { source_protocol = "dragonfly" } },
+    { "malbatross_basic", "邪天翁初级", "在水面上会快速增加潮湿度。", { source_protocol = "malbatross" } },
+    { "klaus_basic", "克劳斯初级", "攻击有概率从目标身上抽落灵魂，治疗友方单位。", { source_protocol = "klaus" } },
+    { "toadstool_basic", "蟾蜍初级", "免疫催眠。", { source_protocol = "toadstool" } },
+    { "beequeen_basic", "蜂后初级", "受到攻击时恐惧攻击者 5 秒。", { source_protocol = "beequeen" } },
+    { "stalker_atrium_basic", "织影者初级", "稳定性为 0 时，战斗协议不再失效。", { source_protocol = "stalker_atrium" } },
+    { "alterguardian_basic", "天体英雄初级", "电量为 0 时，解析协议不再失效，也不会带来移速惩罚。", { source_protocol = "alterguardian" } },
+}, { category = "beast", tier = "basic", implemented = false, recordable = false })
+-- 当前已实现的一组协议保留原 protocol id；按 XMind 语义视为高级/特殊巨兽协议。
+AddRows({
+    { "deerclops", "独眼巨鹿高级", "攻击附带冰冻，并免疫冰冻与过冷。", { short_name = "独眼巨鹿" } },
+    { "mutateddeerclops", "独眼晶体巨鹿", "攻击后在脚下生成时缓圈，使范围内非友方单位时间流速减半。", { tier = "special" } },
+    { "mutatedwarg", "附身座狼", "按 R 触发喷火技能，冷却 10 秒。", { tier = "special", planned_update = true } },
+    { "bearger", "熊獾高级", "攻击造成无衰减群体伤害。", { short_name = "熊獾", planned_update = true } },
+    { "mutatedbearger", "装甲熊獾", "独立乘区攻击速度提高 30%。", { tier = "special" } },
+    { "dragonfly", "龙蝇高级", "攻击会点燃目标，每秒造成最大生命值 0.1% 的伤害，并免疫过热与火焰伤害。", { short_name = "龙蝇" } },
+    { "moose", "麋鹿鹅高级", "免疫潮湿；攻击有概率附带旋风。", { short_name = "麋鹿鹅", planned_update = true } },
+    { "eyeofterror", "克眼高级", "获得冲刺能力，右键冲锋到鼠标指定位置，并伤害路径上的敌方单位。", { short_name = "克眼", record_prefabs = { "twinofterror1", "twinofterror2" } } },
+    { "daywalker", "梦魇疯猪高级", "右键跳劈到鼠标指定位置，落地造成范围伤害并减速目标。", { short_name = "梦魇疯猪" } },
+    { "daywalker2", "拾荒疯猪高级", "获得霸体，并获得 25% 免伤。", { short_name = "拾荒疯猪", planned_update = true } },
+    { "lordfruitfly", "果蝇王高级", "战斗协议和解析协议不再额外消耗电量与数据稳定性。", { short_name = "果蝇王" } },
+    { "minotaur", "远古守卫者高级", "攻击有概率触发暗影囚笼与暗影触手。", { short_name = "远古守卫者", planned_update = true } },
+    { "vault_pillar_guard", "远古戍卫塔高级", "独立乘区攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击。", { short_name = "远古戍卫塔" } },
+    { "wagboss_robot", "战争瓦器人", "攻击时对目标触发月能轨道打击，冷却 20 秒。", { tier = "special" } },
+    { "malbatross", "邪天翁高级", "在水面上行动时增加伤害与移动速度。", { short_name = "邪天翁", planned_update = true } },
+    { "klaus", "克劳斯高级", "攻击有概率抽落灵魂治疗友方，并追加目标最大生命值伤害。", { short_name = "克劳斯", planned_update = true } },
+    { "toadstool", "蟾蜍高级", "攻击有概率向目标脚下投掷睡袋，并免疫催眠。", { short_name = "蟾蜍", record_prefabs = { "toadstool_dark" } } },
+    { "antlion", "蚁狮高级", "攻击有概率在目标脚下生成中心大沙刺和三枚小沙刺。", { short_name = "蚁狮", planned_update = true } },
+    { "beequeen", "蜂后高级", "获得被动技能威压，受到攻击时释放恐惧光环。", { short_name = "蜂后" } },
+    { "stalker_atrium", "织影者高级", "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50% 的额外伤害。", { short_name = "织影者" } },
+    { "alterguardian", "天体英雄高级", "电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。", { short_name = "天体英雄", record_prefabs = { "alterguardian_phase1", "alterguardian_phase2", "alterguardian_phase3" } } },
+    { "alterguardian_phase4_lunarrift", "天体后裔", "天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 50% 的额外伤害。", { tier = "special" } },
+}, { category = "beast", tier = "advanced", implemented = true })
+
+local COMBAT_PROTOCOLS = {}
+local COMBAT_PROTOCOL_PREFABS = {}
 local VALID_RECORD_TARGETS = {}
 local RECORD_TARGET_PROTOCOLS = {}
 
-for prefab, def in pairs(COMBAT_PROTOCOLS) do
-    VALID_RECORD_TARGETS[prefab] = true
-    RECORD_TARGET_PROTOCOLS[prefab] = prefab
-    if def.record_prefabs ~= nil then
-        for _, record_prefab in ipairs(def.record_prefabs) do
-            VALID_RECORD_TARGETS[record_prefab] = true
-            RECORD_TARGET_PROTOCOLS[record_prefab] = prefab
+for _, def in ipairs(COMBAT_PROTOCOL_LIST) do
+    COMBAT_PROTOCOLS[def.protocol] = def
+    COMBAT_PROTOCOL_PREFABS[def.prefab] = def.protocol
+
+    if def.recordable ~= false then
+        VALID_RECORD_TARGETS[def.protocol] = true
+        RECORD_TARGET_PROTOCOLS[def.protocol] = def.protocol
+        if def.record_prefabs ~= nil then
+            for _, record_prefab in ipairs(def.record_prefabs) do
+                VALID_RECORD_TARGETS[record_prefab] = true
+                RECORD_TARGET_PROTOCOLS[record_prefab] = def.protocol
+            end
         end
     end
 end
@@ -154,9 +126,17 @@ local function GetRecordProtocol(prefab)
     return RECORD_TARGET_PROTOCOLS[prefab]
 end
 
+local function GetProtocolPrefab(protocol)
+    local def = protocol ~= nil and COMBAT_PROTOCOLS[protocol] or nil
+    return def ~= nil and def.prefab or nil
+end
+
 return {
     COMBAT_PROTOCOLS = COMBAT_PROTOCOLS,
+    COMBAT_PROTOCOL_LIST = COMBAT_PROTOCOL_LIST,
+    COMBAT_PROTOCOL_PREFABS = COMBAT_PROTOCOL_PREFABS,
     VALID_RECORD_TARGETS = VALID_RECORD_TARGETS,
     RECORD_TARGET_PROTOCOLS = RECORD_TARGET_PROTOCOLS,
     GetRecordProtocol = GetRecordProtocol,
+    GetProtocolPrefab = GetProtocolPrefab,
 }

@@ -2,6 +2,14 @@ require("bufferedaction")
 local old_BufferedAction_Do = BufferedAction.Do
 
 function BufferedAction:Do(...)
+    if self.target ~= nil
+        and self.invobject ~= nil
+        and self.target:HasTag("kei_virtual_equipment")
+    then
+        self:Fail()
+        return false
+    end
+
     if self.doer ~= nil
         and self.doer:HasTag("kei_dormant")
         and self.action ~= ACTIONS.KEI_WAKE
