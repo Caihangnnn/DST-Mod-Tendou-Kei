@@ -1,6 +1,6 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
-local EyeOfTerrorDash = require("kei/protocols/skills/eyeofterror_dash")
-local DaywalkerLeap = require("kei/protocols/skills/daywalker_leap")
+local EyeOfTerrorDash = require("kei/protocols/combat/effects/_eyeofterror_dash")
+local DaywalkerLeap = require("kei/protocols/combat/effects/_daywalker_leap")
 local SpDamageUtil = require("components/spdamageutil")
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
@@ -297,7 +297,9 @@ local function DoEyeOfTerrorDash(doer, targetpos)
         doer.SoundEmitter:PlaySound("meta3/wigfrid/spear_lighting_lunge")
     end
 
-    DoEyeOfTerrorDashDamage(doer, startpt, pt)
+    if EyeOfTerrorDash.HasDamageProtocol(doer) then
+        DoEyeOfTerrorDashDamage(doer, startpt, pt)
+    end
     doer.Physics:Teleport(pt.x, 0, pt.z)
 
     doer.kei_eyeofterror_dash_on_cooldown = true
@@ -409,7 +411,8 @@ local function DoDaywalkerLeapImpact(doer, pos)
 
     local radius = TUNING.KEI_DAYWALKER_LEAP_RADIUS or 4
     local base_damage = TUNING.KEI_DAYWALKER_LEAP_DAMAGE_BASE or 150
-    local maxhealth_percent = TUNING.KEI_DAYWALKER_LEAP_DAMAGE_MAXHEALTH_PERCENT or 0.04
+    local advanced = DaywalkerLeap.HasAdvancedProtocol(doer)
+    local maxhealth_percent = advanced and (TUNING.KEI_DAYWALKER_LEAP_DAMAGE_MAXHEALTH_PERCENT or 0.04) or 0
     local x, y, z = pos:Get()
     local targets = TheSim:FindEntities(x, y, z, radius, DAYWALKER_LEAP_MUST_TAGS, DAYWALKER_LEAP_CANT_TAGS)
 
@@ -423,7 +426,9 @@ local function DoDaywalkerLeapImpact(doer, pos)
             local maxhealth = target.components.health ~= nil and target.components.health.maxhealth or 0
             local damage = base_damage + maxhealth * maxhealth_percent
             target.components.combat:GetAttacked(doer, damage)
-            SlowDaywalkerLeapTarget(target)
+            if advanced then
+                SlowDaywalkerLeapTarget(target)
+            end
         end
     end
 end
@@ -441,6 +446,47 @@ local function DoDaywalkerLeap(doer, targetpos)
     doer:PushEvent("kei_daywalker_leap", { targetpos = pt })
     return true
 end
+
+-- 按 R 触发喷火：插入附身座狼协议后，右键自身即可持续喷火。
+local flamethrower_action = AddAction("KEI_MUTATEDWARG_FLAMETHROWER", "喷火", function(act)
+    if not IsKei(act.doer) or act.target ~= act.doer or act.doer:HasTag("playerghost") then
+        return false
+    end
+    if act.doer.components.kei_protocolslots == nil
+        or not act.doer.components.kei_protocolslots:HasCombatProtocol("mutatedwarg")
+    then
+        return false
+    end
+    if act.doer.kei_mutatedwarg_channelcasting == nil then
+        act.doer.kei_mutatedwarg_channelcasting = true
+    end
+    return true
+end)
+flamethrower_action.mount_valid = false
+flamethrower_action.rmb = true
+flamethrower_action.distance = math.huge
+flamethrower_action.priority = 3
+AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_MUTATEDWARG_FLAMETHROWER, "kei_mutatedwarg_flamethrower"))
+AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.KEI_MUTATEDWARG_FLAMETHROWER, "kei_mutatedwarg_flamethrower"))
+
+AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
+    if not right
+        or not IsKei(doer)
+        or inst ~= doer
+        or doer:HasTag("playerghost")
+    then
+        return
+    end
+    if doer.components.kei_protocolslots == nil
+        or not doer.components.kei_protocolslots:HasCombatProtocol("mutatedwarg")
+    then
+        return
+    end
+    if doer.kei_mutatedwarg_channelcasting == nil then
+        table.insert(actions, ACTIONS.KEI_MUTATEDWARG_FLAMETHROWER)
+        return
+    end
+end)
 
 AddStategraphState("wilson", State{
     name = "kei_mutatedwarg_flamethrower",
@@ -1095,7 +1141,7 @@ AddStategraphState("wilson_client", State{
 local EYEOFTERROR_DASH_PRE_ANIM_SPEED = 3
 local EYEOFTERROR_DASH_POST_ANIM_SPEED = 4
 
--- 克眼战斗数据：右键点地选择方向，确认后冲锋到鼠标指定位置并造成路径伤害。
+-- 克眼战斗数据：右键点地选择方向；初级只冲刺，高级冲刺会造成路径伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
     if not IsKei(act.doer) or not EyeOfTerrorDash.HasProtocol(act.doer) or not EyeOfTerrorDash.IsReady(act.doer) then
         return false

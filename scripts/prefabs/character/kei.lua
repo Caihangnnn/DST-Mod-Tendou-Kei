@@ -1,7 +1,7 @@
 local MakePlayerCharacter = require("prefabs/player_common")
 local PlayerCommonExtensions = require("prefabs/player_common_extensions")
-local EyeOfTerrorDash = require("kei/protocols/skills/eyeofterror_dash")
-local DaywalkerLeap = require("kei/protocols/skills/daywalker_leap")
+local EyeOfTerrorDash = require("kei/protocols/combat/effects/_eyeofterror_dash")
+local DaywalkerLeap = require("kei/protocols/combat/effects/_daywalker_leap")
 local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
@@ -32,6 +32,7 @@ local prefabs = {
     "reticulelineping",
     "kei_mutatedwarg_flamethrower",
     "kei_celestial_orb_fx",
+    "kei_moose_tornado",
     "warg_mutated_breath_fx",
     "warg_mutated_ember_fx",
     "daywalker_sinkhole",

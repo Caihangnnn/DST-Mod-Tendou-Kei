@@ -51,7 +51,7 @@ local function GetKeiAttackSpeedMult(inst)
     if inst:HasTag("kei_attack_speed_boost") then
         mult = mult * (TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT or 1)
     end
-    if inst:HasTag("kei_vault_pillar_guard_spin") then
+    if inst:HasTag("kei_vault_pillar_guard_speed") then
         mult = mult * (TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT or 1)
     end
     return mult > 1 and mult or 1

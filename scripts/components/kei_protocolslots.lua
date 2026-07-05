@@ -10,7 +10,7 @@ local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 local function BuildCombatEffectHandlers()
     local handlers = {}
     for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
-        handlers[def.protocol] = require("kei/protocols/effects/" .. def.protocol)
+        handlers[def.protocol] = require("kei/protocols/combat/effects/" .. def.protocol)
     end
     return handlers
 end
@@ -18,7 +18,7 @@ end
 local function BuildLifeEffects()
     local effects = {}
     for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
-        effects[def.protocol] = require("kei/protocols/effects/" .. def.protocol)
+        effects[def.protocol] = require("kei/protocols/life/effects/" .. def.protocol)
     end
     return effects
 end
@@ -381,11 +381,11 @@ function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)
 end
 
 function KeiProtocolSlots:StalkerProtocolOverridesStability()
-    return self:HasProtocolInUnlockedSlots("stalker_atrium")
+    return self:HasProtocolInUnlockedSlots("stalker_atrium") or self:HasProtocolInUnlockedSlots("stalker_atrium_basic")
 end
 
 function KeiProtocolSlots:AlterguardianProtocolOverridesPower()
-    if not self:HasProtocolInUnlockedSlots("alterguardian") then
+    if not (self:HasProtocolInUnlockedSlots("alterguardian") or self:HasProtocolInUnlockedSlots("alterguardian_basic")) then
         return false
     end
     local sanity = self.inst.components.sanity
@@ -424,7 +424,7 @@ function KeiProtocolSlots:CanRun(data)
     if ProtocolNeedsStability(data)
         and self.inst.components.sanity ~= nil
         and self.inst.components.sanity.current <= 0
-        and data.protocol ~= "stalker_atrium"
+        and data.protocol ~= "stalker_atrium" and data.protocol ~= "stalker_atrium_basic"
         and not self:StalkerProtocolOverridesStability()
     then
         return false
@@ -595,9 +595,9 @@ end
 
 function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_eyeofterror_protocol_active ~= nil then
-        self.inst._kei_eyeofterror_protocol_active:set(self:HasCombatProtocol("eyeofterror"))
+        self.inst._kei_eyeofterror_protocol_active:set(self:HasCombatProtocol("eyeofterror") or self:HasCombatProtocol("eyeofterror_basic"))
     end
-    local daywalker_active = self:HasCombatProtocol("daywalker")
+    local daywalker_active = self:HasCombatProtocol("daywalker") or self:HasCombatProtocol("daywalker_basic")
     if self.inst._kei_daywalker_protocol_active ~= nil then
         self.inst._kei_daywalker_protocol_active:set(daywalker_active)
     end
@@ -727,6 +727,11 @@ function KeiProtocolSlots:DrainProtocols()
         elseif ProtocolNeedsStability(data) then
             stability_cost = stability_cost + GetCombatProtocolDrainAmount(data, drain)
         end
+    end
+
+    if self.active_combat.lordfruitfly_basic then
+        power_cost = power_cost * 0.5
+        stability_cost = stability_cost * 0.5
     end
 
     power_cost = math.min(power_cost, drain.cap)
