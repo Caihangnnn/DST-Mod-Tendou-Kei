@@ -1,7 +1,9 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
-local VirtualHandEquipment = require("kei/virtual_hand_equipment")
+local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
+local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
+local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
@@ -27,7 +29,6 @@ local EFFECT_HANDLERS = BuildCombatEffectHandlers()
 --- 生活协议效果处理器（导出 Apply 方法，非 EffectHandler 接口）。
 local LIFE_EFFECTS = BuildLifeEffects()
 local ANALYSIS_ARMOR_MODIFIER = "kei_analysis_armor"
-local ANALYSIS_HANDS_MODIFIER = "kei_analysis_hands"
 
 ----------------------------------------------------------------
 -- 辅助函数
@@ -41,54 +42,12 @@ local function IsProtocolContainer(item)
     return item ~= nil and item.prefab == "kei_protocol_container"
 end
 
-local function HiddenEquipSlot(slot)
-    return EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(slot)]
-end
-
 local function ProtocolNeedsPower(data)
     return data.kind == "analysis"
 end
 
 local function ProtocolNeedsStability(data)
     return data.kind == "combat"
-end
-
-local function GetAnalysisDamageBonus(data)
-    if data.damage_bonus ~= nil then
-        return data.damage_bonus
-    end
-    return data.damage_mult ~= nil and data.damage_mult > 1 and data.damage_mult * TUNING.UNARMED_DAMAGE or 0
-end
-
-local function HasHandEquipment(inst)
-    return inst.components.inventory ~= nil
-        and inst.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) ~= nil
-end
-
-local function NewHandAnalysisStats()
-    return {
-        damage_bonus = 0,
-        speed_mult = 1,
-        planar_bonus = 0,
-        tool_actions = {},
-        tool_tough = false,
-    }
-end
-
-local function AddHandAnalysisStats(stats, data)
-    stats.damage_bonus = stats.damage_bonus + GetAnalysisDamageBonus(data)
-    stats.speed_mult = stats.speed_mult * (data.speed_mult or 1)
-    stats.planar_bonus = stats.planar_bonus + (data.planar_bonus or 0)
-
-    if data.tool_actions ~= nil then
-        for action_id, effectiveness in pairs(data.tool_actions) do
-            if ACTIONS[action_id] ~= nil then
-                stats.tool_actions[action_id] = (stats.tool_actions[action_id] or 0) + (effectiveness or 1)
-            end
-        end
-    end
-
-    stats.tool_tough = stats.tool_tough or data.tool_tough == true
 end
 
 local function GetProtocolDrainSettings()
@@ -548,120 +507,19 @@ function KeiProtocolSlots:SwapWithProtocolBinder(binder)
 end
 
 ----------------------------------------------------------------
--- 虚拟装备
+-- 解析虚拟装备
 ----------------------------------------------------------------
 
-local function CleanVirtualEquipment(item, equipslot)
-    item.persists = false
-    item:AddTag("kei_virtual_equipment")
-    item:AddTag("NOCLICK")
-    item:RemoveTag("heavy")
-    item:RemoveTag("repairable")
-
-    if item.components.equippable ~= nil then
-        item.components.equippable.restrictedtag = nil
-        item.components.equippable.equipslot = equipslot
-        item.components.equippable:SetPreventUnequipping(equipslot ~= EQUIPSLOTS.HANDS)
-    end
-
-    if item.components.container ~= nil then
-        item:RemoveComponent("container")
-    end
-
-    if item.components.inventoryitem ~= nil then
-        item.components.inventoryitem.canbepickedup = false
-        item.components.inventoryitem.cangoincontainer = false
-        item.components.inventoryitem.keepondeath = true
-    end
-
-    if item.components.trader ~= nil then
-        item:RemoveComponent("trader")
-    end
-
-    if item.components.repairable ~= nil then
-        item:RemoveComponent("repairable")
-    end
-
-    if item.components.finiteuses ~= nil then
-        item:RemoveComponent("finiteuses")
-    end
-
-    if item.components.fueled ~= nil then
-        item:RemoveComponent("fueled")
-    end
-
-    if item.components.perishable ~= nil then
-        item:RemoveComponent("perishable")
-    end
-end
-
-local function ScheduleVirtualEquipmentRemove(item)
-    if item == nil or not item:IsValid() or item.kei_pending_virtual_remove then return end
-
-    item.kei_pending_virtual_remove = true
-    item.persists = false
-    item:Hide()
-    item:DoTaskInTime(0.1, function(inst)
-        if inst:IsValid() then
-            inst:Remove()
-        end
-    end)
-end
-
 function KeiProtocolSlots:RemoveVirtualEquip(slot)
-    local virtual = self.virtual_equips[slot]
-    if virtual == nil then return end
-
-    local equipslot = HiddenEquipSlot(slot)
-    local inventory = self.inst.components.inventory
-    if inventory ~= nil and equipslot ~= nil and inventory:GetEquippedItem(equipslot) == virtual then
-        virtual.kei_allow_virtual_drop = true
-        inventory:Unequip(equipslot, true, true)
-    end
-
-    if virtual:IsValid() then
-        ScheduleVirtualEquipmentRemove(virtual)
-    end
-    self.virtual_equips[slot] = nil
+    return ArmorAnalysisEquipment.Remove(self, slot)
 end
 
 function KeiProtocolSlots:ApplyVirtualEquip(entry)
-    local data = entry.data
-    local slot = entry.slot
-    local equipslot = HiddenEquipSlot(slot)
-    local inventory = self.inst.components.inventory
+    return ArmorAnalysisEquipment.Apply(self, entry)
+end
 
-    if data.source == nil or equipslot == nil or inventory == nil then
-        self:RemoveVirtualEquip(slot)
-        return
-    end
-
-    local current = self.virtual_equips[slot]
-    if current ~= nil
-        and current:IsValid()
-        and current.kei_source_prefab == data.source
-        and inventory:GetEquippedItem(equipslot) == current
-    then
-        return
-    end
-
-    self:RemoveVirtualEquip(slot)
-
-    local virtual = SpawnPrefab(data.source)
-    if virtual == nil or virtual.components.equippable == nil then
-        if virtual ~= nil then virtual:Remove() end
-        return
-    end
-
-    virtual.kei_source_prefab = data.source
-    CleanVirtualEquipment(virtual, equipslot)
-
-    inventory:Equip(virtual, nil, true)
-    if inventory:GetEquippedItem(equipslot) == virtual then
-        self.virtual_equips[slot] = virtual
-    else
-        ScheduleVirtualEquipmentRemove(virtual)
-    end
+function KeiProtocolSlots:ClearVirtualEquips(keep)
+    return ArmorAnalysisEquipment.Clear(self, keep)
 end
 
 function KeiProtocolSlots:RemoveHandVirtualEquip()
@@ -672,92 +530,6 @@ function KeiProtocolSlots:ApplyHandVirtualEquip(entry)
     return VirtualHandEquipment.Apply(self, entry)
 end
 
-function KeiProtocolSlots:ClearVirtualEquips(keep)
-    for slot in pairs(self.virtual_equips) do
-        if keep == nil or not keep[slot] then
-            self:RemoveVirtualEquip(slot)
-        end
-    end
-end
-
-----------------------------------------------------------------
--- 解析手部属性
-----------------------------------------------------------------
-
-function KeiProtocolSlots:ClearAnalysisToolActions()
-    local worker = self.inst.components.worker
-    if worker ~= nil then
-        for action_id, old_value in pairs(self._kei_worker_action_old_values or {}) do
-            local action = ACTIONS[action_id]
-            if action ~= nil then
-                worker.actions[action] = old_value
-            end
-        end
-    end
-
-    if self._kei_added_worker and self.inst.components.worker ~= nil then
-        self.inst:RemoveComponent("worker")
-    end
-
-    for action_id, had_tag in pairs(self._kei_tool_action_old_tags or {}) do
-        if not had_tag then
-            local action = ACTIONS[action_id]
-            local tag = action ~= nil and (action.id .. "_tool") or (action_id .. "_tool")
-            self.inst:RemoveTag(tag)
-        end
-    end
-
-    if self._kei_toughworker_old_tag ~= nil then
-        if not self._kei_toughworker_old_tag then
-            self.inst:RemoveTag("toughworker")
-        end
-        self._kei_toughworker_old_tag = nil
-    end
-
-    self._kei_added_worker = nil
-    self._kei_worker_action_old_values = {}
-    self._kei_tool_action_old_tags = {}
-    self.analysis_tool_actions = {}
-    self.analysis_tool_tough = nil
-end
-
-function KeiProtocolSlots:SetAnalysisToolActions(actions, tough)
-    self:ClearAnalysisToolActions()
-
-    if HasHandEquipment(self.inst) then return end
-
-    local has_actions = actions ~= nil and next(actions) ~= nil
-    if not has_actions and not tough then return end
-
-    if has_actions then
-        if self.inst.components.worker == nil then
-            self.inst:AddComponent("worker")
-            self._kei_added_worker = true
-        end
-
-        local worker = self.inst.components.worker
-        for action_id, effectiveness in pairs(actions) do
-            local action = ACTIONS[action_id]
-            if action ~= nil then
-                self._kei_worker_action_old_values[action_id] = worker.actions[action]
-                worker:SetAction(action, effectiveness or 1)
-
-                local tag = action.id .. "_tool"
-                self._kei_tool_action_old_tags[action_id] = self.inst:HasTag(tag)
-                self.inst:AddTag(tag)
-            end
-        end
-    end
-
-    if tough then
-        self._kei_toughworker_old_tag = self.inst:HasTag("toughworker")
-        self.inst:AddTag("toughworker")
-    end
-
-    self.analysis_tool_actions = actions or {}
-    self.analysis_tool_tough = tough or nil
-end
-
 ----------------------------------------------------------------
 -- 修饰符清理
 ----------------------------------------------------------------
@@ -765,8 +537,7 @@ end
 function KeiProtocolSlots:ClearModifiers()
     self:RemoveHandVirtualEquip()
     self:ClearVirtualEquips()
-    self:ClearAnalysisToolActions()
-    self:SetAnalysisDamageBonus(0)
+    HandAnalysisInheritance.Clear(self)
 
     -- 调用所有战斗效果处理器的 Disable。
     for _, handler in pairs(EFFECT_HANDLERS) do
@@ -779,32 +550,6 @@ function KeiProtocolSlots:ClearModifiers()
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
         self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
     end
-    if self.inst.components.combat ~= nil then
-        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, ANALYSIS_HANDS_MODIFIER)
-    end
-    if self.inst.components.planardamage ~= nil then
-        self.inst.components.planardamage:RemoveBonus(self.inst, ANALYSIS_HANDS_MODIFIER)
-    end
-    if self.inst.components.locomotor ~= nil then
-        self.inst.components.locomotor:RemoveExternalSpeedMultiplier(self.inst, ANALYSIS_HANDS_MODIFIER)
-    end
-end
-
-function KeiProtocolSlots:SetAnalysisDamageBonus(amount)
-    local combat = self.inst.components.combat
-    local old = self.analysis_damage_bonus or 0
-    amount = amount or 0
-
-    if combat ~= nil then
-        if old ~= 0 then
-            combat.damagebonus = (combat.damagebonus or 0) - old
-        end
-        if amount ~= 0 then
-            combat.damagebonus = (combat.damagebonus or 0) + amount
-        end
-    end
-
-    self.analysis_damage_bonus = amount
 end
 
 function KeiProtocolSlots:DisableAllProtocols()
@@ -904,7 +649,7 @@ function KeiProtocolSlots:Refresh()
     local combat = {}
     local life = {}
     local pet = {}
-    local hand_stats = NewHandAnalysisStats()
+    local hand_stats = HandAnalysisInheritance.NewStats()
     local desired_virtuals = {}
     local wants_hand_virtual = false
 
@@ -931,7 +676,7 @@ function KeiProtocolSlots:Refresh()
                 if entry.slot == 1 and not self._kei_suppress_hand_virtual and self:ApplyHandVirtualEquip(entry) then
                     wants_hand_virtual = true
                 else
-                    AddHandAnalysisStats(hand_stats, data)
+                    HandAnalysisInheritance.AddStats(hand_stats, data)
                 end
             end
         end
@@ -951,22 +696,7 @@ function KeiProtocolSlots:Refresh()
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
     end
-    if self.inst.components.combat ~= nil then
-        self.inst.components.combat.externaldamagemultipliers:RemoveModifier(self.inst, ANALYSIS_HANDS_MODIFIER)
-        self:SetAnalysisDamageBonus(hand_stats.damage_bonus)
-    end
-    if hand_stats.planar_bonus > 0 then
-        if self.inst.components.planardamage == nil then
-            self.inst:AddComponent("planardamage")
-        end
-        self.inst.components.planardamage:AddBonus(self.inst, hand_stats.planar_bonus, ANALYSIS_HANDS_MODIFIER)
-    elseif self.inst.components.planardamage ~= nil then
-        self.inst.components.planardamage:RemoveBonus(self.inst, ANALYSIS_HANDS_MODIFIER)
-    end
-    if self.inst.components.locomotor ~= nil then
-        self.inst.components.locomotor:SetExternalSpeedMultiplier(self.inst, ANALYSIS_HANDS_MODIFIER, hand_stats.speed_mult)
-    end
-    self:SetAnalysisToolActions(hand_stats.tool_actions, hand_stats.tool_tough)
+    HandAnalysisInheritance.Apply(self, hand_stats)
 end
 
 function KeiProtocolSlots:DrainProtocols()
