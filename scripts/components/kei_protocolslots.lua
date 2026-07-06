@@ -118,6 +118,8 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_worker_action_old_values = {}
     self._kei_tool_action_old_tags = {}
     self._kei_mutateddeerclops_slowed = {}
+    self._protocol_state_dirty = true
+    self._prev_active_combat = {}
 
     self:SyncUnlockedSlots()
     self:SyncUsedUnlockRecipes()
@@ -127,7 +129,7 @@ local KeiProtocolSlots = Class(function(self, inst)
         self:Refresh()
     end)
 
-    self._scan_task = inst:DoPeriodicTask(1, function()
+    self._refresh_task = inst:DoPeriodicTask(1, function()
         self:EnsureProtocolContainers()
         self:Refresh()
     end)
@@ -156,12 +158,14 @@ local KeiProtocolSlots = Class(function(self, inst)
 
     inst:ListenForEvent("equip", function(_, data)
         if data ~= nil and data.eslot == EQUIPSLOTS.HANDS then
+            self._protocol_state_dirty = true
             self:Refresh()
         end
     end)
 
     inst:ListenForEvent("unequip", function(_, data)
         if data ~= nil and data.eslot == EQUIPSLOTS.HANDS then
+            self._protocol_state_dirty = true
             self:Refresh()
         end
     end)
@@ -176,7 +180,10 @@ local KeiProtocolSlots = Class(function(self, inst)
         self:DisableAllProtocols()
     end)
 
-    inst:ListenForEvent("respawnfromghost", function()
+
+    inst:ListenForEvent("itemget", function() self._protocol_state_dirty = true end)
+    inst:ListenForEvent("itemlose", function() self._protocol_state_dirty = true end)    inst:ListenForEvent("respawnfromghost", function()
+        self._protocol_state_dirty = true
         inst:DoTaskInTime(0, function()
             self:Refresh()
         end)
@@ -643,13 +650,19 @@ end
 
 function KeiProtocolSlots:RefreshEffects()
     self:RefreshLifeEffects()
+    local prev = self._prev_active_combat or {}
+    self._prev_active_combat = {}
+
     for protocol, handler in pairs(EFFECT_HANDLERS) do
         local is_active = self.active_combat[protocol] == true
-        if is_active then
+        self._prev_active_combat[protocol] = is_active
+        local was_active = prev[protocol] == true
+
+        if is_active and not was_active then
             if handler.Enable then
                 handler.Enable(self, self.inst)
             end
-        else
+        elseif not is_active and was_active then
             if handler.Disable then
                 handler.Disable(self, self.inst)
             end
@@ -668,7 +681,12 @@ function KeiProtocolSlots:Refresh()
     end
     self:SetProtocolContainersPowered(true)
 
-    local items = self:GetProtocolSlotItems()
+    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil then
+        return
+    end
+
+    local items = self._protocol_state_dirty and self:GetProtocolSlotItems() or self.active
+    self._protocol_state_dirty = nil
     local combat = {}
     local life = {}
     local pet = {}
