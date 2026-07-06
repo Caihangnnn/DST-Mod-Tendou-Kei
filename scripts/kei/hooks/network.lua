@@ -35,11 +35,19 @@ local function SpawnMutatedWargFlameReadyFx(player)
     local ismount = player.components.rider ~= nil and player.components.rider:IsRiding()
     local fx = SpawnPrefab(ismount and "fx_book_moon_mount" or "fx_book_moon")
     if fx ~= nil then
+        fx.persists = false
+
         if ismount then
             fx.Transform:SetSixFaced()
         end
-        fx.Transform:SetPosition(player.Transform:GetWorldPosition())
-        fx.Transform:SetRotation(player.Transform:GetRotation())
+        fx.entity:SetParent(player.entity)
+        fx.Transform:SetPosition(0, 0, 0)
+        fx.Transform:SetRotation(0)
+        fx:ListenForEvent("onremove", function()
+            if fx:IsValid() then
+                fx:Remove()
+            end
+        end, player)
     end
 end
 

@@ -588,6 +588,14 @@ local function IsAnalysisBlacklisted(target)
     return target ~= nil and ANALYSIS_BLACKLIST[target.prefab]
 end
 
+local function IsPotentialAnalyzableEquipment(target)
+    return target ~= nil
+        and not IsAnalysisBlacklisted(target)
+        and target.replica ~= nil
+        and target.replica.equippable ~= nil
+        and target.replica.stackable == nil
+end
+
 local function GetPrefabDisplayName(prefab)
     return prefab ~= nil and (STRINGS.NAMES[string.upper(prefab)] or prefab) or nil
 end
@@ -1602,12 +1610,15 @@ AddKeiActionHandler(ACTIONS.KEI_COPY_DATA_CD, "give")
 
 local function AnalyzeEquipment(tool, target, doer)
     if IsAnalysisBlacklisted(target) then
-        return false
+        return false, false
     end
 
-    -- 只解析可装备物品；容器类物品即使可检查也不生成协议。
+    -- 只解析不可堆叠的可装备物品；容器类物品即使可检查也不生成协议。
     if target.components.container ~= nil then
         return false
+    end
+    if target.components.stackable ~= nil then
+        return false, false
     end
     if target.components.equippable == nil then
         return false
@@ -1674,11 +1685,14 @@ local analyze_action = AddAction("KEI_ANALYZE_EQUIP", "解析装备", function(a
     if not IsKei(act.doer) or act.invobject == nil or act.target == nil then
         return false
     end
-    if AnalyzeEquipment(act.invobject, act.target, act.doer) then
+    local success, consume_on_fail = AnalyzeEquipment(act.invobject, act.target, act.doer)
+    if success then
         return true
     end
     Say(act.doer, "ANNOUNCE_KEI_ANALYSIS_FAILED")
-    ConsumeOne(act.invobject)
+    if consume_on_fail ~= false then
+        ConsumeOne(act.invobject)
+    end
     return false
 end)
 analyze_action.mount_valid = true
@@ -1704,7 +1718,7 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
         and target:HasTag("kei_analysis_protocol")
     then
         table.insert(actions, ACTIONS.KEI_COPY_DATA_CD)
-    elseif inst:HasTag("kei_analysis_tool") and target.replica.equippable ~= nil and not IsAnalysisBlacklisted(target) then
+    elseif inst:HasTag("kei_analysis_tool") and IsPotentialAnalyzableEquipment(target) then
         table.insert(actions, ACTIONS.KEI_ANALYZE_EQUIP)
     end
 end)

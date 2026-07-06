@@ -94,6 +94,42 @@ local function IsActivePlayerDrop(inventory, item)
         and buffered.invobject == item
 end
 
+local function IsProjectileOrThrowableHandItem(item)
+    if item == nil then
+        return false
+    end
+
+    if item:HasTag("projectile")
+        or item:HasTag("rangedweapon")
+        or item:HasTag("blowdart")
+        or item:HasTag("throwable")
+    then
+        return true
+    end
+
+    local components = item.components
+    return components ~= nil
+        and (components.complexprojectile ~= nil
+            or components.throwable ~= nil
+            or (components.weapon ~= nil and components.weapon.projectile ~= nil))
+end
+
+local function IsActiveHandItemUse(inventory, item)
+    local buffered = inventory.inst ~= nil and inventory.inst.bufferedaction or nil
+    if buffered == nil or buffered.action == nil or buffered.action == ACTIONS.DROP then
+        return false
+    end
+
+    if buffered.invobject == item then
+        return true
+    end
+
+    return buffered.action == ACTIONS.ATTACK
+        and inventory.equipslots ~= nil
+        and inventory.equipslots[EQUIPSLOTS.HANDS] == item
+        and IsProjectileOrThrowableHandItem(item)
+end
+
 local function IsSpentEquipment(item)
     if item == nil or item.components == nil then
         return false
@@ -168,6 +204,7 @@ AddComponentPostInit("inventory", function(self)
 
         if IsEquippedKeiHandItem(self, item)
             and not IsActivePlayerDrop(self, item)
+            and not IsActiveHandItemUse(self, item)
             and not IsSpentEquipment(item)
         then
             return nil

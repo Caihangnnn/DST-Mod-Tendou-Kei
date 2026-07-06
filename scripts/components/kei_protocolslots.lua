@@ -539,6 +539,12 @@ function KeiProtocolSlots:ClearModifiers()
     self:ClearVirtualEquips()
     HandAnalysisInheritance.Clear(self)
 
+    for _, handler in pairs(LIFE_EFFECTS) do
+        if handler.Disable then
+            handler.Disable(self, self.inst)
+        end
+    end
+
     -- 调用所有战斗效果处理器的 Disable。
     for _, handler in pairs(EFFECT_HANDLERS) do
         if handler.Disable then
@@ -591,6 +597,9 @@ function KeiProtocolSlots:SyncLifeProtocolFlags()
     if self.inst._kei_map_teleport_protocol_active ~= nil then
         self.inst._kei_map_teleport_protocol_active:set(self:HasLifeProtocol("map_teleport"))
     end
+    if self.inst._kei_water_walk_protocol_active ~= nil then
+        self.inst._kei_water_walk_protocol_active:set(self:HasLifeProtocol("water_walk"))
+    end
 end
 
 function KeiProtocolSlots:SyncCombatProtocolFlags()
@@ -601,9 +610,7 @@ function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_daywalker_protocol_active ~= nil then
         self.inst._kei_daywalker_protocol_active:set(daywalker_active)
     end
-    if self.inst._kei_malbatross_protocol_active ~= nil then
-        self.inst._kei_malbatross_protocol_active:set(self:HasCombatProtocol("malbatross"))
-    end
+
     if self.inst._kei_mutatedwarg_protocol_active ~= nil then
         self.inst._kei_mutatedwarg_protocol_active:set(self:HasCombatProtocol("mutatedwarg"))
     end
@@ -619,7 +626,23 @@ end
 -- 效果分发
 ----------------------------------------------------------------
 
+function KeiProtocolSlots:RefreshLifeEffects()
+    for protocol, handler in pairs(LIFE_EFFECTS) do
+        local stacks = self.active_life[protocol] or 0
+        if stacks > 0 then
+            if handler.Enable then
+                handler.Enable(self, self.inst, stacks)
+            end
+        else
+            if handler.Disable then
+                handler.Disable(self, self.inst)
+            end
+        end
+    end
+end
+
 function KeiProtocolSlots:RefreshEffects()
+    self:RefreshLifeEffects()
     for protocol, handler in pairs(EFFECT_HANDLERS) do
         local is_active = self.active_combat[protocol] == true
         if is_active then

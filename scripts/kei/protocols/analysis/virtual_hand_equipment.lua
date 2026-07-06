@@ -216,8 +216,10 @@ function VirtualHandEquipment.Apply(protocolslots, entry)
     protocolslots._kei_suppress_hand_virtual = was_suppressing
 
     local virtual = SpawnPrefab(data.source, data.skin_name)
-    if virtual == nil or virtual.components.equippable == nil then
-        if virtual ~= nil then virtual:Remove() end
+    if virtual == nil or virtual.components.equippable == nil or virtual.components.stackable ~= nil then
+        if virtual ~= nil then
+            ScheduleVirtualEquipmentRemove(virtual)
+        end
         return false
     end
 

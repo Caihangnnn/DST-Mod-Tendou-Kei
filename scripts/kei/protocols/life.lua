@@ -102,10 +102,10 @@ local LIFE_PROTOCOL_LIST = {
         protocol = "water_walk",
         prefab = "kei_life_cd_water_walk",
         display_name = "踏水",
-        description = "调查未激活帝王蟹获得的特异现象协议。",
+        description = "允许 Kei 在海面上行走。",
         source = "crabking",
         stackable = false,
-        implemented = false,
+        implemented = true,
     },
     {
         protocol = "ripen",

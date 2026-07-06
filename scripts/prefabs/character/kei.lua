@@ -127,7 +127,7 @@ local function UpdateDaywalkerAimingReticule(inst)
     end
 end
 
-local function SetMalbatrossCollision(inst, enabled)
+local function SetWaterWalkCollision(inst, enabled)
     if enabled and not TheWorld:HasTag("cave") and not inst:HasTag("playerghost") then
         inst.Physics:SetCollisionMask(
             COLLISION.GROUND,
@@ -147,10 +147,10 @@ local function SetMalbatrossCollision(inst, enabled)
     end
 end
 
-local function OnMalbatrossProtocolDirty(inst)
-    SetMalbatrossCollision(
+local function OnWaterWalkProtocolDirty(inst)
+    SetWaterWalkCollision(
         inst,
-        inst._kei_malbatross_protocol_active ~= nil and inst._kei_malbatross_protocol_active:value()
+        inst._kei_water_walk_protocol_active ~= nil and inst._kei_water_walk_protocol_active:value()
     )
 end
 
@@ -394,7 +394,7 @@ local function common_postinit(inst)
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
-    inst._kei_malbatross_protocol_active = net_bool(inst.GUID, "kei.malbatross_protocol_active", "kei_malbatross_protocol_dirty")
+    inst._kei_water_walk_protocol_active = net_bool(inst.GUID, "kei.water_walk_protocol_active", "kei_water_walk_protocol_dirty")
     inst._kei_mutatedwarg_protocol_active = net_bool(inst.GUID, "kei.mutatedwarg_protocol_active", "kei_mutatedwarg_protocol_dirty")
     inst._kei_map_teleport_protocol_active = net_bool(inst.GUID, "kei.map_teleport_protocol_active", "kei_map_teleport_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
@@ -410,8 +410,8 @@ local function common_postinit(inst)
     inst:ListenForEvent("setowner", OnSetOwner)
     inst:ListenForEvent("kei_daywalker_aiming_dirty", UpdateDaywalkerAimingReticule)
     inst:ListenForEvent("kei_daywalker_leap_cd_dirty", UpdateDaywalkerAimingReticule)
-    inst:ListenForEvent("kei_malbatross_protocol_dirty", OnMalbatrossProtocolDirty)
-    inst:DoTaskInTime(0, OnMalbatrossProtocolDirty)
+    inst:ListenForEvent("kei_water_walk_protocol_dirty", OnWaterWalkProtocolDirty)
+    inst:DoTaskInTime(0, OnWaterWalkProtocolDirty)
     inst:DoPeriodicTask(0.25, UpdateDormantActionFilter)
 
     PatchKeiChannelCastingFns(inst)

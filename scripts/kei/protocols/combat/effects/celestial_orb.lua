@@ -99,7 +99,7 @@ local function UpdateOrbs(slots, inst)
 
     local count = TUNING.KEI_CELESTIAL_ORB_COUNT or 5
     local radius = TUNING.KEI_CELESTIAL_ORB_RADIUS or 2.7
-    local height = TUNING.KEI_CELESTIAL_ORB_HEIGHT or 1.35
+    local height = TUNING.KEI_CELESTIAL_ORB_HEIGHT or 1
     local now = GetTime()
     local accelerated = (slots._kei_celestial_orb_accel_until or 0) > now
     local speed = accelerated

@@ -1,5 +1,7 @@
+-- 蚁狮战斗协议功能实现
 local AntlionCommon = {}
 
+-- 判断来源表中是否还存在任意一个有效来源，用于决定是否保留沙尘暴免疫状态
 local function HasAnySource(sources)
     if sources == nil then
         return false
@@ -10,12 +12,15 @@ local function HasAnySource(sources)
     return false
 end
 
+-- 刷新 stormwatcher 组件，让沙尘暴等级与当前免疫状态立即重新计算
 local function RefreshStormWatcher(inst)
     if inst.components ~= nil and inst.components.stormwatcher ~= nil then
         inst.components.stormwatcher:UpdateStormLevel()
     end
 end
 
+-- 为角色添加一层沙尘暴免疫来源
+-- 使用来源表而不是单一开关，便于多个协议或效果同时共享这项免疫能力
 function AntlionCommon.EnableStormImmunity(slots, inst, source)
     source = source or "antlion"
     inst._kei_antlion_storm_immunity_sources = inst._kei_antlion_storm_immunity_sources or {}
@@ -28,6 +33,8 @@ function AntlionCommon.EnableStormImmunity(slots, inst, source)
     RefreshStormWatcher(inst)
 end
 
+-- 移除指定来源提供的沙尘暴免疫
+-- 只有当所有来源都清空后，角色才真正失去这项免疫效果
 function AntlionCommon.DisableStormImmunity(slots, inst, source)
     source = source or "antlion"
     local sources = inst._kei_antlion_storm_immunity_sources
@@ -40,10 +47,13 @@ function AntlionCommon.DisableStormImmunity(slots, inst, source)
     RefreshStormWatcher(inst)
 end
 
+-- 判断当前是否激活了高级蚁狮战斗协议
 function AntlionCommon.HasAdvanced(slots)
     return slots.active_combat ~= nil and slots.active_combat.antlion == true
 end
 
+-- 校验目标是否仍然可以作为沙刺攻击对象
+-- 会同时检查施法者、目标可见性、生命状态和 combat 的合法攻击关系
 local function IsValidTarget(owner, target)
     return owner ~= nil
         and owner:IsValid()
@@ -57,6 +67,8 @@ local function IsValidTarget(owner, target)
         and owner.components.combat:IsValidTarget(target)
 end
 
+-- 在沙刺实体附近对目标结算一次伤害
+-- 只有当目标仍在命中半径内时才会生效，避免目标提前离开时仍被击中
 local function DoSandSpikeDamage(inst, owner, target, damage)
     if IsValidTarget(owner, target)
         and inst:IsValid()
@@ -66,10 +78,13 @@ local function DoSandSpikeDamage(inst, owner, target, damage)
     end
 end
 
+-- 延迟武装沙刺伤害，使伤害时机与沙刺破土动画同步
 local function ArmSandSpikeDamage(inst, owner, target, damage)
     inst:DoTaskInTime(2 * FRAMES, DoSandSpikeDamage, owner, target, damage)
 end
 
+-- 生成一个沙刺实体，并接管其伤害逻辑
+-- 原版沙刺的 combat 伤害会被置零，实际伤害改为在动画结束后按自定义逻辑结算
 function AntlionCommon.SpawnSandSpike(slots, inst, pt, target, prefab, damage)
     local spike = SpawnPrefab(prefab or "sandspike_tall")
     if spike == nil then
@@ -92,6 +107,7 @@ function AntlionCommon.SpawnSandSpike(slots, inst, pt, target, prefab, damage)
     return spike
 end
 
+-- 以目标点为中心生成三角形分布的短沙刺，用于形成追加包围打击
 function AntlionCommon.SpawnSandSpikeTriangle(slots, inst, center, target)
     local radius = TUNING.KEI_ANTLION_SANDSPIKE_TRIANGLE_RADIUS or 1.6
     local theta = math.random() * TWOPI
@@ -106,6 +122,8 @@ function AntlionCommon.SpawnSandSpikeTriangle(slots, inst, center, target)
     end
 end
 
+-- 在命中事件中尝试触发蚁狮沙刺效果
+-- 需要满足冷却、概率和目标合法性条件，成功后会先生成中心高沙刺，再延迟生成外围三角沙刺
 function AntlionCommon.TrySpawnSandSpikes(slots, inst, data)
     local target = data ~= nil and data.target or nil
     local now = GetTime()

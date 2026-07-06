@@ -2,8 +2,6 @@
 
 local BeequeenCommon = {}
 
-local BEEQUEEN_SCARE_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "epic" }
-
 function BeequeenCommon.IsValidScareTarget(owner, target)
     return owner ~= nil
         and owner:IsValid()
@@ -35,13 +33,27 @@ function BeequeenCommon.ScareTarget(owner, target, duration)
     end
 end
 
-function BeequeenCommon.CooldownReady(slots)
-    local now = GetTime()
-    return slots._kei_beequeen_panic_ready_time == nil or now >= slots._kei_beequeen_panic_ready_time
+local function GetCooldownKey(key)
+    return key or "_kei_beequeen_panic_ready_time"
 end
 
-function BeequeenCommon.StartCooldown(slots)
-    slots._kei_beequeen_panic_ready_time = GetTime() + (TUNING.KEI_BEEQUEEN_PANIC_COOLDOWN or 3)
+function BeequeenCommon.CooldownReady(slots, key)
+    if slots == nil then
+        return false
+    end
+
+    local now = GetTime()
+    local cooldown_key = GetCooldownKey(key)
+    return slots[cooldown_key] == nil or now >= slots[cooldown_key]
+end
+
+function BeequeenCommon.StartCooldown(slots, cooldown, key)
+    if slots == nil then
+        return
+    end
+
+    local cooldown_key = GetCooldownKey(key)
+    slots[cooldown_key] = GetTime() + (cooldown or TUNING.KEI_BEEQUEEN_PANIC_COOLDOWN or 3)
 end
 
 function BeequeenCommon.HasAdvanced(slots)

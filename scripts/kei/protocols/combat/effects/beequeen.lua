@@ -32,7 +32,7 @@ function BeequeenEffect.OnAttacked(slots, inst, data)
         return
     end
 
-    BeequeenCommon.StartCooldown(slots)
+    BeequeenCommon.StartCooldown(slots, TUNING.KEI_BEEQUEEN_PANIC_COOLDOWN or 3)
 
     local duration = TUNING.KEI_BEEQUEEN_PANIC_DURATION or 5
     local x, y, z = inst.Transform:GetWorldPosition()
