@@ -7,10 +7,17 @@ local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_eq
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
+local function GetCombatEffectPath(def)
+    if def.category == "beast" or def.category == "biome" then
+        return "kei/protocols/combat/effects/" .. def.category .. "/" .. (def.effect_file or def.protocol)
+    end
+    return "kei/protocols/combat/effects/" .. (def.effect_file or def.protocol)
+end
+
 local function BuildCombatEffectHandlers()
     local handlers = {}
     for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
-        handlers[def.protocol] = require("kei/protocols/combat/effects/" .. def.protocol)
+        handlers[def.protocol] = require(GetCombatEffectPath(def))
     end
     return handlers
 end
@@ -52,22 +59,10 @@ end
 
 local function GetProtocolDrainSettings()
     return {
-        analysis_amount = TUNING.KEI_PROTOCOL_DRAIN_ANALYSIS_AMOUNT or TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
-        basic_amount = TUNING.KEI_PROTOCOL_DRAIN_BASIC_AMOUNT or TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 2,
-        advanced_amount = TUNING.KEI_PROTOCOL_DRAIN_ADVANCED_AMOUNT or 1,
-        special_amount = TUNING.KEI_PROTOCOL_DRAIN_SPECIAL_AMOUNT or 0.5,
-        cap = TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_PERIOD or TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_SECOND or 10,
+        analysis_amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 1,
+        combat_amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 1,
+        cap = TUNING.KEI_PROTOCOL_DRAIN_MAX_PER_PERIOD or 5,
     }
-end
-
-local function GetCombatProtocolDrainAmount(data, drain)
-    if data.tier == "special" then
-        return drain.special_amount
-    end
-    if data.tier == "advanced" then
-        return drain.advanced_amount
-    end
-    return drain.basic_amount
 end
 
 local function ReturnItemToOwner(owner, item)
@@ -621,6 +616,9 @@ function KeiProtocolSlots:SyncCombatProtocolFlags()
     if self.inst._kei_mutatedwarg_protocol_active ~= nil then
         self.inst._kei_mutatedwarg_protocol_active:set(self:HasCombatProtocol("mutatedwarg"))
     end
+    if self.inst._kei_rook_protocol_active ~= nil then
+        self.inst._kei_rook_protocol_active:set(self:HasCombatProtocol("rook"))
+    end
     if not daywalker_active then
         self.inst.kei_daywalker_aiming = nil
         if self.inst._kei_daywalker_aiming ~= nil then
@@ -766,7 +764,7 @@ function KeiProtocolSlots:DrainProtocols()
         if ProtocolNeedsPower(data) then
             power_cost = power_cost + drain.analysis_amount
         elseif ProtocolNeedsStability(data) then
-            stability_cost = stability_cost + GetCombatProtocolDrainAmount(data, drain)
+            stability_cost = stability_cost + drain.combat_amount
         end
     end
 

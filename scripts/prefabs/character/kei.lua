@@ -1,7 +1,8 @@
 local MakePlayerCharacter = require("prefabs/player_common")
 local PlayerCommonExtensions = require("prefabs/player_common_extensions")
-local EyeOfTerrorDash = require("kei/protocols/combat/effects/_eyeofterror_dash")
-local DaywalkerLeap = require("kei/protocols/combat/effects/_daywalker_leap")
+local EyeOfTerrorDash = require("kei/protocols/combat/effects/beast/_eyeofterror_dash")
+local DaywalkerLeap = require("kei/protocols/combat/effects/beast/_daywalker_leap")
+local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
@@ -54,6 +55,7 @@ local prefabs = {
     "collapse_small",
     "wx78_big_spark",
     "hermitcrab_fx_med",
+    "kei_rook_shield_pulse_fx",
 }
 
 local KEI_LIGHT_CHECK_PERIOD = 0.5
@@ -154,6 +156,13 @@ local function OnWaterWalkProtocolDirty(inst)
     )
 end
 
+local function CanUseRookGuard(inst)
+    return ACTIONS.KEI_ROOK_GUARD ~= nil
+        and RookGuard.HasProtocol(inst)
+        and RookGuard.IsReady(inst)
+        and not inst:HasTag("playerghost")
+        and (inst.replica.inventory == nil or inst.replica.inventory:GetActiveItem() == nil)
+end
 local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
     if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
         and DaywalkerLeap.HasProtocol(inst)
@@ -169,6 +178,9 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
         return right and { ACTIONS.KEI_DAYWALKER_CANCEL_AIM } or {}
     end
 
+    if right and useitem == nil and CanUseRookGuard(inst) then
+        return { ACTIONS.KEI_ROOK_GUARD }, pos or inst:GetPosition()
+    end
     if right
         and useitem == nil
         and ACTIONS.KEI_DAYWALKER_AIM ~= nil
@@ -247,6 +259,9 @@ local function DaywalkerAimRightClickPicker(inst, target, position)
         and not inst:HasTag("playerghost")
     then
         return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_CANCEL_AIM }, position or inst:GetPosition())
+    end
+    if CanUseRookGuard(inst) then
+        return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_ROOK_GUARD }, position or inst:GetPosition())
     end
     local dashpos = GetRightClickDashPoint(inst, target, position)
     if dashpos ~= nil then
@@ -396,6 +411,8 @@ local function common_postinit(inst)
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
     inst._kei_water_walk_protocol_active = net_bool(inst.GUID, "kei.water_walk_protocol_active", "kei_water_walk_protocol_dirty")
     inst._kei_mutatedwarg_protocol_active = net_bool(inst.GUID, "kei.mutatedwarg_protocol_active", "kei_mutatedwarg_protocol_dirty")
+    inst._kei_rook_protocol_active = net_bool(inst.GUID, "kei.rook_protocol_active", "kei_rook_protocol_dirty")
+    inst._kei_rook_guard_on_cooldown = net_bool(inst.GUID, "kei.rook_guard_on_cooldown", "kei_rook_guard_cd_dirty")
     inst._kei_map_teleport_protocol_active = net_bool(inst.GUID, "kei.map_teleport_protocol_active", "kei_map_teleport_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
     inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")

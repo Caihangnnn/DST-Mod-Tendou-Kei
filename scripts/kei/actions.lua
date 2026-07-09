@@ -1,6 +1,7 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
-local EyeOfTerrorDash = require("kei/protocols/combat/effects/_eyeofterror_dash")
-local DaywalkerLeap = require("kei/protocols/combat/effects/_daywalker_leap")
+local EyeOfTerrorDash = require("kei/protocols/combat/effects/beast/_eyeofterror_dash")
+local DaywalkerLeap = require("kei/protocols/combat/effects/beast/_daywalker_leap")
+local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local SpDamageUtil = require("components/spdamageutil")
 
 local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
@@ -1263,6 +1264,136 @@ AddStategraphState("wilson_client", State{
     end,
 })
 
+
+-- 发条战车战斗数据：鼠标未拿物品时右键任意位置进入短时格挡窗口；手部装备不会阻止触发。
+local rook_guard_action = AddAction("KEI_ROOK_GUARD", "格挡", function(act)
+    if not IsKei(act.doer)
+        or not RookGuard.HasProtocol(act.doer)
+        or not RookGuard.IsReady(act.doer)
+    then
+        return false
+    end
+    return true
+end)
+rook_guard_action.mount_valid = false
+rook_guard_action.rmb = true
+rook_guard_action.distance = math.huge
+rook_guard_action.priority = 10
+rook_guard_action.invalid_hold_action = true
+
+AddKeiActionHandler(ACTIONS.KEI_ROOK_GUARD, "kei_rook_guard")
+
+local ROOK_GUARD_ANIM_SPEED = 2
+
+local function PlayRookGuardStart(inst)
+    inst.AnimState:PlayAnimation("wx_defense_on_pre")
+end
+
+local function PlayRookGuardOpen(inst)
+    inst.AnimState:PlayAnimation("wx_defense_on")
+end
+
+local function PlayRookGuardEnd(inst)
+    inst.AnimState:PlayAnimation("wx_defense_off")
+end
+
+AddStategraphState("wilson", State{
+    name = "kei_rook_guard",
+    tags = { "doing", "busy", "nointerrupt", "nomorph", "notalking", "kei_rook_guard" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        if not inst:PerformBufferedAction() or not RookGuard.BeginGuard(inst) then
+            inst.sg:GoToState("idle")
+            return
+        end
+        inst.AnimState:SetDeltaTimeMultiplier(ROOK_GUARD_ANIM_SPEED)
+        PlayRookGuardStart(inst)
+        inst.sg:SetTimeout(3)
+    end,
+
+    events =
+    {
+        EventHandler("animover", function(inst)
+            if not inst.AnimState:AnimDone() then
+                return
+            end
+            if inst.AnimState:IsCurrentAnimation("wx_defense_on_pre") then
+                PlayRookGuardOpen(inst)
+            elseif inst.AnimState:IsCurrentAnimation("wx_defense_on") then
+                inst.sg.statemem.guard_finished = true
+                RookGuard.FinishGuard(inst)
+                PlayRookGuardEnd(inst)
+            else
+                inst.sg.statemem.finished = true
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+
+    ontimeout = function(inst)
+        inst.sg.statemem.finished = true
+        RookGuard.FinishGuard(inst)
+        inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        if not inst.sg.statemem.guard_finished and not inst.sg.statemem.finished then
+            RookGuard.CancelGuard(inst, true)
+        end
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+    end,
+})
+
+AddStategraphState("wilson_client", State{
+    name = "kei_rook_guard",
+    tags = { "doing", "busy", "nointerrupt", "notalking", "kei_rook_guard" },
+    server_states = { "kei_rook_guard" },
+
+    onenter = function(inst)
+        inst.components.locomotor:Stop()
+        inst.AnimState:SetDeltaTimeMultiplier(ROOK_GUARD_ANIM_SPEED)
+        PlayRookGuardStart(inst)
+        inst:PerformPreviewBufferedAction()
+        inst.sg:SetTimeout(3)
+    end,
+
+    onupdate = function(inst)
+        if inst.sg:ServerStateMatches() then
+            if inst.entity:FlattenMovementPrediction() then
+                inst.sg:GoToState("idle", "noanim")
+            end
+        elseif inst.bufferedaction == nil then
+            inst.sg:GoToState("idle")
+        end
+    end,
+
+    events =
+    {
+        EventHandler("animover", function(inst)
+            if not inst.AnimState:AnimDone() then
+                return
+            end
+            if inst.AnimState:IsCurrentAnimation("wx_defense_on_pre") then
+                PlayRookGuardOpen(inst)
+            elseif inst.AnimState:IsCurrentAnimation("wx_defense_on") then
+                PlayRookGuardEnd(inst)
+            else
+                inst.sg:GoToState("idle")
+            end
+        end),
+    },
+
+    ontimeout = function(inst)
+        inst:ClearBufferedAction()
+        inst.sg:GoToState("idle")
+    end,
+
+    onexit = function(inst)
+        inst:ClearBufferedAction()
+        inst.AnimState:SetDeltaTimeMultiplier(1)
+    end,
+})
 local daywalker_aim_action = AddAction("KEI_DAYWALKER_AIM", "选择跳劈", function(act)
     if not IsKei(act.doer) or not DaywalkerLeap.HasProtocol(act.doer) or not DaywalkerLeap.IsReady(act.doer) then
         return false
@@ -1732,6 +1863,13 @@ AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
     if inst == doer and not doer:HasTag("playerghost") then
         local activeitem = doer.replica.inventory ~= nil and doer.replica.inventory:GetActiveItem() or nil
         if activeitem == nil then
+            if ACTIONS.KEI_ROOK_GUARD ~= nil
+                and not doer:HasTag("kei_dormant")
+                and RookGuard.HasProtocol(doer)
+                and RookGuard.IsReady(doer)
+            then
+                table.insert(actions, ACTIONS.KEI_ROOK_GUARD)
+            end
             table.insert(actions, doer:HasTag("kei_dormant") and ACTIONS.KEI_WAKE or ACTIONS.KEI_DORMANT)
         end
         return

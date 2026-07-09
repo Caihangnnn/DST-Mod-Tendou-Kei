@@ -551,7 +551,7 @@ end
 local function MakeCombatProtocolCDs()
     local prefabs = {}
     for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
-        table.insert(prefabs, MakeFixedProtocolCD(def, "combat", "combat_cd", { "kei_combat_protocol", "kei_data_cd" }, { "buff_electricattack" }))
+        table.insert(prefabs, MakeFixedProtocolCD(def, "combat", "combat_cd", { "kei_combat_protocol", "kei_data_cd" }, { "buff_electricattack", "electrichitsparks", "electrichitsparks_electricimmune", "shock_arc_fx", "electricchargedfx", "kei_rook_shield_pulse_fx" }))
     end
     return prefabs
 end

@@ -32,27 +32,27 @@ end
 
 -- XMind: 群系协议 CD。当前先提供稳定 prefab 和元数据，效果后续逐项接入。
 AddRows({
-    { "spider_black", "黑蜘蛛", "在蜘蛛网上移动不会减速。" },
-    { "spider_yellow", "黄蜘蛛", "在蜘蛛网上移动不会减速，并获得加速；可强化蜘蛛女王协议随从移速。" },
-    { "spider_white", "白蜘蛛", "在蜘蛛网上攻击力提高；可强化蜘蛛女王协议随从攻击力。" },
-    { "spider_cave", "洞穴蜘蛛", "在蜘蛛网上获得减伤；可强化蜘蛛女王协议随从减伤。" },
-    { "spider_spitter", "喷吐蜘蛛", "伤害敌方单位时降低目标移速；可强化蜘蛛女王协议随从攻速。" },
-    { "spider_shattered", "破碎蜘蛛", "受到攻击时反伤；可强化蜘蛛女王协议随从位面实体抵抗。" },
-    { "spider_healer", "护士蜘蛛", "可以受到护士蜘蛛治疗；可强化蜘蛛女王协议随从治疗效果。" },
-    { "spiderqueen", "蜘蛛女王", "角色附近视为蜘蛛网区域，并可吸收、召唤和强化蜘蛛随从。" },
+    { "spider", "蜘蛛", "在蜘蛛网或被视为蜘蛛网区域上移动不会减速。", { implemented = true, source_prefab = "spider" } },
+    { "spider_warrior", "蜘蛛战士", "在蜘蛛网或被视为蜘蛛网区域上移动不会减速，并获得 25% 移速加成。", { implemented = true, source_prefab = "spider_warrior" } },
+    { "spider_dropper", "穴居悬蛛", "在蜘蛛网或被视为蜘蛛网区域上时，攻击倍率增加 50%。", { implemented = true, source_prefab = "spider_dropper" } },
+    { "spider_hider", "洞穴蜘蛛", "在蜘蛛网或被视为蜘蛛网区域上时，角色获得 50% 减伤。", { implemented = true, source_prefab = "spider_hider" } },
+    { "spider_spitter", "喷吐蜘蛛", "对敌方单位造成伤害时降低目标 50% 移速，持续 10 秒；重复造成伤害会刷新持续时间。", { implemented = true, source_prefab = "spider_spitter" } },
+    { "spider_shattered", "破碎蜘蛛", "受到攻击时对攻击者造成 25 点伤害。", { implemented = true } },
+    { "spider_healer", "护士蜘蛛", "可以受到护士蜘蛛治疗。", { implemented = true, source_prefab = "spider_healer" } },
+    { "spiderqueen", "蜘蛛女王", "角色附近视为蜘蛛网区域，减速范围内非友方单位 75%；不会被蜘蛛主动仇恨。", { tier = "special", implemented = true, source_prefab = "spiderqueen" } },
 }, { category = "biome", family = "spider", implemented = false, recordable = false })
 
 AddRows({
-    { "gnarwail", "一角鲸", "攻击有概率触发水波，造成附加伤害并打湿周围单位。" },
-    { "sharkboi", "岩石大白鲨", "获得潮湿装甲，受伤时优先以潮湿度抵扣完整度损失。" },
-    { "otter", "水獭掠夺者", "攻击敌方单位时有概率偷取其战利品中的肉类物品。" },
-    { "grassgator", "草鳄鱼", "身上有潮湿度时自然恢复机体完整度。" },
+    { "gnarwail", "一角鲸", "攻击有 30% 概率触发水波冲击，内置冷却 0.5 秒；对敌方单位造成 20 点伤害，并使范围目标增加 20 点潮湿度。", { implemented = true, source_prefab = "gnarwail" } },
+    { "shark", "岩石大白鲨", "获得潮湿装甲，受伤时优先以潮湿度抵扣完整度损失。", { implemented = true, source_prefab = "sharkboi" } },
+    { "otter", "水獭掠夺者", "潮湿度不为 0 时获得攻击倍率加成；加成比例为当前潮湿度/100。", { implemented = true, source_prefab = "otter" } },
+    { "grassgator", "草鳄鱼", "潮湿度不为 0 时获得自愈能力，每 3 秒恢复 1 点完整度。", { implemented = true, source_prefab = "grassgator" } },
 }, { category = "biome", family = "aquatic", implemented = false, recordable = false })
 
 AddRows({
-    { "bishop", "发条主教", "攻击附带电击效果。" },
-    { "rook", "发条战车", "右键短暂格挡，成功格挡时完全豁免本次伤害。" },
-    { "knight", "发条骑士", "受到攻击时反伤并附带电击效果。" },
+    { "bishop", "发条主教", "攻击附带电击效果。", { implemented = true, source_prefab = "bishop" } },
+    { "rook", "发条战车", "右键短暂格挡；格挡窗口内完全免疫伤害和护甲损耗，成功格挡后进入较短冷却。", { implemented = true, source_prefab = "rook" } },
+    { "knight", "发条骑士", "受到攻击时反伤 50 点，并对周围敌方单位释放霸道电流；不会电击自己。", { implemented = true, source_prefab = "knight" } },
 }, { category = "biome", family = "mechanical", implemented = false, recordable = false })
 
 -- XMind: 初级巨兽协议 CD。为后续初级/高级分流预留独立 prefab；暂不改变现有记录器产物。
