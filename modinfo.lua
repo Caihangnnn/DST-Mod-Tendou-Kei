@@ -105,6 +105,21 @@ configuration_options = {
         default = true,
     },
     {
+        name = "KEI_PROTOCOL_SLOT_MAX",
+        label = "Protocol slot total",
+        hover = "Sets the total number of protocol slots available to Kei.",
+        options = {
+            { description = "1", data = 1 },
+            { description = "2", data = 2 },
+            { description = "3", data = 3 },
+            { description = "4", data = 4 },
+            { description = "5", data = 5 },
+            { description = "6", data = 6 },
+            { description = "7", data = 7 },
+        },
+        default = 7,
+    },
+    {
         name = "KEI_PROTOCOL_INITIAL_EXTRA_SLOTS",
         label = "初始额外协议槽",
         hover = "设置 Kei 初始额外解锁的协议槽数量。每个额外槽位也会提高三维上限。",

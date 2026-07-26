@@ -300,7 +300,7 @@ containers.params.kei_protocol_binder = {
             end
             return anim
         end,
-        pos = Vector3(0, 200, 0),
+        pos = Vector3(0, -350, 0),
         side_align_tip = math.max(160, protocol_binder_width * 0.5 + 120),
         buttoninfo = {
             text = "交换",

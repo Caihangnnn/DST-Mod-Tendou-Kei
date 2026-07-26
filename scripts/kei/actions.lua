@@ -1711,7 +1711,9 @@ local function CopyProtocolCD(material, target, doer)
     then
         cd = SpawnPrefab("kei_analysis_cd")
         if cd ~= nil then
-            cd:SetAnalysisData(DeepCopyTable(target.kei_protocol_data))
+            if cd:SetAnalysisData(DeepCopyTable(target.kei_protocol_data)) == false then
+                cd = nil
+            end
         end
     end
 
@@ -1797,7 +1799,10 @@ local function AnalyzeEquipment(tool, target, doer)
         return false
     end
     -- 解析结果写入新生成的 CD，协议槽组件会在背包中读取这些数据。
-    cd:SetAnalysisData(data)
+    if cd:SetAnalysisData(data) == false then
+        cd:Remove()
+        return false
+    end
     if doer.components.inventory ~= nil then
         doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
     else

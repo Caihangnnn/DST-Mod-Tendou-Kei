@@ -75,32 +75,6 @@ end
 -- 同时挂到角色专属栏和 Kei 自己的协议栏。
 local filters = { "CHARACTER", KEI_FILTER }
 
--- 友友球：宠物协议的可重复使用捕捉工具，暂用数据记录器部署包图标。
-AddRecipe2(
-    "kei_pet_capture_ball",
-    { Ingredient("goldnugget", TUNING.KEI_PET_RECIPE_GOLD or 1) },
-    TECH.NONE,
-    kei_config({
-        atlas = "images/inventoryimages/kei_items.xml",
-        image = "kei_data_recorder_item.tex",
-    }),
-    filters
-)
-
--- 三档宠物经验书：右键给予未插入协议槽的宠物 CD。
-for tier = 1, 3 do
-    AddRecipe2(
-        "kei_pet_exp" .. tostring(tier),
-        { Ingredient("goldnugget", TUNING.KEI_PET_RECIPE_GOLD or 1) },
-        TECH.NONE,
-        kei_config({
-            atlas = "images/inventoryimages/kei_items.xml",
-            image = "kei_pet_exp" .. tostring(tier) .. ".tex",
-        }),
-        filters
-    )
-end
-
 -- 空白 CD：用于绑定巨兽样本并提交到记录仪。
 AddRecipe2(
     "kei_blank_cd",
@@ -247,43 +221,85 @@ local winona_recipes = {
         name = "kei_sewing_tape",
         ingredients = { Ingredient("silk", 1), Ingredient("cutgrass", 3) },
         tech = TECH.NONE,
-        config = { product = "sewing_tape", nameoverride = "sewing_tape", description = "sewing_tape" },
+        config = {
+            atlas = GetInventoryItemAtlas("sewing_tape.tex"),
+            image = "sewing_tape.tex",
+            product = "sewing_tape",
+            nameoverride = "sewing_tape",
+            description = "sewing_tape",
+        },
     },
     {
         name = "kei_winona_catapult_item",
         ingredients = { Ingredient("sewing_tape", 1), Ingredient("twigs", 3), Ingredient("rocks", 15) },
         tech = TECH.NONE,
-        config = { product = "winona_catapult_item", nameoverride = "winona_catapult", description = "winona_catapult" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_catapult.tex"),
+            image = "winona_catapult.tex",
+            product = "winona_catapult_item",
+            nameoverride = "winona_catapult",
+            description = "winona_catapult",
+        },
     },
     {
         name = "kei_winona_spotlight_item",
         ingredients = { Ingredient("sewing_tape", 1), Ingredient("goldnugget", 2), Ingredient("fireflies", 1) },
         tech = TECH.NONE,
-        config = { product = "winona_spotlight_item", nameoverride = "winona_spotlight", description = "winona_spotlight" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_spotlight.tex"),
+            image = "winona_spotlight.tex",
+            product = "winona_spotlight_item",
+            nameoverride = "winona_spotlight",
+            description = "winona_spotlight",
+        },
     },
     {
         name = "kei_winona_battery_low_item",
         ingredients = { Ingredient("sewing_tape", 1), Ingredient("log", 2), Ingredient("nitre", 2) },
         tech = TECH.NONE,
-        config = { product = "winona_battery_low_item", nameoverride = "winona_battery_low", description = "winona_battery_low" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_battery_low.tex"),
+            image = "winona_battery_low.tex",
+            product = "winona_battery_low_item",
+            nameoverride = "winona_battery_low",
+            description = "winona_battery_low",
+        },
     },
     {
         name = "kei_winona_battery_high_item",
         ingredients = { Ingredient("sewing_tape", 1), Ingredient("boards", 2), Ingredient("transistor", 2) },
         tech = TECH.NONE,
-        config = { product = "winona_battery_high_item", nameoverride = "winona_battery_high", description = "winona_battery_high" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_battery_high.tex"),
+            image = "winona_battery_high.tex",
+            product = "winona_battery_high_item",
+            nameoverride = "winona_battery_high",
+            description = "winona_battery_high",
+        },
     },
     {
         name = "kei_winona_storage_robot",
         ingredients = { Ingredient("wagpunk_bits", 8), Ingredient("transistor", 4) },
         tech = TECH.NONE,
-        config = { product = "winona_storage_robot", nameoverride = "winona_storage_robot", description = "winona_storage_robot" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_storage_robot.tex"),
+            image = "winona_storage_robot.tex",
+            product = "winona_storage_robot",
+            nameoverride = "winona_storage_robot",
+            description = "winona_storage_robot",
+        },
     },
     {
         name = "kei_winona_remote",
         ingredients = { Ingredient("transistor", 1) },
         tech = TECH.NONE,
-        config = { product = "winona_remote", nameoverride = "winona_remote", description = "winona_remote" },
+        config = {
+            atlas = GetInventoryItemAtlas("winona_remote.tex"),
+            image = "winona_remote.tex",
+            product = "winona_remote",
+            nameoverride = "winona_remote",
+            description = "winona_remote",
+        },
     },
 }
 

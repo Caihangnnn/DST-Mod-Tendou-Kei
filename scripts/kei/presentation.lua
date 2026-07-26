@@ -23,7 +23,10 @@ local function AddKeiExperienceDisplay(self)
         local max = self.owner._kei_experience_max ~= nil
             and self.owner._kei_experience_max:value()
             or (TUNING.KEI_EXPERIENCE_BASE_MAX or 1000)
-        self.kei_experience:SetValues(current, max)
+        local total = self.owner._kei_experience_total ~= nil
+            and self.owner._kei_experience_total:value()
+            or current
+        self.kei_experience:SetValues(current, max, total)
     end
 
     self.inst:ListenForEvent("kei_experience_dirty", UpdateExperience, self.owner)

@@ -4,7 +4,6 @@ local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
-local PetDeployment = require("kei/protocols/pet/deployment")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
@@ -106,7 +105,6 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
-    self.active_pet = {}
     self.virtual_equips = {}
     self.virtual_hand_equip = nil
     self.analysis_damage_bonus = 0
@@ -116,7 +114,6 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_mutateddeerclops_slowed = {}
     self._protocol_state_dirty = true
     self._prev_active_combat = {}
-    self._kei_active_pets = {}
 
     self:SyncUnlockedSlots()
 
@@ -566,8 +563,6 @@ function KeiProtocolSlots:ClearModifiers()
     self:RemoveHandVirtualEquip()
     self:ClearVirtualEquips()
     HandAnalysisInheritance.Clear(self)
-    PetDeployment.Clear(self, false)
-
     for _, handler in pairs(LIFE_EFFECTS) do
         if handler.Disable then
             handler.Disable(self, self.inst)
@@ -591,7 +586,6 @@ function KeiProtocolSlots:DisableAllProtocols()
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
-    self.active_pet = {}
     self:SyncCombatProtocolFlags()
     self:SyncLifeProtocolFlags()
     self:SetProtocolContainersPowered(false)
@@ -612,10 +606,6 @@ end
 
 function KeiProtocolSlots:HasLifeProtocol(protocol)
     return self:GetLifeProtocolCount(protocol) > 0
-end
-
-function KeiProtocolSlots:HasPetProtocol(protocol)
-    return self:IsFunctional() and self.active_pet[protocol] == true
 end
 
 ----------------------------------------------------------------
@@ -707,7 +697,7 @@ function KeiProtocolSlots:Refresh()
     end
     self:SetProtocolContainersPowered(true)
 
-    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil and next(self.active_pet or {}) == nil then
+    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil then
         return
     end
 
@@ -715,8 +705,6 @@ function KeiProtocolSlots:Refresh()
     self._protocol_state_dirty = nil
     local combat = {}
     local life = {}
-    local pet = {}
-    local pet_entries = {}
     local hand_stats = HandAnalysisInheritance.NewStats()
     local desired_virtuals = {}
     local wants_hand_virtual = false
@@ -734,9 +722,6 @@ function KeiProtocolSlots:Refresh()
             else
                 life[data.protocol] = 1
             end
-        elseif data.kind == "pet" and data.protocol ~= nil then
-            pet[data.protocol] = true
-            table.insert(pet_entries, entry)
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true
@@ -761,8 +746,6 @@ function KeiProtocolSlots:Refresh()
 
     self.active_combat = combat
     self.active_life = life
-    self.active_pet = pet
-    PetDeployment.Refresh(self, pet_entries)
     self:RefreshEffects()
     self:SyncLifeProtocolFlags()
     self:SyncCombatProtocolFlags()

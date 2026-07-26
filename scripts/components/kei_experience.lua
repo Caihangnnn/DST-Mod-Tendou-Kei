@@ -38,6 +38,7 @@ local KeiExperience = Class(function(self, inst)
     self.inst = inst
     self.current = 0
     self.max = 0
+    self.total = 0
     self.daily_gains = {}
     self.daily_combat_kills = {}
     self.current_cycle = GetCurrentCycle()
@@ -112,6 +113,9 @@ function KeiExperience:SyncNetValues()
     if self.inst._kei_experience_max ~= nil then
         self.inst._kei_experience_max:set(self.max)
     end
+    if self.inst._kei_experience_total ~= nil then
+        self.inst._kei_experience_total:set(self.total)
+    end
 end
 
 function KeiExperience:GetPercent()
@@ -126,6 +130,10 @@ function KeiExperience:DoDelta(amount)
     amount = tonumber(amount) or 0
     local old = self.current
     self.current = math.clamp(old + amount, 0, self.max)
+    local gained = math.max(0, self.current - old)
+    if gained > 0 then
+        self.total = self.total + gained
+    end
     if self.current ~= old then
         self:SyncNetValues()
         self.inst:PushEvent("kei_experiencedelta", {
@@ -329,6 +337,7 @@ end
 function KeiExperience:OnSave()
     return {
         current = self.current,
+        total = self.total,
         current_cycle = self.current_cycle,
         daily_gains = self.daily_gains,
         daily_combat_kills = self.daily_combat_kills,
@@ -339,6 +348,7 @@ end
 function KeiExperience:OnLoad(data)
     data = data or {}
     self.current = math.max(0, tonumber(data.current) or 0)
+    self.total = math.max(0, tonumber(data.total) or self.current)
 
     local saved_cycle = tonumber(data.current_cycle)
     local current_cycle = GetCurrentCycle()

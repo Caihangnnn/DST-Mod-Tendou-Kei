@@ -1,14 +1,13 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
-local PetProtocolDefs = require("kei/protocols/pet")
-local PetData = require("kei/protocols/pet/data")
 
 local COMMON_ITEM_ATLAS = "images/inventoryimages/kei_items.xml"
+local COMMON_ITEM_BANK = "kei_item"
 local COMMON_ITEM_BUILD = "kei_items"
 
 local ITEM_VISUALS = {
     analysis_cd = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_analysis_cd_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -16,7 +15,7 @@ local ITEM_VISUALS = {
         scale = 1.5,
     },
     analysis_tool = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_analysis_tool_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -24,7 +23,7 @@ local ITEM_VISUALS = {
         scale = 1.5,
     },
     blank_cd = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_blank_cd_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -32,7 +31,7 @@ local ITEM_VISUALS = {
         scale = 1.5,
     },
     combat_cd = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_combat_cd_purple_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -48,7 +47,7 @@ local ITEM_VISUALS = {
         scale = 1.5,
     },
     battery = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_battery_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -56,7 +55,7 @@ local ITEM_VISUALS = {
         scale = 1.5,
     },
     repair_tool = {
-        bank = COMMON_ITEM_BUILD,
+        bank = COMMON_ITEM_BANK,
         build = COMMON_ITEM_BUILD,
         anim = "kei_repair_tool_ground",
         atlas = COMMON_ITEM_ATLAS,
@@ -343,7 +342,6 @@ end
 
 local COMBAT_PROTOCOLS = CombatProtocolDefs.COMBAT_PROTOCOLS
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
-local PET_PROTOCOLS = PetProtocolDefs.PET_PROTOCOLS
 
 local function GetPrefabDisplayName(prefab)
     return prefab ~= nil and (STRINGS.NAMES[string.upper(prefab)] or prefab) or nil
@@ -368,12 +366,33 @@ local function UseEquipmentVisual()
     return TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL == true
 end
 
-local function SetInventoryImage(inst, imagename, atlasname, fallback)
+local function TrySetInventoryImage(inst, atlasname, imagename)
+    if inst.components.inventoryitem == nil then
+        return false
+    end
+
+    local success = pcall(function()
+        inst.components.inventoryitem.atlasname = atlasname
+        inst.components.inventoryitem:ChangeImageName(imagename)
+    end)
+    return success
+end
+
+local function SetInventoryImage(inst, imagename, atlasname)
     if inst.components.inventoryitem == nil then
         return
     end
-    inst.components.inventoryitem.atlasname = atlasname
-    inst.components.inventoryitem:ChangeImageName(imagename or fallback or "wagstaff_item_2")
+
+    -- Native inventory images use a nil atlas and are resolved by the game.
+    -- Try the saved source image first; external or stale assets are handled by
+    -- the protected call and fall back to the registered Kei image.
+    if TrySetInventoryImage(inst, atlasname, imagename or DEFAULT_ANALYSIS_VISUAL.image)
+    then
+        return
+    end
+
+    -- 外部模组被关闭或图标不存在时，只使用本模组已经注册的通用解析 CD 资源。
+    TrySetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.atlas, DEFAULT_ANALYSIS_VISUAL.image)
 end
 
 local function SetAnalysisWorldAnimation(inst, bank, build, anim)
@@ -382,17 +401,28 @@ local function SetAnalysisWorldAnimation(inst, bank, build, anim)
     build = build or DEFAULT_ANALYSIS_VISUAL.build
     anim = anim or DEFAULT_ANALYSIS_VISUAL.anim
 
-    local success = pcall(function()
+    local success, visual_valid = pcall(function()
         inst.AnimState:SetBank(bank)
         inst.AnimState:SetBuild(build)
         inst.AnimState:PlayAnimation(anim)
-        SetWorldScale(inst, use_default_visual and DEFAULT_ANALYSIS_VISUAL.scale or nil)
+        return (type(bank) ~= "number" or inst.AnimState:GetBankHash() == bank)
+            and inst.AnimState:GetBuild() == build
+            and inst.AnimState:IsCurrentAnimation(anim)
     end)
 
-    if not success and bank ~= DEFAULT_ANALYSIS_VISUAL.bank then
+    if success and visual_valid then
+        SetWorldScale(inst, use_default_visual and DEFAULT_ANALYSIS_VISUAL.scale or nil)
+        return
+    end
+
+    -- 外部动画 bank、build 或 anim 不存在时回退到通用解析 CD 地面动画。
+    local fallback_success = pcall(function()
         inst.AnimState:SetBank(DEFAULT_ANALYSIS_VISUAL.bank)
         inst.AnimState:SetBuild(DEFAULT_ANALYSIS_VISUAL.build)
         inst.AnimState:PlayAnimation(DEFAULT_ANALYSIS_VISUAL.anim)
+        SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
+    end)
+    if not fallback_success then
         SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
     end
 end
@@ -428,7 +458,7 @@ end
 
 local function GetAnalysisVisualFromSource(data)
     if data == nil or data.source == nil then
-        return nil
+        return nil, true
     end
 
     local success, source = pcall(SpawnPrefab, data.source, data.skin_name)
@@ -436,7 +466,7 @@ local function GetAnalysisVisualFromSource(data)
         source = nil
     end
     if source == nil then
-        return nil
+        return nil, false
     end
 
     source:AddTag("INLIMBO")
@@ -464,18 +494,17 @@ local function GetAnalysisVisualFromSource(data)
     if source.Remove ~= nil then
         source:Remove()
     end
-    return visual
+    return visual, true
 end
 
-local function ApplyAnalysisAppearance(inst, data, icon_image)
+local function ApplyAnalysisAppearance(inst, data, icon_image, visual)
     if UseEquipmentVisual() and data.source ~= nil then
-        SetInventoryImage(inst, icon_image, data.icon_atlas, DEFAULT_ANALYSIS_VISUAL.image)
-        local visual = GetAnalysisVisualFromSource(data)
+        SetInventoryImage(inst, icon_image, data.icon_atlas)
         SetAnalysisWorldAnimation(
             inst,
-            (visual ~= nil and visual.bank or nil) or data.visual_bank,
-            (visual ~= nil and visual.build or nil) or data.skin_build or data.visual_build,
-            (visual ~= nil and visual.anim or nil) or data.visual_anim
+            visual ~= nil and visual.bank or nil,
+            visual ~= nil and visual.build or nil,
+            visual ~= nil and visual.anim or nil
         )
     else
         SetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.image, DEFAULT_ANALYSIS_VISUAL.atlas)
@@ -500,9 +529,6 @@ local function ApplyFixedProtocolData(inst, def, kind)
         SetNamedName(inst, (def.display_name or def.protocol) .. "战斗协议")
     elseif kind == "life" then
         inst.kei_life_protocol = def.protocol
-        SetNamedName(inst, def.display_name or def.protocol)
-    elseif kind == "pet" then
-        inst.kei_pet_protocol = def.protocol
         SetNamedName(inst, def.display_name or def.protocol)
     end
 end
@@ -559,17 +585,7 @@ local function MakeFixedProtocolCD(def, kind, visual_key, tags, deps)
         inst.components.inventoryitem:ChangeImageName(visual.image)
         inst.components.inventoryitem.keepondeath = true
 
-        if kind == "pet" then
-            inst:AddComponent("timer")
-            PetData.Initialize(inst, def)
-            inst.SetCapturedPet = function(cd, data)
-                PetData.SetCapturedPet(cd, data)
-            end
-            inst.OnSave = PetData.OnSave
-            inst.OnLoad = PetData.OnLoad
-        else
-            ApplyFixedProtocolData(inst, def, kind)
-        end
+        ApplyFixedProtocolData(inst, def, kind)
         MakeHauntableLaunch(inst)
 
         return inst
@@ -594,13 +610,6 @@ local function MakeLifeProtocolCDs()
     return prefabs
 end
 
-local function MakePetProtocolCDs()
-    local prefabs = {}
-    for _, def in ipairs(PetProtocolDefs.PET_PROTOCOL_LIST) do
-        table.insert(prefabs, MakeFixedProtocolCD(def, "pet", "combat_cd", { "kei_pet_protocol", "kei_data_cd" }))
-    end
-    return prefabs
-end
 local function SetAnalysisData(inst, data)
     -- 解析 CD 保存装备解析结果，字段由 kei_actions.lua 的 AnalyzeEquipment 生成。
     data = data or {}
@@ -610,6 +619,14 @@ local function SetAnalysisData(inst, data)
     if damage_bonus == nil and data.damage_mult ~= nil and data.damage_mult > 1 then
         damage_bonus = data.damage_mult * TUNING.UNARMED_DAMAGE
     end
+
+    local source_visual, source_exists = GetAnalysisVisualFromSource(data)
+    if not source_exists then
+        -- 解析结果依赖的原装备已经不存在，不能让失效 CD 进入协议槽。
+        inst:Remove()
+        return false
+    end
+
     inst.kei_protocol_data = {
         kind = "analysis",
         slot = data.slot or "hands",
@@ -630,7 +647,7 @@ local function SetAnalysisData(inst, data)
         tool_actions = data.tool_actions,
         tool_tough = data.tool_tough or nil,
     }
-    ApplyAnalysisAppearance(inst, data, icon_image)
+    ApplyAnalysisAppearance(inst, data, icon_image, source_visual)
     SetNamedName(inst, source_name ~= nil and ("数据化的 " .. source_name) or nil)
 end
 
@@ -717,9 +734,6 @@ for _, prefab in ipairs(MakeCombatProtocolCDs()) do
     table.insert(prefabs, prefab)
 end
 for _, prefab in ipairs(MakeLifeProtocolCDs()) do
-    table.insert(prefabs, prefab)
-end
-for _, prefab in ipairs(MakePetProtocolCDs()) do
     table.insert(prefabs, prefab)
 end
 

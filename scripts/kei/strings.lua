@@ -44,10 +44,6 @@ STRINGS.NAMES.KEI_BLANK_CD = "空白数据记录 CD"
 STRINGS.NAMES.KEI_ANALYSIS_CD = "解析协议 CD"
 STRINGS.NAMES.KEI_ANALYSIS_TOOL = "装备解析工具"
 STRINGS.NAMES.KEI_DATA_RECORDER_ITEM = "数据记录器部署包"
-STRINGS.NAMES.KEI_PET_CAPTURE_BALL = "友友球"
-STRINGS.NAMES.KEI_PET_EXP1 = "初级宠物经验书"
-STRINGS.NAMES.KEI_PET_EXP2 = "中级宠物经验书"
-STRINGS.NAMES.KEI_PET_EXP3 = "高级宠物经验书"
 STRINGS.NAMES.KEI_DATA_RECORDER = "数据记录器"
 STRINGS.NAMES.KEI_FISH_CALL_SPELL = "唤鱼魔法"
 STRINGS.NAMES.KEI_FULLMOON_SPELL = "满月魔法"
@@ -63,10 +59,6 @@ STRINGS.RECIPE_DESC.KEI_REPAIR_TOOL = "修复 Kei 的机体完整度。"
 STRINGS.RECIPE_DESC.KEI_BLANK_CD = "用于绑定并记录巨兽战斗数据。"
 STRINGS.RECIPE_DESC.KEI_ANALYSIS_TOOL = "把装备解析成协议 CD。"
 STRINGS.RECIPE_DESC.KEI_DATA_RECORDER_ITEM = "部署后建立战斗数据记录领域。"
-STRINGS.RECIPE_DESC.KEI_PET_CAPTURE_BALL = "投掷并捕捉可培养的生物。"
-STRINGS.RECIPE_DESC.KEI_PET_EXP1 = "为宠物协议增加1000点好感度。"
-STRINGS.RECIPE_DESC.KEI_PET_EXP2 = "为宠物协议增加2000点好感度。"
-STRINGS.RECIPE_DESC.KEI_PET_EXP3 = "为宠物协议增加3000点好感度。"
 STRINGS.RECIPE_DESC.KEI_FISH_CALL_SPELL = "在附近水域召唤鱼群。"
 STRINGS.RECIPE_DESC.KEI_FULLMOON_SPELL = "将当天月相调整为满月。"
 STRINGS.RECIPE_DESC.KEI_NEWMOON_SPELL = "将当天月相调整为新月。"
@@ -83,10 +75,6 @@ STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_BLANK_CD = "还没有写入数据。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_ANALYSIS_CD = "装备数据被压缩进了协议格式。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_ANALYSIS_TOOL = "它会读懂装备，某种意义上。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_DATA_RECORDER_ITEM = "可以部署成一个数据记录器。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PET_CAPTURE_BALL = "它会把生物转换成宠物协议。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PET_EXP1 = "记录着少量陪伴数据。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PET_EXP2 = "记录着大量陪伴数据。"
-STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_PET_EXP3 = "记录着非常丰富的陪伴数据。"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_DATA_RECORDER = "它正在等待战斗样本。"
 STRINGS.NAMES.KEI_PROTOCOL_BINDER = "协议预设盒"
 STRINGS.RECIPE_DESC.KEI_PROTOCOL_BINDER = "保存一组协议 CD，并与当前协议槽交换。"
@@ -97,7 +85,6 @@ STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_EXPERIENCE_PACK = "其中封存着可以
 
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
-local PetProtocolDefs = require("kei/protocols/pet")
 
 local function RegisterProtocolItemStrings(def, suffix)
     if def == nil or def.prefab == nil then
@@ -113,7 +100,4 @@ for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
 end
 for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
     RegisterProtocolItemStrings(def, "生活协议 CD")
-end
-for _, def in ipairs(PetProtocolDefs.PET_PROTOCOL_LIST) do
-    RegisterProtocolItemStrings(def, "")
 end

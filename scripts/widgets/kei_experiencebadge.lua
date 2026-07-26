@@ -10,6 +10,7 @@ local KeiExperienceBadge = Class(Widget, function(self, owner)
     self.is_full = nil
     self.current = 0
     self.max = 1000
+    self.total = 0
 
     self.icon = self:AddChild(UIAnim())
     self.icon:GetAnimState():SetBank("kei_exp_bank")
@@ -26,6 +27,13 @@ local KeiExperienceBadge = Class(Widget, function(self, owner)
         return false
     end
     self.icon.OnMouseButton = announce_on_mouse_button
+
+    self.total_value = self:AddChild(Text(NUMBERFONT, 18))
+    self.total_value:SetHAlign(ANCHOR_MIDDLE)
+    self.total_value:SetPosition(0, 35, 0)
+    self.total_value:SetString("0")
+    self.total_value:SetClickable(true)
+    self.total_value.OnMouseButton = announce_on_mouse_button
 
     self.value = self:AddChild(Text(NUMBERFONT, 22))
     self.value:SetHAlign(ANCHOR_MIDDLE)
@@ -44,16 +52,19 @@ local function FormatValue(value)
     return string.format("%.1f", value)
 end
 
-function KeiExperienceBadge:SetValues(current, max)
+function KeiExperienceBadge:SetValues(current, max, total)
     current = tonumber(current) or 0
     max = tonumber(max) or 0
+    total = tonumber(total) or 0
     self.current = current
     self.max = max
+    self.total = total
     local is_full = max > 0 and current >= max
     if self.is_full ~= is_full then
         self.is_full = is_full
         self.icon:GetAnimState():PlayAnimation(is_full and "exp_full" or "exp_unfilled", true)
     end
+    self.total_value:SetString(FormatValue(total))
     self.value:SetString(FormatValue(current) .. "/" .. FormatValue(max))
 end
 

@@ -1,5 +1,24 @@
 local VirtualHandEquipment = {}
 
+-- Keep source callbacks safe while disabling armor inheritance.
+local function DisableVirtualHandArmor(item)
+    local armor = item.components.armor
+    if armor == nil then
+        return
+    end
+
+    if armor.InitIndestructible ~= nil then
+        armor:InitIndestructible(0)
+    else
+        armor.indestructible = true
+        armor.absorb_percent = 0
+    end
+
+    armor.condition = armor.maxcondition or armor.condition
+    armor.onfinished = nil
+    armor.ontakedamage = nil
+end
+
 -- 清理虚拟装备
 local function CleanVirtualEquipment(item)
     item.persists = false
@@ -43,6 +62,8 @@ local function CleanVirtualEquipment(item)
     if item.components.perishable ~= nil then
         item:RemoveComponent("perishable")
     end
+
+    DisableVirtualHandArmor(item)
 end
 
 -- 断开虚拟装备与当前持有者的归属关系，避免残留在实体层级中

@@ -23,7 +23,7 @@ local RECORDER_ANIM_ACTIVATE = "opened"
 local RECORDER_ANIM_DEACTIVATE = "closed"
 local RECORDER_WORLD_SCALE = 1
 
-local RECORDER_KIT_BANK = "kei_items"
+local RECORDER_KIT_BANK = "kei_item"
 local RECORDER_KIT_BUILD = "kei_items"
 local RECORDER_KIT_ANIM = "kei_data_recorder_item_ground"
 

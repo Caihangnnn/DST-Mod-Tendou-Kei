@@ -132,7 +132,7 @@ local function GetProtocolPrefab(protocol)
 end
 
 local COMMON_COMBAT_VISUAL = {
-    bank = "kei_items",
+    bank = "kei_item",
     build = "kei_items",
     anim = "kei_combat_cd_purple_ground",
     atlas = "images/inventoryimages/kei_items.xml",

@@ -98,6 +98,9 @@ Assets = {
 
     Asset("ATLAS", "images/inventoryimages/transparent_slot.xml"), -- 透明槽
     Asset("IMAGE", "images/inventoryimages/transparent_slot.tex"),
+
+    Asset("ATLAS", "images/inventoryimages/analysis_cd_slot.xml"),
+    Asset("IMAGE", "images/inventoryimages/analysis_cd_slot.tex"),
 }
 
 PreloadAssets = {
@@ -119,10 +122,9 @@ modimport("scripts/kei/hooks/containers.lua")
 modimport("scripts/kei/hooks/combat.lua")
 modimport("scripts/kei/hooks/storm.lua")
 modimport("scripts/kei/hooks/inventory.lua")
+modimport("scripts/kei/hooks/itemtile.lua")
 modimport("scripts/kei/hooks/experience.lua")
 modimport("scripts/kei/init.lua")
 modimport("scripts/kei/hooks/network.lua")
-modimport("scripts/kei/hooks/pet_capture.lua")
-modimport("scripts/kei/hooks/pet_growth.lua")
 
 AddModCharacter(char_prefab, "FEMALE")
