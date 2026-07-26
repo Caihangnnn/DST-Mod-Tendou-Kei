@@ -3,8 +3,6 @@ local assets = {
     Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),
     Asset("ATLAS", "images/inventoryimages/kei_protocol_binder.xml"),
     Asset("IMAGE", "images/inventoryimages/kei_protocol_binder.tex"),
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_binder_open.xml"),
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_binder_open.tex"),
 }
 
 local BINDER_BANK = "kei_protocol_binder"
@@ -13,7 +11,7 @@ local BINDER_ANIM_IDLE = "idle"
 local BINDER_WORLD_SCALE = 1.5
 local BINDER_ICON_ATLAS_CLOSED = "images/inventoryimages/kei_protocol_binder.xml"
 local BINDER_ICON_IMAGE_CLOSED = "kei_protocol_binder"
-local BINDER_ICON_ATLAS_OPEN = "images/inventoryimages/kei_protocol_binder_open.xml"
+local BINDER_ICON_ATLAS_OPEN = "images/inventoryimages/kei_protocol_binder.xml"
 local BINDER_ICON_IMAGE_OPEN = "kei_protocol_binder_open"
 
 local function RefreshBinderVisual(inst)

@@ -405,7 +405,8 @@ local function common_postinit(inst)
     inst.CreateHealthBadge = CreateKeiIntegrityBadge
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
-    inst._kei_used_protocol_unlock_recipes = net_byte(inst.GUID, "kei.used_protocol_unlock_recipes", "kei_protocol_unlock_recipes_dirty")
+    inst._kei_experience_current = net_float(inst.GUID, "kei.experience_current", "kei_experience_dirty")
+    inst._kei_experience_max = net_float(inst.GUID, "kei.experience_max", "kei_experience_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
@@ -416,6 +417,13 @@ local function common_postinit(inst)
     inst._kei_map_teleport_protocol_active = net_bool(inst.GUID, "kei.map_teleport_protocol_active", "kei_map_teleport_protocol_dirty")
     inst._kei_daywalker_aiming = net_bool(inst.GUID, "kei.daywalker_aiming", "kei_daywalker_aiming_dirty")
     inst._kei_daywalker_leap_on_cooldown = net_bool(inst.GUID, "kei.daywalker_leap_on_cooldown", "kei_daywalker_leap_cd_dirty")
+
+    inst:ListenForEvent("kei_experience_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
+    inst:ListenForEvent("kei_protocol_slots_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
 
     inst:AddComponent("reticule")
     inst.components.reticule.ease = true
@@ -926,15 +934,20 @@ local function UpdateResourceState(inst)
 end
 
 local function OnSave(inst, data)
-    -- 协议槽组件不是标准角色字段，需要主动写入角色存档。
     if inst.components.kei_protocolslots ~= nil then
         data.kei_protocolslots = inst.components.kei_protocolslots:OnSave()
+    end
+    if inst.components.kei_experience ~= nil then
+        data.kei_experience = inst.components.kei_experience:OnSave()
     end
 end
 
 local function OnLoad(inst, data)
     if data ~= nil and data.kei_protocolslots ~= nil and inst.components.kei_protocolslots ~= nil then
         inst.components.kei_protocolslots:OnLoad(data.kei_protocolslots)
+    end
+    if data ~= nil and data.kei_experience ~= nil and inst.components.kei_experience ~= nil then
+        inst.components.kei_experience:OnLoad(data.kei_experience)
     end
 end
 
@@ -960,6 +973,7 @@ local function master_postinit(inst)
 
     -- 协议槽负责扫描背包前 1/3/5/7 格中的协议 CD 并施加效果。
     inst:AddComponent("kei_protocolslots")
+    inst:AddComponent("kei_experience")
 
     PatchKeiCurseImmunity(inst)
 
@@ -1025,4 +1039,3 @@ end
 
 return MakePlayerCharacter("kei", prefabs, assets, common_postinit, master_postinit),
     Prefab("kei_dormant_chassis", dormant_chassis_fn, assets)
-

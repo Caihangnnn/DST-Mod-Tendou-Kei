@@ -1,12 +1,8 @@
 local assets =
 {
     Asset("ANIM", "anim/kei_protocol_popup.zip"),
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_closed.xml"),
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_locked.xml"),
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_openable.xml"),
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_closed.tex"),
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_locked.tex"),
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_openable.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_states.xml"),
+    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_states.tex"),
 }
 
 local SLOT_BANK = "kei_protocol_popup"
@@ -14,11 +10,11 @@ local SLOT_BUILD = "kei_protocol_popup"
 local SLOT_ANIM_OPENING = "opening"
 local SLOT_ANIM_CLOSING = "closing"
 
-local SLOT_ICON_ATLAS_CLOSED = "images/inventoryimages/kei_protocol_slot_closed.xml"
+local SLOT_ICON_ATLAS_CLOSED = "images/inventoryimages/kei_protocol_slot_states.xml"
 local SLOT_ICON_IMAGE_CLOSED = "kei_protocol_slot_closed"
-local SLOT_ICON_ATLAS_LOCKED = "images/inventoryimages/kei_protocol_slot_locked.xml"
+local SLOT_ICON_ATLAS_LOCKED = "images/inventoryimages/kei_protocol_slot_states.xml"
 local SLOT_ICON_IMAGE_LOCKED = "kei_protocol_slot_locked"
-local SLOT_ICON_ATLAS_OPENABLE = "images/inventoryimages/kei_protocol_slot_openable.xml"
+local SLOT_ICON_ATLAS_OPENABLE = "images/inventoryimages/kei_protocol_slot_states.xml"
 local SLOT_ICON_IMAGE_OPENABLE = "kei_protocol_slot_openable"
 
 local RefreshIcon

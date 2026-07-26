@@ -1,67 +1,66 @@
-local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local GrowthRecipes = require("kei/growth_recipes")
+local FISH_CALL_RECIPE = "kei_fish_call_spell"
+local FULLMOON_RECIPE = "kei_fullmoon_spell"
+local NEWMOON_RECIPE = "kei_newmoon_spell"
+local RIPEN_RECIPE = "kei_ripen_spell"
+local WEATHER_RECIPE = "kei_weather_spell"
 
 AddComponentPostInit("builder", function(self)
+    local old_HasCharacterIngredient = self.HasCharacterIngredient
     local old_DoBuild = self.DoBuild
+
+    function self:HasCharacterIngredient(ingredient)
+        if GrowthRecipes.IsExperienceIngredient(ingredient) then
+            local amount = GrowthRecipes.GetExperienceIngredientAmount(ingredient, self.inst)
+            ingredient.amount = amount
+            return GrowthRecipes.HasEnoughExperienceIngredient(self.inst, ingredient), amount
+        end
+        return old_HasCharacterIngredient(self, ingredient)
+    end
 
     function self:DoBuild(recname, pt, rotation, skin)
         if self.inst:HasTag("kei_dormant") then
             return false, "KEI_DORMANT"
         end
 
-        if not ProtocolSlotUnlocks.IsUnlockRecipe(recname) then
-            return old_DoBuild(self, recname, pt, rotation, skin)
+        if recname == FISH_CALL_RECIPE then
+            return require("kei/protocols/life/effects/fish_call").DoBuild(self, recname, pt, rotation, skin)
         end
 
-        local recipe = GetValidRecipe(recname)
-        local protocolslots = self.inst.components.kei_protocolslots
-        if recipe == nil
-            or protocolslots == nil
-            or not self.inst:HasTag("kei")
-            or PREFAB_SKINS_SHOULD_NOT_SELECT[skin]
-        then
-            return false
+        if recname == FULLMOON_RECIPE then
+            return require("kei/protocols/life/effects/fullmoon_recipe").DoBuild(self, recname, pt, rotation, skin)
         end
 
-        if not (self:IsBuildBuffered(recname) or self:HasIngredients(recipe)) then
-            return false
+        if recname == NEWMOON_RECIPE then
+            return require("kei/protocols/life/effects/newmoon_recipe").DoBuild(self, recname, pt, rotation, skin)
         end
 
-        if recipe.canbuild ~= nil then
-            local success, msg = recipe.canbuild(recipe, self.inst, pt, rotation, self.current_prototyper, skin)
-            if not success then
-                return false, msg
-            end
+        if recname == RIPEN_RECIPE then
+            return require("kei/protocols/life/effects/ripen").DoBuild(self, recname, pt, rotation, skin)
         end
 
-        local can_unlock, reason = protocolslots:CanUseUnlockRecipe(recname)
-        if not can_unlock then
-            return false, reason
+        if recname == WEATHER_RECIPE then
+            return require("kei/protocols/life/effects/weather").DoBuild(self, recname, pt, rotation, skin)
+        end
+        if GrowthRecipes.IsGrowthRecipe(recname) then
+            return GrowthRecipes.DoBuild(self, recname, pt, rotation, skin)
         end
 
-        local is_buffered_build = self.buffered_builds[recname] ~= nil
-        if is_buffered_build then
-            self.buffered_builds[recname] = nil
-            self.inst.replica.builder:SetIsBuildBuffered(recname, false)
+        return old_DoBuild(self, recname, pt, rotation, skin)
+    end
+
+end)
+
+AddClassPostConstruct("components/builder_replica", function(self)
+    local old_HasCharacterIngredient = self.HasCharacterIngredient
+
+    function self:HasCharacterIngredient(ingredient)
+        if GrowthRecipes.IsExperienceIngredient(ingredient) then
+            local amount = GrowthRecipes.GetExperienceIngredientAmount(ingredient, self.inst)
+            ingredient.amount = amount
+            return GrowthRecipes.HasEnoughExperienceIngredient(self.inst, ingredient), amount
         end
-
-        self.inst:PushEvent("refreshcrafting")
-
-        local materials, discounted = self:GetIngredients(recname)
-        if self:CheckIngredientsForMimic(materials) or (discounted and self:CheckDiscountEquipsForMimic()) then
-            return false, "ITEMMIMIC"
-        end
-
-        self:RemoveIngredients(materials, recname, discounted)
-
-        local unlocked, unlock_reason = protocolslots:UnlockNextSlot(recname)
-        if unlocked then
-            if self.inst.components.talker ~= nil then
-                self.inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_PROTOCOL_UNLOCK)
-            end
-            return true
-        end
-
-        return false, unlock_reason or "KEI_PROTOCOL_SLOTS_FULL"
+        return old_HasCharacterIngredient(self, ingredient)
     end
 end)
 

@@ -131,6 +131,74 @@ local function GetProtocolPrefab(protocol)
     return def ~= nil and def.prefab or nil
 end
 
+local COMMON_COMBAT_VISUAL = {
+    bank = "kei_items",
+    build = "kei_items",
+    anim = "kei_combat_cd_purple_ground",
+    atlas = "images/inventoryimages/kei_items.xml",
+    image = "kei_combat_cd_purple",
+    scale = 1.5,
+}
+
+local BIOME_VISUAL_ALIASES = {
+    spider_shattered = "spider_moon",
+}
+
+local BEAST_VISUAL_ALIASES = {
+    alterguardian = "alterguardian_phase3",
+}
+
+local BEAST_PURPLE_VISUAL_ALIASES = {
+    stalker_atrium = "atrium",
+}
+
+local function MakeProtocolVisual(prefix, key, atlas, build)
+    return {
+        bank = build,
+        build = build,
+        anim = prefix .. "_" .. key .. "_ground",
+        atlas = atlas,
+        image = prefix .. "_" .. key,
+        scale = 1.5,
+    }
+end
+
+-- 按协议分类解析 CD 贴图和地面动画；没有独立资源的战斗协议继续使用紫色通用战斗 CD。
+local function GetProtocolVisual(protocol)
+    local def = protocol ~= nil and COMBAT_PROTOCOLS[protocol] or nil
+    if def == nil then
+        return COMMON_COMBAT_VISUAL
+    end
+
+    if def.category == "biome" then
+        local key = BIOME_VISUAL_ALIASES[def.protocol] or def.protocol
+        return MakeProtocolVisual(
+            "kei_biome_cd",
+            key,
+            "images/inventoryimages/kei_biome_cd_item.xml",
+            "kei_biome_cd"
+        )
+    end
+
+    if def.category == "beast" then
+        local colour = def.tier == "advanced" and "golden" or "purple"
+        local key = def.source_protocol or def.protocol
+        key = BEAST_VISUAL_ALIASES[key] or key
+        if colour == "purple" then
+            key = BEAST_PURPLE_VISUAL_ALIASES[key] or key
+        end
+
+        local prefix = "kei_beast_" .. colour .. "_cd"
+        return MakeProtocolVisual(
+            prefix,
+            key,
+            "images/inventoryimages/" .. prefix .. "_item.xml",
+            prefix
+        )
+    end
+
+    return COMMON_COMBAT_VISUAL
+end
 return {
     COMBAT_PROTOCOLS = COMBAT_PROTOCOLS,
     COMBAT_PROTOCOL_LIST = COMBAT_PROTOCOL_LIST,
@@ -139,4 +207,5 @@ return {
     RECORD_TARGET_PROTOCOLS = RECORD_TARGET_PROTOCOLS,
     GetRecordProtocol = GetRecordProtocol,
     GetProtocolPrefab = GetProtocolPrefab,
+    GetProtocolVisual = GetProtocolVisual,
 }

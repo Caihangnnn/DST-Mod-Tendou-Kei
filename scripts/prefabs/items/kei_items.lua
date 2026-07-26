@@ -1,53 +1,81 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local PetProtocolDefs = require("kei/protocols/pet")
-local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local PetData = require("kei/protocols/pet/data")
+
+local COMMON_ITEM_ATLAS = "images/inventoryimages/kei_items.xml"
+local COMMON_ITEM_BUILD = "kei_items"
 
 local ITEM_VISUALS = {
     analysis_cd = {
-        bank = "kei_analysis_cd",
-        build = "kei_analysis_cd",
-        anim = "idle",
-        atlas = "images/inventoryimages/kei_analysis_cd.xml",
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_analysis_cd_ground",
+        atlas = COMMON_ITEM_ATLAS,
         image = "kei_analysis_cd",
         scale = 1.5,
     },
     analysis_tool = {
-        bank = "kei_analysis_tool",
-        build = "kei_analysis_tool",
-        anim = "idle",
-        atlas = "images/inventoryimages/kei_analysis_tool.xml",
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_analysis_tool_ground",
+        atlas = COMMON_ITEM_ATLAS,
         image = "kei_analysis_tool",
         scale = 1.5,
     },
     blank_cd = {
-        bank = "kei_blank_cd",
-        build = "kei_blank_cd",
-        anim = "idle",
-        atlas = "images/inventoryimages/kei_blank_cd.xml",
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_blank_cd_ground",
+        atlas = COMMON_ITEM_ATLAS,
         image = "kei_blank_cd",
         scale = 1.5,
     },
     combat_cd = {
-        bank = "kei_combat_cd",
-        build = "kei_combat_cd",
-        anim = "idle",
-        atlas = "images/inventoryimages/kei_combat_cd.xml",
-        image = "kei_combat_cd",
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_combat_cd_purple_ground",
+        atlas = COMMON_ITEM_ATLAS,
+        image = "kei_combat_cd_purple",
         scale = 1.5,
     },
     life_cd = {
         bank = "kei_life_cd",
         build = "kei_life_cd",
-        anim = "idle",
-        atlas = "images/inventoryimages/kei_life_cd.xml",
+        anim = "kei_life_cd_ground",
+        atlas = "images/inventoryimages/kei_life_cd_item.xml",
         image = "kei_life_cd",
+        scale = 1.5,
+    },
+    battery = {
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_battery_ground",
+        atlas = COMMON_ITEM_ATLAS,
+        image = "kei_battery",
+        scale = 1.5,
+    },
+    repair_tool = {
+        bank = COMMON_ITEM_BUILD,
+        build = COMMON_ITEM_BUILD,
+        anim = "kei_repair_tool_ground",
+        atlas = COMMON_ITEM_ATLAS,
+        image = "kei_repair_tool",
         scale = 1.5,
     },
 }
 
 local function AssetImagePath(visual)
-    return visual ~= nil and visual.image ~= nil and "images/inventoryimages/" .. visual.image .. ".tex" or nil
+    if visual == nil then
+        return nil
+    end
+    if visual.tex ~= nil then
+        return visual.tex
+    end
+    if visual.atlas ~= nil then
+        return visual.atlas:gsub("%.xml$", ".tex")
+    end
+    return visual.image ~= nil and "images/inventoryimages/" .. visual.image .. ".tex" or nil
 end
 
 local function SetWorldScale(inst, scale)
@@ -178,11 +206,12 @@ local function BlankCDOnLoad(inst, data)
     end
 end
 
-local function MakeBattery()
+local function MakeDeviceItem(name, visual_key, tags, max_stack_size, on_eaten)
+    local visual = ITEM_VISUALS[visual_key]
     local assets = {
-        Asset("ANIM", "anim/kei_battery.zip"),
-        Asset("ATLAS", "images/inventoryimages/kei_battery.xml"),
-        Asset("IMAGE", "images/inventoryimages/kei_battery.tex"),
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
     }
 
     local function fn()
@@ -193,12 +222,16 @@ local function MakeBattery()
         inst.entity:AddNetwork()
 
         MakeInventoryPhysics(inst)
-        inst.Transform:SetScale(1.5, 1.5, 1.5)
-        inst.AnimState:SetBank("kei_battery")
-        inst.AnimState:SetBuild("kei_battery")
-        inst.AnimState:PlayAnimation("idle")
+        SetWorldScale(inst, visual.scale)
+        inst.AnimState:SetBank(visual.bank)
+        inst.AnimState:SetBuild(visual.build)
+        inst.AnimState:PlayAnimation(visual.anim)
 
-        inst:AddTag("kei_battery")
+        if tags ~= nil then
+            for _, tag in ipairs(tags) do
+                inst:AddTag(tag)
+            end
+        end
 
         MakeInventoryFloatable(inst, "small", nil, 0.8)
 
@@ -210,66 +243,50 @@ local function MakeBattery()
 
         inst:AddComponent("inspectable")
         inst:AddComponent("inventoryitem")
-        inst.components.inventoryitem.atlasname = "images/inventoryimages/kei_battery.xml"
-        inst.components.inventoryitem:ChangeImageName("kei_battery")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(visual.image)
 
         inst:AddComponent("stackable")
-        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
+        inst.components.stackable.maxsize = max_stack_size or TUNING.STACK_SIZE_SMALLITEM
 
         MakeKeiDeviceEdible(inst)
+        if on_eaten ~= nil then
+            inst.components.edible:SetOnEatenFn(on_eaten)
+        end
         MakeHauntableLaunch(inst)
 
         return inst
     end
 
-    return Prefab("kei_battery", fn, assets)
+    return Prefab(name, fn, assets)
+end
+
+local function MakeBattery()
+    return MakeDeviceItem("kei_battery", "battery", { "kei_battery" })
 end
 
 local function MakeRepairTool()
-    local assets = {
-        Asset("ANIM", "anim/kei_repair_tool.zip"),
-        Asset("ATLAS", "images/inventoryimages/kei_repair_tool.xml"),
-        Asset("IMAGE", "images/inventoryimages/kei_repair_tool.tex"),
-    }
+    return MakeDeviceItem("kei_repair_tool", "repair_tool", { "kei_repair_tool" })
+end
 
-    local function fn()
-        local inst = CreateEntity()
-
-        inst.entity:AddTransform()
-        inst.entity:AddAnimState()
-        inst.entity:AddNetwork()
-
-        MakeInventoryPhysics(inst)
-        inst.Transform:SetScale(1.5, 1.5, 1.5)
-        inst.AnimState:SetBank("kei_repair_tool")
-        inst.AnimState:SetBuild("kei_repair_tool")
-        inst.AnimState:PlayAnimation("idle")
-
-        inst:AddTag("kei_repair_tool")
-
-        MakeInventoryFloatable(inst, "small", nil, 0.8)
-
-        inst.entity:SetPristine()
-
-        if not TheWorld.ismastersim then
-            return inst
-        end
-
-        inst:AddComponent("inspectable")
-        inst:AddComponent("inventoryitem")
-        inst.components.inventoryitem.atlasname = "images/inventoryimages/kei_repair_tool.xml"
-        inst.components.inventoryitem:ChangeImageName("kei_repair_tool")
-
-        inst:AddComponent("stackable")
-        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
-
-        MakeKeiDeviceEdible(inst)
-        MakeHauntableLaunch(inst)
-
-        return inst
+local function ExperiencePackOnEaten(inst, eater)
+    local experience = eater ~= nil
+        and eater.components ~= nil
+        and eater.components.kei_experience
+        or nil
+    if experience ~= nil then
+        experience:DoDelta(TUNING.KEI_EXPERIENCE_PACK_AMOUNT or 1000)
     end
+end
 
-    return Prefab("kei_repair_tool", fn, assets)
+local function MakeExperiencePack()
+    return MakeDeviceItem(
+        "kei_experience_pack",
+        "analysis_cd",
+        { "kei_experience_pack" },
+        40,
+        ExperiencePackOnEaten
+    )
 end
 
 local function MakeBlankCD()
@@ -497,6 +514,9 @@ end
 
 local function MakeFixedProtocolCD(def, kind, visual_key, tags, deps)
     local visual = ITEM_VISUALS[visual_key]
+    if kind == "combat" and CombatProtocolDefs.GetProtocolVisual ~= nil then
+        visual = CombatProtocolDefs.GetProtocolVisual(def.protocol) or visual
+    end
     local assets = {
         Asset("ANIM", "anim/" .. visual.build .. ".zip"),
         Asset("ATLAS", visual.atlas),
@@ -539,7 +559,17 @@ local function MakeFixedProtocolCD(def, kind, visual_key, tags, deps)
         inst.components.inventoryitem:ChangeImageName(visual.image)
         inst.components.inventoryitem.keepondeath = true
 
-        ApplyFixedProtocolData(inst, def, kind)
+        if kind == "pet" then
+            inst:AddComponent("timer")
+            PetData.Initialize(inst, def)
+            inst.SetCapturedPet = function(cd, data)
+                PetData.SetCapturedPet(cd, data)
+            end
+            inst.OnSave = PetData.OnSave
+            inst.OnLoad = PetData.OnLoad
+        else
+            ApplyFixedProtocolData(inst, def, kind)
+        end
         MakeHauntableLaunch(inst)
 
         return inst
@@ -662,30 +692,11 @@ local function MakeAnalysisCD()
     return Prefab("kei_analysis_cd", fn, assets)
 end
 
-local function MakeProtocolUnlocker(def)
-    local prefab = MakeSimpleInventoryItem(
-        def.id,
-        "wx_chips",
-        "chips",
-        "stacksize",
-        { "kei_protocol_unlocker" },
-        nil,
-        function(inst)
-            inst.kei_unlock_recipe = def.id
-            if inst.components.inventoryitem ~= nil then
-                inst.components.inventoryitem.atlasname = def.atlas
-                inst.components.inventoryitem:ChangeImageName(def.image)
-            end
-        end
-    )
-    table.insert(prefab.assets, Asset("ATLAS", def.atlas))
-    return prefab
-end
-
 -- 核心协议道具统一使用 ITEM_VISUALS 中登记的专用贴图和地面动画。
 local prefabs = {
     MakeBattery(),
     MakeRepairTool(),
+    MakeExperiencePack(),
     MakeSimpleInventoryItem(
         "kei_analysis_tool",
         ITEM_VISUALS.analysis_tool.build,
@@ -701,9 +712,6 @@ local prefabs = {
     MakeAnalysisCD(),
 }
 
-for _, def in ipairs(ProtocolSlotUnlocks.UNLOCK_RECIPE_LIST) do
-    table.insert(prefabs, MakeProtocolUnlocker(def))
-end
 
 for _, prefab in ipairs(MakeCombatProtocolCDs()) do
     table.insert(prefabs, prefab)

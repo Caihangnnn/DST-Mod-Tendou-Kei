@@ -1,1 +1,1 @@
-<Atlas><Texture filename="kei_protocol_binder.tex" /><Elements><Element name="kei_protocol_binder.tex" u1="0.0078125" u2="0.9921875" v1="0.0078125" v2="0.9921875" /></Elements></Atlas>
+<Atlas><Texture filename="kei_protocol_binder.tex" /><Elements><Element name="kei_protocol_binder.tex" u1="0.00390625" u2="0.49609375" v1="0.0078125" v2="0.9921875" /><Element name="kei_protocol_binder_open.tex" u1="0.50390625" u2="0.99609375" v1="0.0078125" v2="0.9921875" /></Elements></Atlas>

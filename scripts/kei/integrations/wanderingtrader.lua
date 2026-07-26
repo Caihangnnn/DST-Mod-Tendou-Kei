@@ -60,6 +60,14 @@ local function TradeDisplayName(protocol)
     return name .. "战斗协议"
 end
 
+local function GetTradeIcon(protocol)
+    local visual = CombatProtocolDefs.GetProtocolVisual ~= nil and CombatProtocolDefs.GetProtocolVisual(protocol) or nil
+    return {
+        atlas = visual ~= nil and visual.atlas or "images/inventoryimages/kei_items.xml",
+        image = ((visual ~= nil and visual.image or "kei_combat_cd_purple") .. ".tex"),
+    }
+end
+
 local function SetTradeStrings(protocol)
     local recipe_key = string.upper(RecipeName(protocol))
     STRINGS.NAMES[recipe_key] = TradeDisplayName(protocol)
@@ -88,10 +96,19 @@ local function AddRecipeForProtocol(protocol)
     end
 
     SetTradeStrings(protocol)
+    local icon = GetTradeIcon(protocol)
 
     AddRecipe2(
         RecipeName(protocol),
-        { Ingredient("kei_blank_cd", 1) },
+        {
+            Ingredient(
+                "kei_blank_cd",
+                1,
+                "images/inventoryimages/kei_items.xml",
+                nil,
+                "kei_blank_cd.tex"
+            ),
+        },
         TECH.LOST,
         {
             limitedamount = true,
@@ -101,8 +118,8 @@ local function AddRecipeForProtocol(protocol)
             product = ProductName(protocol),
             nameoverride = RecipeName(protocol),
             description = RecipeName(protocol),
-            atlas = "images/inventoryimages/kei_combat_cd.xml",
-            image = "kei_combat_cd.tex",
+            atlas = icon.atlas,
+            image = icon.image,
         }
     )
 end

@@ -9,9 +9,9 @@ local assets = {
 }
 
 local item_assets = {
-    Asset("ANIM", "anim/kei_data_recorder_item.zip"),
-    Asset("ATLAS", "images/inventoryimages/kei_data_recorder_item.xml"),
-    Asset("IMAGE", "images/inventoryimages/kei_data_recorder_item.tex"),
+    Asset("ANIM", "anim/kei_items.zip"),
+    Asset("ATLAS", "images/inventoryimages/kei_items.xml"),
+    Asset("IMAGE", "images/inventoryimages/kei_items.tex"),
 }
 
 local RECORDER_BANK = "kei_data_recorder"
@@ -23,9 +23,9 @@ local RECORDER_ANIM_ACTIVATE = "opened"
 local RECORDER_ANIM_DEACTIVATE = "closed"
 local RECORDER_WORLD_SCALE = 1
 
-local RECORDER_KIT_BANK = "kei_data_recorder_item"
-local RECORDER_KIT_BUILD = "kei_data_recorder_item"
-local RECORDER_KIT_ANIM = "idle"
+local RECORDER_KIT_BANK = "kei_items"
+local RECORDER_KIT_BUILD = "kei_items"
+local RECORDER_KIT_ANIM = "kei_data_recorder_item_ground"
 
 -- Terrarium 光柱对齐参数：按记录器实体本地坐标偏移，方便后续微调贴图中心。
 local RECORDER_BEAM_OFFSET_X = 0
@@ -595,7 +595,7 @@ local function recorder_fn()
 end
 
 local function kit_postinit(inst)
-    inst.components.inventoryitem.atlasname = "images/inventoryimages/kei_data_recorder_item.xml"
+    inst.components.inventoryitem.atlasname = "images/inventoryimages/kei_items.xml"
     inst.components.inventoryitem:ChangeImageName("kei_data_recorder_item")
 end
 

@@ -19,17 +19,15 @@ GLOBAL.TENDOU_KEI_API = env
 PrefabFiles = { char_prefab .. "__all_prefabs" }
 
 Assets = {
+    Asset("ANIM", "anim/kei_exp.zip"),  -- Experience status animation
     Asset("ANIM", "anim/kei.zip"),  --人物模型
     Asset("ANIM", "anim/ghost_kei_build.zip"),  --人物灵魂状态模型
-    Asset("ANIM", "anim/kei_battery.zip"),  --便携电池动画
-    Asset("ANIM", "anim/kei_repair_tool.zip"),  --修复工具动画
-    Asset("ANIM", "anim/kei_analysis_cd.zip"),  --解析CD动画
-    Asset("ANIM", "anim/kei_analysis_tool.zip"),  --解析工具动画
-    Asset("ANIM", "anim/kei_blank_cd.zip"),  --空白CD动画
-    Asset("ANIM", "anim/kei_combat_cd.zip"),  --战斗CD动画
-    Asset("ANIM", "anim/kei_life_cd.zip"),  --生活CD动画
-    Asset("ANIM", "anim/kei_data_recorder.zip"),  --数据记录器动画
-    Asset("ANIM", "anim/kei_data_recorder_item.zip"),  --数据记录器物品动画
+    Asset("ANIM", "anim/kei_items.zip"),  -- 通用物品与通用CD地面动画图集
+    Asset("ANIM", "anim/kei_life_cd.zip"),  -- 生活协议CD地面动画
+    Asset("ANIM", "anim/kei_biome_cd.zip"),  -- 群系协议CD地面动画
+    Asset("ANIM", "anim/kei_beast_purple_cd.zip"),  -- 巨兽协议紫色CD地面动画
+    Asset("ANIM", "anim/kei_beast_golden_cd.zip"),  -- 巨兽协议金色CD地面动画
+    Asset("ANIM", "anim/kei_data_recorder.zip"),  -- 数据记录器动画
     Asset("ANIM", "anim/kei_protocol_binder.zip"),  --协议预设盒动画
     Asset("ANIM", "anim/kei_protocol_popup.zip"),  --协议弹出动画
     Asset("ANIM", "anim/ui_kei_protocol_box_7x1.zip"),  --协议预设盒UI动画
@@ -68,55 +66,36 @@ Assets = {
 
     Asset("ATLAS", "images/saveslot_portraits/kei.xml"),  -- 存档图片
     Asset("IMAGE", "images/saveslot_portraits/kei.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_items.xml"), -- 通用物品与通用CD图集
+    Asset("IMAGE", "images/inventoryimages/kei_items.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_mk1.xml"), -- 1级扩展
-    Asset("IMAGE", "images/inventoryimages/kei_mk1.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_exp.xml"), -- 经验配方材料图标
+    Asset("IMAGE", "images/inventoryimages/kei_exp.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_mk2.xml"), -- 2级扩展
-    Asset("IMAGE", "images/inventoryimages/kei_mk2.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_implant.xml"), -- 深度植入配方图标
+    Asset("IMAGE", "images/inventoryimages/kei_implant.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_mk3.xml"), -- 3级扩展
-    Asset("IMAGE", "images/inventoryimages/kei_mk3.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_potential.xml"), -- 潜能激发配方图标
+    Asset("IMAGE", "images/inventoryimages/kei_potential.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_repair_tool.xml"), -- 修复工具
-    Asset("IMAGE", "images/inventoryimages/kei_repair_tool.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_life_cd_item.xml"), -- 生活协议CD图集
+    Asset("IMAGE", "images/inventoryimages/kei_life_cd_item.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_battery.xml"), -- 便携电池
-    Asset("IMAGE", "images/inventoryimages/kei_battery.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_biome_cd_item.xml"), -- 群系协议CD图集
+    Asset("IMAGE", "images/inventoryimages/kei_biome_cd_item.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_analysis_cd.xml"), -- 解析CD
-    Asset("IMAGE", "images/inventoryimages/kei_analysis_cd.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_beast_purple_cd_item.xml"), -- 巨兽协议紫色CD图集
+    Asset("IMAGE", "images/inventoryimages/kei_beast_purple_cd_item.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_analysis_tool.xml"), -- 解析工具
-    Asset("IMAGE", "images/inventoryimages/kei_analysis_tool.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_beast_golden_cd_item.xml"), -- 巨兽协议金色CD图集
+    Asset("IMAGE", "images/inventoryimages/kei_beast_golden_cd_item.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_blank_cd.xml"), -- 空白CD
-    Asset("IMAGE", "images/inventoryimages/kei_blank_cd.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_combat_cd.xml"), -- 战斗CD
-    Asset("IMAGE", "images/inventoryimages/kei_combat_cd.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_life_cd.xml"), -- 生活CD
-    Asset("IMAGE", "images/inventoryimages/kei_life_cd.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_data_recorder_item.xml"), -- 数据记录器物品
-    Asset("IMAGE", "images/inventoryimages/kei_data_recorder_item.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_binder.xml"), -- 协议预设盒
+    Asset("ATLAS", "images/inventoryimages/kei_protocol_binder.xml"), -- 协议预设盒图集
     Asset("IMAGE", "images/inventoryimages/kei_protocol_binder.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_binder_open.xml"), -- 协议预设盒打开
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_binder_open.tex"),
+    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_states.xml"), -- 协议槽状态图集
+    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_states.tex"),
 
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_closed.xml"), -- 协议槽关闭
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_closed.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_locked.xml"), -- 协议槽锁定
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_locked.tex"),
-
-    Asset("ATLAS", "images/inventoryimages/kei_protocol_slot_openable.xml"), -- 协议槽可打开
-    Asset("IMAGE", "images/inventoryimages/kei_protocol_slot_openable.tex"),
-    
     Asset("ATLAS", "images/inventoryimages/transparent_slot.xml"), -- 透明槽
     Asset("IMAGE", "images/inventoryimages/transparent_slot.tex"),
 }
@@ -140,7 +119,10 @@ modimport("scripts/kei/hooks/containers.lua")
 modimport("scripts/kei/hooks/combat.lua")
 modimport("scripts/kei/hooks/storm.lua")
 modimport("scripts/kei/hooks/inventory.lua")
+modimport("scripts/kei/hooks/experience.lua")
 modimport("scripts/kei/init.lua")
 modimport("scripts/kei/hooks/network.lua")
+modimport("scripts/kei/hooks/pet_capture.lua")
+modimport("scripts/kei/hooks/pet_growth.lua")
 
 AddModCharacter(char_prefab, "FEMALE")

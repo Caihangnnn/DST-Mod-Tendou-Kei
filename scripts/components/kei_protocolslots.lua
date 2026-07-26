@@ -4,6 +4,7 @@ local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
+local PetDeployment = require("kei/protocols/pet/deployment")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 
@@ -101,7 +102,7 @@ end
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
-    self.used_unlock_recipes = {}
+    self.implanted_combat_protocols = {}
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
@@ -115,9 +116,9 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_mutateddeerclops_slowed = {}
     self._protocol_state_dirty = true
     self._prev_active_combat = {}
+    self._kei_active_pets = {}
 
     self:SyncUnlockedSlots()
-    self:SyncUsedUnlockRecipes()
 
     inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
@@ -192,16 +193,6 @@ end)
 function KeiProtocolSlots:SyncUnlockedSlots()
     if self.inst._kei_unlocked_protocol_slots ~= nil then
         self.inst._kei_unlocked_protocol_slots:set(self.unlocked_slots)
-    end
-end
-
-function KeiProtocolSlots:GetUsedUnlockRecipesMask()
-    return ProtocolSlotUnlocks.GetUsedRecipesMask(self.used_unlock_recipes)
-end
-
-function KeiProtocolSlots:SyncUsedUnlockRecipes()
-    if self.inst._kei_used_protocol_unlock_recipes ~= nil then
-        self.inst._kei_used_protocol_unlock_recipes:set(self:GetUsedUnlockRecipesMask())
     end
 end
 
@@ -306,49 +297,79 @@ function KeiProtocolSlots:OnRemoveFromEntity()
     self:ClearModifiers()
 end
 
-function KeiProtocolSlots:HasUsedUnlockRecipe(recipe)
-    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
-    local id = def ~= nil and def.id or recipe
-    return id ~= nil and self.used_unlock_recipes[id] == true
-end
-
-function KeiProtocolSlots:CanUseUnlockRecipe(recipe)
-    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
-    if def == nil then
-        return false
-    end
+function KeiProtocolSlots:CanUnlockNextSlot()
     if self.unlocked_slots >= ProtocolSlotUnlocks.GetMaxSlots() then
         return false, "KEI_PROTOCOL_SLOTS_FULL"
-    end
-    if self:HasUsedUnlockRecipe(def.id) then
-        return false, "KEI_PROTOCOL_UNLOCK_RECIPE_USED"
     end
     return true
 end
 
-function KeiProtocolSlots:UnlockNextSlot(recipe)
-    local def = ProtocolSlotUnlocks.GetUnlockRecipe(recipe)
-    local can_unlock, reason = self:CanUseUnlockRecipe(def)
+function KeiProtocolSlots:UnlockNextSlot()
+    local can_unlock, reason = self:CanUnlockNextSlot()
     if not can_unlock then
         return false, reason
     end
 
-    self.used_unlock_recipes[def.id] = true
     self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(self.unlocked_slots + 1)
     self:SyncUnlockedSlots()
-    self:SyncUsedUnlockRecipes()
     self:ApplyStatProgression()
+    if self.inst.components ~= nil and self.inst.components.kei_experience ~= nil then
+        self.inst.components.kei_experience:RecalculateMax()
+    end
     self:EnsureProtocolContainers()
     self:Refresh()
     return true
 end
 
-function KeiProtocolSlots:CanUnlockTier(tier)
-    return self:CanUseUnlockRecipe("kei_protocol_mk" .. tostring(tier))
+function KeiProtocolSlots:GetFirstCombatProtocol()
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    if inventory == nil or self.unlocked_slots < ProtocolSlotUnlocks.GetMaxSlots() then
+        return nil, nil
+    end
+
+    local container = inventory:GetItemInSlot(1)
+    if not IsProtocolContainer(container) or container.components.container == nil then
+        return nil, nil
+    end
+
+    local item = container.components.container:GetItemInSlot(1)
+    local data = IsProtocol(item) and item.kei_protocol_data or nil
+    if data == nil or data.kind ~= "combat" or data.protocol == nil then
+        return nil, nil
+    end
+    return item, data
 end
 
-function KeiProtocolSlots:UnlockTier(tier)
-    return self:UnlockNextSlot("kei_protocol_mk" .. tostring(tier))
+function KeiProtocolSlots:CanDeepImplantFirst()
+    local _, data = self:GetFirstCombatProtocol()
+    if data == nil then
+        return false, "KEI_DEEP_IMPLANT_NO_PROTOCOL"
+    end
+    if self.implanted_combat_protocols[data.protocol] then
+        return false, "KEI_DEEP_IMPLANT_ALREADY_IMPLANTED"
+    end
+    return true
+end
+
+function KeiProtocolSlots:DeepImplantFirst()
+    local can_implant, reason = self:CanDeepImplantFirst()
+    if not can_implant then
+        return false, reason
+    end
+
+    local item, data = self:GetFirstCombatProtocol()
+    local inventory = self.inst.components.inventory
+    local container = inventory:GetItemInSlot(1)
+    local removed = container.components.container:RemoveItem(item, true)
+    if removed == nil then
+        return false, "KEI_DEEP_IMPLANT_NO_PROTOCOL"
+    end
+
+    self.implanted_combat_protocols[data.protocol] = true
+    removed:Remove()
+    self._protocol_state_dirty = true
+    self:Refresh()
+    return true
 end
 
 ----------------------------------------------------------------
@@ -366,8 +387,13 @@ function KeiProtocolSlots:IsFunctional()
 end
 
 function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)
+    if protocol == nil then return false end
+    if self.implanted_combat_protocols[protocol] then
+        return true
+    end
+
     local inventory = self.inst.components.inventory
-    if protocol == nil or inventory == nil then return false end
+    if inventory == nil then return false end
 
     for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
@@ -540,6 +566,7 @@ function KeiProtocolSlots:ClearModifiers()
     self:RemoveHandVirtualEquip()
     self:ClearVirtualEquips()
     HandAnalysisInheritance.Clear(self)
+    PetDeployment.Clear(self, false)
 
     for _, handler in pairs(LIFE_EFFECTS) do
         if handler.Disable then
@@ -651,6 +678,7 @@ function KeiProtocolSlots:RefreshEffects()
     local prev = self._prev_active_combat or {}
     self._prev_active_combat = {}
 
+
     for protocol, handler in pairs(EFFECT_HANDLERS) do
         local is_active = self.active_combat[protocol] == true
         self._prev_active_combat[protocol] = is_active
@@ -679,7 +707,7 @@ function KeiProtocolSlots:Refresh()
     end
     self:SetProtocolContainersPowered(true)
 
-    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil then
+    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil and next(self.active_pet or {}) == nil then
         return
     end
 
@@ -688,6 +716,7 @@ function KeiProtocolSlots:Refresh()
     local combat = {}
     local life = {}
     local pet = {}
+    local pet_entries = {}
     local hand_stats = HandAnalysisInheritance.NewStats()
     local desired_virtuals = {}
     local wants_hand_virtual = false
@@ -707,6 +736,7 @@ function KeiProtocolSlots:Refresh()
             end
         elseif data.kind == "pet" and data.protocol ~= nil then
             pet[data.protocol] = true
+            table.insert(pet_entries, entry)
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true
@@ -725,9 +755,14 @@ function KeiProtocolSlots:Refresh()
     if not wants_hand_virtual then
         self:RemoveHandVirtualEquip()
     end
+    for protocol in pairs(self.implanted_combat_protocols) do
+        combat[protocol] = true
+    end
+
     self.active_combat = combat
     self.active_life = life
     self.active_pet = pet
+    PetDeployment.Refresh(self, pet_entries)
     self:RefreshEffects()
     self:SyncLifeProtocolFlags()
     self:SyncCombatProtocolFlags()
@@ -820,7 +855,7 @@ end
 function KeiProtocolSlots:OnSave()
     return {
         unlocked_slots = self.unlocked_slots,
-        used_unlock_recipes = self.used_unlock_recipes,
+        implanted_combat_protocols = self.implanted_combat_protocols,
     }
 end
 
@@ -828,9 +863,11 @@ function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
         self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(data.unlocked_slots)
     end
-    self.used_unlock_recipes = data ~= nil and data.used_unlock_recipes or {}
+    if self.inst.components ~= nil and self.inst.components.kei_experience ~= nil then
+        self.inst.components.kei_experience:RecalculateMax()
+    end
+    self.implanted_combat_protocols = data ~= nil and data.implanted_combat_protocols or {}
     self:SyncUnlockedSlots()
-    self:SyncUsedUnlockRecipes()
     self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
@@ -839,4 +876,3 @@ function KeiProtocolSlots:OnLoad(data)
 end
 
 return KeiProtocolSlots
-
