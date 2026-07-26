@@ -5,7 +5,6 @@ local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
     Asset("ANIM", "anim/wx78_shadowdrone_debuffer.zip"),
     Asset("ANIM", "anim/wx78_shadowdrone_harvester.zip"),
-    Asset("ANIM", "anim/wagboss_fissure.zip", ALT_RENDERPATH),
 }
 
 local item_assets = {
@@ -22,30 +21,24 @@ local RECORDER_ANIM_ON = "opened"
 local RECORDER_ANIM_ACTIVATE = "opened"
 local RECORDER_ANIM_DEACTIVATE = "closed"
 local RECORDER_WORLD_SCALE = 1
+local RECORDER_SHADER_CUTOFF_HEIGHT = -0.125
+local RECORDER_DISSOLVE_DURATION = 1.0
 
 local RECORDER_KIT_BANK = "kei_item"
 local RECORDER_KIT_BUILD = "kei_items"
 local RECORDER_KIT_ANIM = "kei_data_recorder_item_ground"
+local RECORDER_SUMMON_DELAY = 3
+local GetRecorderChallenge = CombatProtocolDefs.GetRecorderChallenge
 
--- Terrarium 光柱对齐参数：按记录器实体本地坐标偏移，方便后续微调贴图中心。
-local RECORDER_BEAM_OFFSET_X = 0
-local RECORDER_BEAM_OFFSET_Y = 1
-local RECORDER_BEAM_OFFSET_Z = 0
-local RECORDER_BEAM_SCALE = 0.5
-local RECORDER_BEAM_POSITION_UPDATE_PERIOD = 0.25
-
-local RECORDER_FISSURE_RADIUS = 8
-local RECORDER_FISSURE_STEP = 4
-local RECORDER_FISSURE_ALPHA = 0.35
-local RECORDER_FISSURE_COLOUR_R = 1
-local RECORDER_FISSURE_COLOUR_G = 0.55
-local RECORDER_FISSURE_COLOUR_B = 0.8
-local RECORDER_FISSURE_ADD_R = 0.08
-local RECORDER_FISSURE_ADD_G = 0
-local RECORDER_FISSURE_ADD_B = 0.05
-
-local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
-local GetRecordProtocol = CombatProtocolDefs.GetRecordProtocol
+local function GetCombatProtocolFromItem(item)
+    if item == nil then
+        return nil
+    end
+    return item.kei_combat_protocol
+        or (CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS ~= nil
+            and CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS[item.prefab]
+            or nil)
+end
 
 local RECORDER_STATE = {
     idle = 0,
@@ -62,57 +55,6 @@ local function Say(doer, key)
     if doer ~= nil and doer.components.talker ~= nil and STRINGS.CHARACTERS.KEI[key] ~= nil then
         doer.components.talker:Say(STRINGS.CHARACTERS.KEI[key])
     end
-end
-
-local function GetBoundTarget(cd)
-    -- 优先使用运行时实体引用；如果引用丢失，则用同局内保存的 GUID 找回。
-    if cd == nil then
-        return nil
-    end
-    if cd.kei_bound_target ~= nil and cd.kei_bound_target:IsValid() then
-        return cd.kei_bound_target
-    end
-    if cd.kei_bound_guid ~= nil then
-        local ent = Ents[cd.kei_bound_guid]
-        if ent ~= nil and ent:IsValid() then
-            cd.kei_bound_target = ent
-            return ent
-        end
-    end
-    return nil
-end
-
-local function IsPointInArena(inst, px, pz)
-    if WAGPUNK_ARENA_COLLISION_DATA == nil then
-        local range = TUNING.KEI_RECORDER_RANGE
-        return inst:GetDistanceSqToPoint(px, 0, pz) <= range * range
-    end
-
-    local cx, cy, cz = inst.Transform:GetWorldPosition()
-    local x = px - cx
-    local z = pz - cz
-    local inside = false
-    local previous = WAGPUNK_ARENA_COLLISION_DATA[#WAGPUNK_ARENA_COLLISION_DATA]
-
-    for _, current in ipairs(WAGPUNK_ARENA_COLLISION_DATA) do
-        local x1, z1 = previous[1], previous[2]
-        local x2, z2 = current[1], current[2]
-        if (z1 > z) ~= (z2 > z) and x < (x2 - x1) * (z - z1) / (z2 - z1) + x1 then
-            inside = not inside
-        end
-        previous = current
-    end
-
-    return inside
-end
-
-local function TargetInRange(inst, target)
-    -- 目标必须一直处在记录仪工作半径内，死亡时才算记录成功。
-    if target == nil or not target:IsValid() then
-        return false
-    end
-    local x, y, z = target.Transform:GetWorldPosition()
-    return IsPointInArena(inst, x, z)
 end
 
 local function ClearRecordDrones(inst)
@@ -166,6 +108,11 @@ end
 local function CreateForceField(inst)
     ClearForceField(inst)
 
+    -- 力场资源不是所有服务器环境都提供；记录流程本身不应因此中断。
+    if WAGPUNK_ARENA_COLLISION_DATA == nil then
+        return
+    end
+
     local x, y, z = inst.Transform:GetWorldPosition()
 
     inst.kei_forcefield_walls = {}
@@ -190,109 +137,6 @@ local function CreateForceField(inst)
     end
 end
 
-local function UpdateRecorderBeamFxPosition(inst)
-    if inst.kei_beamfx ~= nil and inst.kei_beamfx:IsValid() then
-        inst.kei_beamfx.Transform:SetPosition(
-            RECORDER_BEAM_OFFSET_X,
-            RECORDER_BEAM_OFFSET_Y,
-            RECORDER_BEAM_OFFSET_Z
-        )
-    end
-end
-
-local function EnableRecorderBeamFx(inst)
-    if inst.kei_beamfx == nil then
-        inst.kei_beamfx = SpawnPrefab("terrarium_fx")
-        if inst.kei_beamfx ~= nil then
-            inst.kei_beamfx.persists = false
-            inst.kei_beamfx.entity:SetParent(inst.entity)
-            UpdateRecorderBeamFxPosition(inst)
-            inst.kei_beamfx.AnimState:SetScale(
-                RECORDER_BEAM_SCALE,
-                RECORDER_BEAM_SCALE,
-                RECORDER_BEAM_SCALE
-            )
-            inst.kei_beamfx.AnimState:PlayAnimation("activate_fx")
-            inst.kei_beamfx.AnimState:PushAnimation("activated_idle_fx", true)
-        end
-    end
-    if inst.kei_beam_position_task == nil then
-        inst.kei_beam_position_task = inst:DoPeriodicTask(
-            RECORDER_BEAM_POSITION_UPDATE_PERIOD,
-            UpdateRecorderBeamFxPosition
-        )
-    end
-end
-
-local function DisableRecorderBeamFx(inst)
-    if inst.kei_beam_position_task ~= nil then
-        inst.kei_beam_position_task:Cancel()
-        inst.kei_beam_position_task = nil
-    end
-    if inst.kei_beamfx ~= nil then
-        local fx = inst.kei_beamfx
-        inst.kei_beamfx = nil
-        if fx:IsValid() then
-            fx.AnimState:PlayAnimation("deactivate_fx")
-            fx:DoTaskInTime(10 * FRAMES, fx.Remove)
-        end
-    end
-end
-
-local function KillRecorderFissureFx(fx)
-    if fx == nil or not fx:IsValid() or fx.kei_killed then
-        return
-    end
-
-    fx.kei_killed = true
-    fx.persists = false
-    fx.AnimState:PlayAnimation((fx.kei_base_anim or "tile1").."_pst")
-    fx:ListenForEvent("animover", fx.Remove)
-    fx:DoTaskInTime(1.5, fx.Remove)
-end
-
-local function ClearRecorderFissures(inst)
-    if inst.kei_lunar_fissures ~= nil then
-        for _, fx in ipairs(inst.kei_lunar_fissures) do
-            if fx ~= nil and fx:IsValid() then
-                if fx.KillRecorderFissureFx ~= nil then
-                    fx:KillRecorderFissureFx()
-                else
-                    fx:Remove()
-                end
-            end
-        end
-        inst.kei_lunar_fissures = nil
-    end
-end
-
-local function CanSpawnRecorderFissureAtPoint(x, z)
-    local map = TheWorld.Map
-    return map == nil
-        or (map.IsPassableAtPoint ~= nil and map:IsPassableAtPoint(x, 0, z))
-        or (map.IsOceanAtPoint ~= nil and map:IsOceanAtPoint(x, 0, z))
-end
-
-local function SpawnRecorderFissures(inst)
-    ClearRecorderFissures(inst)
-
-    local x, y, z = inst.Transform:GetWorldPosition()
-    local radius_sq = RECORDER_FISSURE_RADIUS * RECORDER_FISSURE_RADIUS
-    inst.kei_lunar_fissures = {}
-
-    for dx = -RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_STEP do
-        for dz = -RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_RADIUS, RECORDER_FISSURE_STEP do
-            if dx * dx + dz * dz <= radius_sq and CanSpawnRecorderFissureAtPoint(x + dx, z + dz) then
-                local fx = SpawnPrefab("kei_recorder_lunar_fissure_fx")
-                if fx ~= nil then
-                    fx.Transform:SetPosition(x + dx, 0, z + dz)
-                    table.insert(inst.kei_lunar_fissures, fx)
-                end
-            end
-        end
-    end
-end
-
 local function SetRecorderState(inst, state)
     -- 记录仪状态同时驱动交互逻辑和动画表现。
     inst.kei_state = state
@@ -305,23 +149,39 @@ local function SetRecorderState(inst, state)
         inst:AddTag("kei_recording")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ACTIVATE)
         inst.AnimState:PushAnimation(RECORDER_ANIM_ON, true)
-        EnableRecorderBeamFx(inst)
-        SpawnRecorderFissures(inst)
         CreateForceField(inst)
     elseif state == "complete" then
         inst:AddTag("kei_record_complete")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ON, true)
-        DisableRecorderBeamFx(inst)
-        ClearRecorderFissures(inst)
         ClearRecordDrones(inst)
         ClearForceField(inst)
     else
         inst.AnimState:PlayAnimation(RECORDER_ANIM_OFF, true)
-        DisableRecorderBeamFx(inst)
-        ClearRecorderFissures(inst)
         ClearRecordDrones(inst)
         ClearForceField(inst)
     end
+end
+
+local function CancelSummonTask(inst)
+    if inst.kei_summon_task ~= nil then
+        inst.kei_summon_task:Cancel()
+        inst.kei_summon_task = nil
+    end
+end
+
+local function GiveProtocolCD(inst, doer, protocol)
+    local cd_prefab = CombatProtocolDefs.GetProtocolPrefab(protocol)
+    local cd = cd_prefab ~= nil and SpawnPrefab(cd_prefab) or nil
+    if cd == nil then
+        return false
+    end
+
+    if doer ~= nil and doer.components.inventory ~= nil then
+        doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
+    else
+        cd.Transform:SetPosition(inst.Transform:GetWorldPosition())
+    end
+    return true
 end
 
 local function ClearTargetListener(inst)
@@ -337,102 +197,415 @@ local function ClearTargetListener(inst)
     inst.kei_target_minhealth_fn = nil
 end
 
-local function CompleteRecording(inst, target)
-    -- 只有目标在记录范围内死亡，才会产出对应战斗协议。
+local function ClearOwnerListener(inst)
+    local owner = inst.kei_recording_owner
+    if owner ~= nil then
+        if inst.kei_owner_death_fn ~= nil then
+            inst:RemoveEventCallback("death", inst.kei_owner_death_fn, owner)
+        end
+        if inst.kei_owner_remove_fn ~= nil then
+            inst:RemoveEventCallback("onremove", inst.kei_owner_remove_fn, owner)
+        end
+    end
+    inst.kei_recording_owner = nil
+    inst.kei_owner_death_fn = nil
+    inst.kei_owner_remove_fn = nil
+end
+
+local function ClearChallengeSupport(inst)
+    if inst.kei_target_support_entities ~= nil then
+        for _, support in ipairs(inst.kei_target_support_entities) do
+            if support ~= nil and support:IsValid() then
+                support:Remove()
+            end
+        end
+        inst.kei_target_support_entities = nil
+    end
+end
+
+local StartRecorderDissolve
+
+local function StopRecorderTransmission(target)
+    if target == nil then
+        return
+    end
+    if target.kei_recorder_transmission_task ~= nil then
+        target.kei_recorder_transmission_task:Cancel()
+        target.kei_recorder_transmission_task = nil
+    end
+    if target.AnimState ~= nil and target:IsValid() then
+        target.AnimState:SetErosionParams(0, 0, 0)
+    end
+end
+
+local function ClearChallengeTasks(target, reset_erosion)
+    if target ~= nil then
+        if target.kei_recorder_land_task ~= nil then
+            target.kei_recorder_land_task:Cancel()
+            target.kei_recorder_land_task = nil
+        end
+        if reset_erosion ~= false then
+            StopRecorderTransmission(target)
+        end
+    end
+end
+
+local function RemoveSummonedTarget(inst)
+    local target = inst.kei_target
+    ClearChallengeTasks(target, false)
+    ClearOwnerListener(inst)
+    ClearTargetListener(inst)
+    ClearChallengeSupport(inst)
+    if target ~= nil and target:IsValid() then
+        StartRecorderDissolve(target)
+    end
+end
+
+local function AggroRecorderChallenge(target, doer)
+    if target ~= nil
+        and target:IsValid()
+        and target.components.combat ~= nil
+        and doer ~= nil
+        and doer:IsValid()
+    then
+        target.components.combat:SuggestTarget(doer)
+    end
+end
+
+local function StartRecorderTransmission(target)
+    if target == nil or target.AnimState == nil then
+        return
+    end
+
+    local duration = 3.5
+    local tick_time = math.max(TheSim:GetTickTime(), FRAMES)
+    local elapsed = 0
+    target.AnimState:SetErosionParams(1, RECORDER_SHADER_CUTOFF_HEIGHT, -1.0)
+    target.kei_recorder_transmission_task = target:DoPeriodicTask(tick_time, function(inst)
+        if not inst:IsValid() then
+            return
+        end
+
+        elapsed = elapsed + tick_time
+        local amount = math.max(0, 1 - elapsed / duration)
+        inst.AnimState:SetErosionParams(amount, RECORDER_SHADER_CUTOFF_HEIGHT, -1.0)
+        if amount <= 0 then
+            StopRecorderTransmission(inst)
+        end
+    end)
+end
+
+-- 记录器强制删除 Boss 时先播放溶解消失，再移除实体，避免触发死亡奖励流程。
+StartRecorderDissolve = function(target)
+    if target == nil or not target:IsValid() then
+        return
+    end
+    if target.kei_recorder_dissolving then
+        return
+    end
+    target.kei_recorder_dissolving = true
+
+    if target.kei_recorder_transmission_task ~= nil then
+        target.kei_recorder_transmission_task:Cancel()
+        target.kei_recorder_transmission_task = nil
+    end
+    if target.kei_recorder_dissolve_task ~= nil then
+        target.kei_recorder_dissolve_task:Cancel()
+        target.kei_recorder_dissolve_task = nil
+    end
+
+    if target.AnimState == nil then
+        target:Remove()
+        return
+    end
+
+    local tick_time = math.max(TheSim:GetTickTime(), FRAMES)
+    local elapsed = 0
+    target.AnimState:SetErosionParams(0, RECORDER_SHADER_CUTOFF_HEIGHT, -1.0)
+    target.kei_recorder_dissolve_task = target:DoPeriodicTask(tick_time, function(inst)
+        if not inst:IsValid() then
+            return
+        end
+
+        elapsed = elapsed + tick_time
+        local amount = math.min(1, elapsed / RECORDER_DISSOLVE_DURATION)
+        inst.AnimState:SetErosionParams(amount, RECORDER_SHADER_CUTOFF_HEIGHT, -1.0)
+        if amount >= 1 then
+            if inst.kei_recorder_dissolve_task ~= nil then
+                inst.kei_recorder_dissolve_task:Cancel()
+                inst.kei_recorder_dissolve_task = nil
+            end
+            inst:Remove()
+        end
+    end)
+end
+
+local function PrepareMooseChallenge(target)
+    -- 记录器召唤的麋鹿鹅不受季节限制。
+    if target.StopAllWatchingWorldStates ~= nil then
+        target:StopAllWatchingWorldStates()
+    end
+    target.shouldGoAway = false
+end
+
+local function PrepareMalbatrossChallenge(target)
+    -- 记录器召唤的邪天翁忽略原版五秒陆地离场检查。
+    if target.components.locomotor ~= nil then
+        target.components.locomotor.pathcaps = {
+            allowocean = true,
+            ignoreLand = true,
+        }
+    end
+    target.landtimer = math.huge
+    target.kei_recorder_land_task = target:DoPeriodicTask(0.25, function(inst)
+        if inst:IsValid() then
+            inst.landtimer = math.huge
+        end
+    end)
+end
+
+local function PrepareAntlionChallenge(target, doer)
+    -- 蚁狮只有在 persists 为 true 时才会初始化战斗组件。
+    target.persists = true
+    if target.StartCombat ~= nil then
+        target:StartCombat(doer, "kei_recorder")
+    end
+    target.persists = false
+end
+
+local function PrepareDaywalker2Challenge(inst, target)
+    -- 拾荒疯猪的攻击逻辑依赖绑定的垃圾堆。
+    local junk = SpawnPrefab("junk_pile_big")
+    if junk == nil then
+        return
+    end
+
+    local x, y, z = target.Transform:GetWorldPosition()
+    junk.persists = false
+    junk.daywalker_side = 1
+    junk.Transform:SetPosition(x, y, z)
+
+    if junk.CanBuryDaywalker ~= nil
+        and junk:CanBuryDaywalker(target)
+        and junk.TryBuryDaywalker ~= nil
+    then
+        junk:TryBuryDaywalker(target)
+        if junk.TryReleaseDaywalker ~= nil then
+            junk:TryReleaseDaywalker(target)
+        end
+    end
+
+    inst.kei_target_support_entities = { junk }
+end
+
+local function PrepareStalkerAtriumChallenge(target)
+    -- 织影者没有远古竞技场时，覆盖实例级离场检查，避免离场死亡。
+    target.IsNearAtrium = function()
+        return true
+    end
+    target.OnLostAtrium = function() end
+    target.IsAtriumDecay = function()
+        return false
+    end
+    target.OnEntitySleep = function(inst)
+        if inst.sleeptask ~= nil then
+            inst.sleeptask:Cancel()
+            inst.sleeptask = nil
+        end
+    end
+    if target.sleeptask ~= nil then
+        target.sleeptask:Cancel()
+        target.sleeptask = nil
+    end
+end
+
+local function PrepareAlterguardianChallenge(target)
+    -- 直接召唤第三阶段仍要进入原版生成状态。
+    if target.sg ~= nil then
+        target.sg:GoToState("spawn")
+    end
+end
+
+local function PrepareRecorderChallenge(inst, target, doer)
+    target.kei_recorder_spawned = true
+    target.kei_recorder_source = inst
+
+    if target.prefab == "moose" then
+        PrepareMooseChallenge(target)
+    elseif target.prefab == "malbatross" then
+        PrepareMalbatrossChallenge(target)
+    elseif target.prefab == "antlion" then
+        PrepareAntlionChallenge(target, doer)
+    elseif target.prefab == "daywalker2" then
+        PrepareDaywalker2Challenge(inst, target)
+    elseif target.prefab == "stalker_atrium" then
+        PrepareStalkerAtriumChallenge(target)
+    elseif target.prefab == "alterguardian_phase3" then
+        PrepareAlterguardianChallenge(target)
+    end
+
+    StartRecorderTransmission(target)
+
+    -- 初始仇恨指向召唤者，后续仍由原版 AI 处理换目标。
+    AggroRecorderChallenge(target, doer)
+    target:DoTaskInTime(0, function(inst)
+        AggroRecorderChallenge(inst, doer)
+    end)
+end
+
+local function AbortRecordingWithoutReward(inst)
     if inst.kei_state ~= "recording" then
         return
     end
-    if TargetInRange(inst, target) then
-        inst.kei_completed_protocol = inst.kei_target_prefab
-        SetRecorderState(inst, "complete")
-    else
-        inst.kei_completed_protocol = nil
-        SetRecorderState(inst, "idle")
+
+    CancelSummonTask(inst)
+    RemoveSummonedTarget(inst)
+    inst.kei_recording_protocol = nil
+    inst.kei_target_prefab = nil
+    inst.kei_completed_protocol = nil
+    SetRecorderState(inst, "idle")
+end
+
+local function WatchRecorderOwner(inst, owner)
+    if owner == nil then
+        return
     end
+
+    inst.kei_recording_owner = owner
+    inst.kei_owner_death_fn = function()
+        AbortRecordingWithoutReward(inst)
+    end
+    inst.kei_owner_remove_fn = function()
+        AbortRecordingWithoutReward(inst)
+    end
+    inst:ListenForEvent("death", inst.kei_owner_death_fn, owner)
+    inst:ListenForEvent("onremove", inst.kei_owner_remove_fn, owner)
+end
+
+local function CompleteRecording(inst, target)
+    -- 只有记录器召唤出的目标死亡，才会产出高级巨兽协议。
+    if inst.kei_state ~= "recording" or target ~= inst.kei_target then
+        return
+    end
+
+    local challenge = GetRecorderChallenge(inst.kei_recording_protocol)
+    if challenge == nil then
+        return
+    end
+
+    CancelSummonTask(inst)
+    inst.kei_completed_protocol = challenge.advanced_protocol
+    inst.kei_recording_protocol = nil
+    ClearChallengeTasks(target)
+    ClearOwnerListener(inst)
     ClearTargetListener(inst)
+    ClearChallengeSupport(inst)
+    SetRecorderState(inst, "complete")
+    return true
+end
+
+local function SpawnRecorderChallenge(inst, doer)
+    if inst.kei_state ~= "recording" or inst.kei_target ~= nil then
+        return false
+    end
+
+    local challenge = GetRecorderChallenge(inst.kei_recording_protocol)
+    if challenge == nil then
+        return false
+    end
+
+    local target = SpawnPrefab(challenge.summon_prefab)
+    if target == nil then
+        ClearOwnerListener(inst)
+        GiveProtocolCD(inst, doer, challenge.basic_protocol)
+        inst.kei_recording_protocol = nil
+        SetRecorderState(inst, "idle")
+        Say(doer, "ANNOUNCE_KEI_RECORD_STOPPED")
+        return false
+    end
+
+    target.persists = false
+    local x, y, z = inst.Transform:GetWorldPosition()
+    if target.Physics ~= nil then
+        target.Physics:Teleport(x, y, z)
+    else
+        target.Transform:SetPosition(x, y, z)
+    end
+
+    PrepareRecorderChallenge(inst, target, doer)
+
+    inst.kei_target = target
+    inst.kei_target_prefab = target.prefab
+    inst.kei_target_death_fn = function(target_inst)
+        if CompleteRecording(inst, target_inst) then
+            Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
+        end
+    end
+    inst:ListenForEvent("death", inst.kei_target_death_fn, target)
+    if target.prefab == "daywalker" or target.prefab == "daywalker2" then
+        inst.kei_target_minhealth_fn = function(target_inst)
+            if CompleteRecording(inst, target_inst) then
+                Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
+            end
+        end
+        inst:ListenForEvent("minhealth", inst.kei_target_minhealth_fn, target)
+    end
+    SpawnRecordDrones(inst, target)
+    return true
 end
 
 local function StartKeiRecording(inst, cd, doer)
-    -- 提交 CD 时再次校验目标，防止绑定后目标离开、死亡或被替换。
-    if inst.kei_state ~= "idle" or cd == nil or not cd:HasTag("kei_blank_cd") then
-        return false
-    end
-    local target = GetBoundTarget(cd)
-    if target == nil
-        or cd.kei_bound_prefab == nil
-        or not VALID_RECORD_TARGETS[cd.kei_bound_prefab]
-        or target.prefab ~= cd.kei_bound_prefab
-        or target.components.health == nil
-        or target.components.health:IsDead()
-        or target.defeated
-        or not TargetInRange(inst, target)
-    then
+    -- 记录器只接受初级巨兽协议，不再接受空白 CD 或绑定目标。
+    local protocol = GetCombatProtocolFromItem(cd)
+    local challenge = GetRecorderChallenge(protocol)
+    if inst.kei_state ~= "idle" or challenge == nil then
         return false
     end
 
-    -- 提交成功后消耗空白 CD，并监听目标死亡来完成记录。
+    -- 提交成功后消耗初级协议，延迟三秒召唤对应巨兽。
     if cd.components.inventoryitem ~= nil and cd.components.inventoryitem.owner ~= nil then
         cd.components.inventoryitem:RemoveFromOwner(true)
     end
     cd:Remove()
 
-    inst.kei_target = target
-    inst.kei_target_prefab = GetRecordProtocol(target.prefab) or target.prefab
+    inst.kei_recording_protocol = challenge.basic_protocol
+    WatchRecorderOwner(inst, doer)
+    inst.kei_target_prefab = nil
     inst.kei_completed_protocol = nil
-    inst.kei_target_death_fn = function(target_inst)
-        CompleteRecording(inst, target_inst)
-        Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
-    end
-    inst:ListenForEvent("death", inst.kei_target_death_fn, target)
-    if target.prefab == "daywalker" or target.prefab == "daywalker2" then
-        inst.kei_target_minhealth_fn = function(target_inst)
-            CompleteRecording(inst, target_inst)
-            Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
-        end
-        inst:ListenForEvent("minhealth", inst.kei_target_minhealth_fn, target)
-    end
     SetRecorderState(inst, "recording")
-    SpawnRecordDrones(inst, target)
+    inst.kei_summon_task = inst:DoTaskInTime(RECORDER_SUMMON_DELAY, function()
+        inst.kei_summon_task = nil
+        SpawnRecorderChallenge(inst, doer)
+    end)
     Say(doer, "ANNOUNCE_KEI_RECORDING")
     return true
 end
 
 local function StopKeiRecording(inst, doer)
-    -- 主动停止记录视为取消任务，返还一张新的空白 CD。
+    -- 主动停止记录会移除记录器召唤的巨兽，并返还原本的初级协议。
     if inst.kei_state ~= "recording" then
         return false
     end
-    local cd = SpawnPrefab("kei_blank_cd")
-    if cd ~= nil then
-        if doer ~= nil and doer.components.inventory ~= nil then
-            doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
-        else
-            cd.Transform:SetPosition(inst.Transform:GetWorldPosition())
-        end
-    end
-    ClearTargetListener(inst)
+
+    CancelSummonTask(inst)
+    local protocol = inst.kei_recording_protocol
+    RemoveSummonedTarget(inst)
+    GiveProtocolCD(inst, doer, protocol)
+    inst.kei_recording_protocol = nil
     inst.kei_target_prefab = nil
     inst.kei_completed_protocol = nil
-    ClearRecordDrones(inst)
     SetRecorderState(inst, "idle")
     Say(doer, "ANNOUNCE_KEI_RECORD_STOPPED")
     return true
 end
 
 local function HarvestKeiData(inst, doer)
-    -- 收获时根据记录完成的巨兽类型生成战斗协议 CD。
+    -- 收获时根据击败的巨兽生成高级巨兽协议 CD。
     if inst.kei_state ~= "complete" or inst.kei_completed_protocol == nil then
         return false
     end
-    local cd_prefab = CombatProtocolDefs.GetProtocolPrefab(inst.kei_completed_protocol)
-    local cd = cd_prefab ~= nil and SpawnPrefab(cd_prefab) or nil
-    if cd == nil then
+    if not GiveProtocolCD(inst, doer, inst.kei_completed_protocol) then
         return false
-    end
-    if doer ~= nil and doer.components.inventory ~= nil then
-        doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())
-    else
-        cd.Transform:SetPosition(inst.Transform:GetWorldPosition())
     end
     inst.kei_completed_protocol = nil
     inst.kei_target_prefab = nil
@@ -490,8 +663,8 @@ local function PackUpKeiRecorder(inst, doer)
     inst.persists = false
     inst:AddTag("NOCLICK")
     ClearRecordDrones(inst)
-    ClearRecorderFissures(inst)
     ClearForceField(inst)
+    CancelSummonTask(inst)
     ClearTargetListener(inst)
     PlayPackUpAnimation(inst)
 
@@ -508,25 +681,26 @@ local function OnHit(inst)
 end
 
 local function OnSave(inst, data)
-    -- 记录中无法安全保存目标实体，因此读档后返还空白 CD 并回到 idle。
+    -- 记录中无法安全保存目标实体，因此读档后返还初级协议并回到 idle。
     data.kei_state = inst.kei_state
+    data.kei_recording_protocol = inst.kei_recording_protocol
     data.kei_target_prefab = inst.kei_target_prefab
     data.kei_completed_protocol = inst.kei_completed_protocol
-    data.return_blank_cd = inst.kei_state == "recording" or nil
+    data.return_recording_protocol = inst.kei_state == "recording"
+        and inst.kei_recording_protocol
+        or nil
 end
 
 local function OnLoad(inst, data)
     if data ~= nil then
         inst.kei_target_prefab = data.kei_target_prefab
         inst.kei_completed_protocol = data.kei_completed_protocol
+        inst.kei_recording_protocol = nil
         SetRecorderState(inst, data.kei_state == "complete" and "complete" or "idle")
-        if data.return_blank_cd then
+        if data.return_recording_protocol ~= nil then
             -- 延迟一帧生成，确保实体位置和世界状态已恢复。
             inst:DoTaskInTime(0, function()
-                local cd = SpawnPrefab("kei_blank_cd")
-                if cd ~= nil then
-                    cd.Transform:SetPosition(inst.Transform:GetWorldPosition())
-                end
+                GiveProtocolCD(inst, nil, data.return_recording_protocol)
             end)
         end
     end
@@ -584,9 +758,9 @@ local function recorder_fn()
     inst.PackUpKeiRecorder = PackUpKeiRecorder
 
     inst:ListenForEvent("onbuilt", OnBuilt)
-    inst:ListenForEvent("onremove", DisableRecorderBeamFx)
-    inst:ListenForEvent("onremove", ClearRecorderFissures)
     inst:ListenForEvent("onremove", ClearRecordDrones)
+    inst:ListenForEvent("onremove", CancelSummonTask)
+    inst:ListenForEvent("onremove", RemoveSummonedTarget)
 
     inst.OnSave = OnSave
     inst.OnLoad = OnLoad
@@ -666,56 +840,6 @@ local function CreateRecordDroneShadowFx()
     return inst
 end
 
-local function recorder_lunar_fissure_fx_fn()
-    local inst = CreateEntity()
-
-    inst.entity:AddTransform()
-    inst.entity:AddAnimState()
-    inst.entity:AddNetwork()
-
-    inst:AddTag("FX")
-    inst:AddTag("NOCLICK")
-    inst:AddTag("NOBLOCK")
-
-    local variation = math.random(4)
-    local base_anim = "tile"..tostring(variation)
-
-    inst.AnimState:SetBank("wagboss_fissure")
-    inst.AnimState:SetBuild("wagboss_fissure")
-    inst.AnimState:PlayAnimation(base_anim.."_pre")
-    inst.AnimState:PushAnimation(base_anim.."_loop", true)
-    inst.AnimState:SetBloomEffectHandle("shaders/anim.ksh")
-    inst.AnimState:SetLightOverride(0.3)
-    inst.AnimState:SetOrientation(ANIM_ORIENTATION.OnGround)
-    inst.AnimState:SetLayer(LAYER_BACKGROUND)
-    inst.AnimState:SetSortOrder(2)
-    inst.AnimState:SetMultColour(
-        RECORDER_FISSURE_COLOUR_R,
-        RECORDER_FISSURE_COLOUR_G,
-        RECORDER_FISSURE_COLOUR_B,
-        RECORDER_FISSURE_ALPHA
-    )
-    inst.AnimState:SetAddColour(
-        RECORDER_FISSURE_ADD_R,
-        RECORDER_FISSURE_ADD_G,
-        RECORDER_FISSURE_ADD_B,
-        0
-    )
-    inst.AnimState:SetForceSinglePass(true)
-
-    inst.entity:SetPristine()
-
-    if not TheWorld.ismastersim then
-        return inst
-    end
-
-    inst.persists = false
-    inst.kei_base_anim = base_anim
-    inst.KillRecorderFissureFx = KillRecorderFissureFx
-
-    return inst
-end
-
 local function record_drone_fn()
     local inst = CreateEntity()
 
@@ -762,13 +886,17 @@ local function record_drone_fn()
 end
 
 -- 同时返回结构 prefab、部署包 prefab 和 placer。
-local prefab_deps = { "kei_blank_cd", "kei_record_drone", "kei_recorder_lunar_fissure_fx", "terrarium_fx", "wagpunk_cagewall", "wagpunk_arena_collision" }
+local prefab_deps = {
+    "kei_record_drone",
+    "wagpunk_cagewall",
+    "wagpunk_arena_collision",
+    "junk_pile_big",
+}
 for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
     table.insert(prefab_deps, def.prefab)
 end
 
 return Prefab("kei_data_recorder", recorder_fn, assets, prefab_deps),
-    Prefab("kei_recorder_lunar_fissure_fx", recorder_lunar_fissure_fx_fn, assets),
     Prefab("kei_record_drone", record_drone_fn, assets),
     MakeDeployableKitItem(
         "kei_data_recorder_item",

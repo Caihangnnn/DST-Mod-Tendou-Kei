@@ -75,7 +75,7 @@ end
 -- 同时挂到角色专属栏和 Kei 自己的协议栏。
 local filters = { "CHARACTER", KEI_FILTER }
 
--- 空白 CD：用于绑定巨兽样本并提交到记录仪。
+-- 空白 CD：保留用于其他数据复制测试，不再参与数据记录器流程。
 AddRecipe2(
     "kei_blank_cd",
     { Ingredient("charcoal", 10) },

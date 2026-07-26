@@ -526,6 +526,8 @@ function KeiProtocolSlots:SwapWithProtocolBinder(binder)
     end
 
     if swapped then
+        -- 交换直接改动了协议容器内容，不一定触发 itemget/itemlose；强制重新读取并应用全部协议效果。
+        self._protocol_state_dirty = true
         self:Refresh()
     end
     return swapped

@@ -4,8 +4,6 @@ local DaywalkerLeap = require("kei/protocols/combat/effects/beast/_daywalker_lea
 local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local SpDamageUtil = require("components/spdamageutil")
 
-local VALID_RECORD_TARGETS = CombatProtocolDefs.VALID_RECORD_TARGETS
-
 local function AddKeiActionHandler(action, state)
     AddStategraphActionHandler("wilson", ActionHandler(action, state))
     AddStategraphActionHandler("wilson_client", ActionHandler(action, state))
@@ -542,16 +540,6 @@ AddStategraphState("wilson_client", State{
     },
 })
 
-local function IsValidRecordTarget(target)
-    return target ~= nil
-        and target:IsValid()
-        and VALID_RECORD_TARGETS[target.prefab]
-        and target:HasTag("epic")
-        and target.components.health ~= nil
-        and not target.components.health:IsDead()
-        and not target:HasTag("INLIMBO")
-end
-
 local function GetBlankCDBoundTarget(cd)
     if cd == nil then
         return nil
@@ -569,6 +557,20 @@ local function GetBlankCDBoundTarget(cd)
     return nil
 end
 
+local function GetCombatProtocolFromItem(item)
+    if item == nil then
+        return nil
+    end
+
+    -- 协议字段只在服务器实体上写入；客户端动作预览用 prefab 反查，保证右键动作能出现。
+    if item.kei_combat_protocol ~= nil then
+        return item.kei_combat_protocol
+    end
+    return CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS ~= nil
+        and CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS[item.prefab]
+        or nil
+end
+
 local function IsBlankCDReadyForNewBinding(cd)
     if cd == nil or not cd:HasTag("kei_blank_cd") then
         return false
@@ -578,7 +580,7 @@ local function IsBlankCDReadyForNewBinding(cd)
     end
 
     local target = GetBlankCDBoundTarget(cd)
-    local ready = not IsValidRecordTarget(target)
+    local ready = target == nil or not target:IsValid()
     if ready and cd.ClearBoundTarget ~= nil then
         cd:ClearBoundTarget()
     end
@@ -643,31 +645,6 @@ local function GetTargetSkinBuild(target)
     end
     local success, skin_build = pcall(target.GetSkinBuild, target)
     return success and skin_build or nil
-end
-
-local function FindRecorderForTarget(target)
-    -- 手持空白 CD 点巨兽时，寻找能覆盖该巨兽的空闲记录仪。
-    if not IsValidRecordTarget(target) then
-        return nil
-    end
-    local x, y, z = target.Transform:GetWorldPosition()
-    local recorders = TheSim:FindEntities(x, y, z, TUNING.KEI_RECORDER_RANGE, { "kei_data_recorder" }, { "burnt" })
-    local best_recorder = nil
-    local best_dsq = nil
-
-    for _, recorder in ipairs(recorders) do
-        if GetRecorderState(recorder) == RECORDER_STATE.idle
-            and recorder:GetDistanceSqToInst(target) <= TUNING.KEI_RECORDER_RANGE * TUNING.KEI_RECORDER_RANGE
-        then
-            local dsq = recorder:GetDistanceSqToInst(target)
-            if best_dsq == nil or dsq < best_dsq then
-                best_dsq = dsq
-                best_recorder = recorder
-            end
-        end
-    end
-
-    return best_recorder
 end
 
 -- 右键电池：把电池转化为 Kei 的电量，也就是 hunger 组件。
@@ -1598,41 +1575,12 @@ AddStategraphState("wilson_client", State{
     end,
 })
 
--- 空白 CD 先绑定目标，之后才能提交给数据记录仪开始记录。
-local bind_cd_action = AddAction("KEI_BIND_CD", "绑定样本", function(act)
-    if not IsKei(act.doer) or act.invobject == nil or not act.invobject:HasTag("kei_blank_cd") then
-        return false
-    end
-    local target = act.target
-    if not IsValidRecordTarget(target) then
-        Say(act.doer, "ANNOUNCE_KEI_NO_TARGET")
-        return false
-    end
-    local recorder = FindRecorderForTarget(target)
-    if recorder == nil then
-        Say(act.doer, "ANNOUNCE_KEI_NO_RECORDER")
-        return false
-    end
-    local old_target = GetBlankCDBoundTarget(act.invobject)
-    if not IsBlankCDReadyForNewBinding(act.invobject) and old_target ~= target then
-        Say(act.doer, "ANNOUNCE_KEI_CD_NOT_BOUND")
-        return false
-    end
-    act.invobject:SetBoundTarget(target)
-    Say(act.doer, "ANNOUNCE_KEI_BOUND")
-    return true
-end)
-bind_cd_action.mount_valid = true
-bind_cd_action.rmb = true
-AddKeiActionHandler(ACTIONS.KEI_BIND_CD, "doshortaction")
-
--- 把已绑定目标的空白 CD 交给数据记录仪。
+-- 将初级巨兽协议 CD 交给数据记录器，延迟三秒召唤对应巨兽。
 local submit_cd_action = AddAction("KEI_SUBMIT_CD", "提交记录", function(act)
     if not IsKei(act.doer) or act.target == nil or act.invobject == nil or act.target.StartKeiRecording == nil then
         return false
     end
-    if act.invobject.kei_bound_prefab == nil then
-        Say(act.doer, "ANNOUNCE_KEI_CD_NOT_BOUND")
+    if CombatProtocolDefs.GetRecorderChallenge(GetCombatProtocolFromItem(act.invobject)) == nil then
         return false
     end
     return act.target:StartKeiRecording(act.invobject, act.doer)
@@ -1641,7 +1589,7 @@ submit_cd_action.mount_valid = true
 submit_cd_action.rmb = true
 AddKeiActionHandler(ACTIONS.KEI_SUBMIT_CD, "give")
 
--- 记录中途取消会返还一张空白 CD，记录仪回到 idle。
+-- 记录中途取消会返还原本的初级巨兽协议 CD，记录仪回到 idle。
 local stop_record_action = AddAction("KEI_STOP_RECORD", "停止记录", function(act)
     if not IsKei(act.doer) or act.target == nil or act.target.StopKeiRecording == nil then
         return false
@@ -1839,7 +1787,9 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
     if not right or not IsKei(doer) or target == nil then
         return
     end
-    if inst:HasTag("kei_blank_cd") and target:HasTag("kei_data_recorder") then
+    if target:HasTag("kei_data_recorder")
+        and CombatProtocolDefs.GetRecorderChallenge(GetCombatProtocolFromItem(inst)) ~= nil
+    then
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)
     elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
         and inst:HasTag("kei_blank_cd")
@@ -1847,8 +1797,6 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
         and target:HasTag("kei_combat_protocol")
     then
         table.insert(actions, ACTIONS.KEI_COPY_DATA_CD)
-    elseif inst:HasTag("kei_blank_cd") and IsBlankCDReadyForNewBinding(inst) and target:HasTag("epic") then
-        table.insert(actions, ACTIONS.KEI_BIND_CD)
     elseif TUNING.KEI_ALLOW_DATA_COPY ~= false
         and inst:HasTag("kei_analysis_tool")
         and target:HasTag("kei_analysis_protocol")
