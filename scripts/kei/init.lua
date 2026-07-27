@@ -6,4 +6,5 @@ modimport("scripts/kei/actions.lua")
 modimport("scripts/kei/integrations/winona.lua")
 modimport("scripts/kei/recipes.lua")
 modimport("scripts/kei/integrations/wanderingtrader.lua")
+modimport("scripts/kei/growth/init.lua")
 
