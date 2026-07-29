@@ -1011,116 +1011,23 @@ AddStategraphState("wilson", State{
             inst.sg:GoToState("idle")
             return
         end
-
-        AddKeiChassisBuild(inst)
-        inst.AnimState:PlayAnimation("wx_chassis_idle")
-        if inst.components.health ~= nil then
-            inst.components.health:SetInvincible(true)
-        end
-        SetKeiDormantControls(inst, false)
-        if inst.components.talker ~= nil then
-            inst.components.talker:ShutUp()
-            inst.components.talker:IgnoreAll("kei_dormant")
-        end
-        if inst.ScreenFade ~= nil then
-            inst:ScreenFade(true, 1)
-        end
-    end,
-
-    timeline =
-    {
-        FrameEvent(15, function(inst)
-            inst.AnimState:PlayAnimation("wx_chassis_poweron")
-            inst.SoundEmitter:PlaySound("WX_rework/chassis/internal_rumble")
-        end),
-        FrameEvent(39, function(inst) inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk") end),
-        FrameEvent(42, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/clunk_big_single") end),
-        FrameEvent(57, function(inst) inst.SoundEmitter:PlaySound("WX_rework/chassis/chassis_clunk") end),
-        FrameEvent(73, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/ratchet") end),
-        FrameEvent(88, function(inst) inst.SoundEmitter:PlaySound("rifts5/generic_metal/clunk") end),
-        FrameEvent(75, function(inst)
-            SetKeiDormantControls(inst, true)
-            if inst.components.talker ~= nil then
-                inst.components.talker:StopIgnoringAll("kei_dormant")
-            end
-        end),
-        FrameEvent(82, function(inst)
-            inst:RemoveTag("notarget")
-            if inst.components.health ~= nil then
-                inst.components.health:SetInvincible(false)
-            end
-        end),
-        FrameEvent(91, function(inst)
-            inst.sg:RemoveStateTag("busy")
-            inst.sg:RemoveStateTag("nopredict")
-            inst.sg:RemoveStateTag("notalking")
-            inst.sg:AddStateTag("idle")
-            inst.sg:AddStateTag("canrotate")
-        end),
-    },
-
-    events =
-    {
-        EventHandler("animover", function(inst)
-            if inst.AnimState:AnimDone() and not inst.sg:HasStateTag("busy") then
-                inst.sg:GoToState("idle")
-            end
-        end),
-    },
-
-    onexit = function(inst)
-        inst.Transform:SetFourFaced()
-        ClearKeiChassisBuild(inst)
-        inst:RemoveTag("notarget")
-        if inst.components.health ~= nil then
-            inst.components.health:SetInvincible(false)
-        end
-        SetKeiDormantControls(inst, true)
-        if inst.components.talker ~= nil then
-            inst.components.talker:StopIgnoringAll("kei_dormant")
-        end
+        -- The standard wx_poweron state is the controllable player-body
+        -- reboot animation used after transferring consciousness into a
+        -- backup chassis. It is different from wx78_possessedbody.spawn.
+        inst.sg:GoToState("wx_poweron", false)
     end,
 })
 
 AddStategraphState("wilson_client", State{
     name = "kei_dormant_poweron",
     tags = { "busy", "nopredict", "notalking", "noattack", "nointerrupt" },
-    server_states = { "kei_dormant_poweron" },
+    server_states = { "kei_dormant_poweron", "wx_poweron" },
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
         inst.Transform:SetNoFaced()
-        AddKeiChassisBuild(inst)
-        inst.AnimState:PlayAnimation("wx_chassis_idle")
         inst:PerformPreviewBufferedAction()
-        inst.sg:SetTimeout(4)
-    end,
-
-    timeline =
-    {
-        FrameEvent(15, function(inst)
-            inst.AnimState:PlayAnimation("wx_chassis_poweron")
-        end),
-    },
-
-    onupdate = function(inst)
-        if inst.sg:ServerStateMatches() then
-            if inst.entity:FlattenMovementPrediction() then
-                inst.sg:GoToState("idle", "noanim")
-            end
-        elseif inst.bufferedaction == nil then
-            inst.sg:GoToState("idle")
-        end
-    end,
-
-    ontimeout = function(inst)
-        inst:ClearBufferedAction()
-        inst.sg:GoToState("idle")
-    end,
-
-    onexit = function(inst)
-        inst.Transform:SetFourFaced()
-        ClearKeiChassisBuild(inst)
+        inst.sg:GoToState("wx_poweron", false)
     end,
 })
 

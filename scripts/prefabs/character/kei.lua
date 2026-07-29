@@ -6,6 +6,7 @@ local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
+local KeiBackupBody = require("kei/growth/backup_body")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
@@ -24,6 +25,7 @@ local assets = {
 local prefabs = {
     "kei_battery",
     "kei_dormant_chassis",
+    "kei_backupbody",
     "kei_protocol_container",
     "kei_protocol_binder",
     "minerhatlight",
@@ -395,6 +397,8 @@ end
 local UpdateDormantActionFilter
 
 local function common_postinit(inst)
+    KeiBackupBody.ConfigureCommon(inst)
+
     -- 标签用于动作过滤、专属配方解锁，以及电击免疫等基础设定。
     inst:AddTag("kei")
     inst:AddTag("electricdamageimmune")
@@ -992,6 +996,8 @@ local function master_postinit(inst)
     inst:ListenForEvent("onremove", StopKeiDormant)
     inst:ListenForEvent("onremove", RemoveKeiPersonalLight)
 
+    KeiBackupBody.ConfigurePlayer(inst)
+
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave
     inst._OnLoad = OnLoad
@@ -1039,4 +1045,5 @@ local function dormant_chassis_fn()
 end
 
 return MakePlayerCharacter("kei", prefabs, assets, common_postinit, master_postinit),
-    Prefab("kei_dormant_chassis", dormant_chassis_fn, assets)
+    Prefab("kei_dormant_chassis", dormant_chassis_fn, assets),
+    Prefab("kei_backupbody", KeiBackupBody.MakePrefab, assets)
