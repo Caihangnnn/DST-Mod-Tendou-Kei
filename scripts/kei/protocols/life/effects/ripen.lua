@@ -2,6 +2,7 @@
 
 local RipenRecipe = {}
 local GrowthRecipes = require("kei/growth_recipes")
+local RecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 
 local PROTOCOL = "ripen"
 local RECIPE = "kei_ripen_spell"
@@ -9,23 +10,12 @@ local EXPERIENCE_COST = TUNING.KEI_LIFE_RIPEN_EXPERIENCE_COST or 50
 local GROW_TIMER_NAME = "grow"
 local RIPEN_CANT_TAGS = { "INLIMBO", "FX", "player", "playerghost", "stump", "withered", "barren" }
 
-local function HasRipenProtocol(inst)
-    return inst ~= nil
-        and inst.components ~= nil
-        and inst.components.kei_protocolslots ~= nil
-        and inst.components.kei_protocolslots:HasLifeProtocol(PROTOCOL)
-end
-
 local function AddRecipeToBuilder(inst)
-    if inst ~= nil and inst.components ~= nil and inst.components.builder ~= nil then
-        inst.components.builder:AddRecipe(RECIPE)
-    end
+    RecipeUnlocks.Enable(inst, PROTOCOL, RECIPE)
 end
 
 local function RemoveRecipeFromBuilder(inst)
-    if inst ~= nil and inst.components ~= nil and inst.components.builder ~= nil then
-        inst.components.builder:RemoveRecipe(RECIPE)
-    end
+    RecipeUnlocks.Disable(inst, RECIPE)
 end
 
 local function HasGrowTimer(inst)
@@ -270,7 +260,7 @@ function RipenRecipe.DoBuild(builder, recname, pt, rotation, skin)
     local recipe = GetValidRecipe(recname)
     if inst == nil
         or recipe == nil
-        or not HasRipenProtocol(inst)
+        or not RecipeUnlocks.CanUse(inst, PROTOCOL, RECIPE)
         or PREFAB_SKINS_SHOULD_NOT_SELECT[skin]
     then
         return false
@@ -303,6 +293,10 @@ function RipenRecipe.DoBuild(builder, recname, pt, rotation, skin)
     end
     if not GrowthRecipes.TrySpendExperience(inst, EXPERIENCE_COST) then
         return false, "KEI_EXPERIENCE_NOT_FULL"
+    end
+
+    if not RecipeUnlocks.UnlockAfterBuild(inst, PROTOCOL, RECIPE) then
+        return false, "KEI_PROTOCOL_CONSUME_FAILED"
     end
     return true
 end

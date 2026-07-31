@@ -105,7 +105,7 @@ local function OpenWithoutClosingProtocolSlots(container, doer, ...)
     if inventory ~= nil then
         for open_inst in pairs(inventory.opencontainers) do
             if open_inst ~= container.inst
-                and open_inst:HasTag("kei_protocol_slot")
+                and (open_inst:HasTag("kei_protocol_slot") or open_inst:HasTag("kei_mini_alice"))
                 and open_inst.components.container ~= nil
                 and open_inst.components.container:IsOpenedBy(doer)
             then

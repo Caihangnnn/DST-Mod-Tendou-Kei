@@ -28,6 +28,7 @@ local prefabs = {
     "kei_backupbody",
     "kei_protocol_container",
     "kei_protocol_binder",
+    "kei_mini_alice",
     "minerhatlight",
     "reticuleaoe",
     "reticuleaoeping",
@@ -74,6 +75,78 @@ local start_inv = {
     "kei_battery",
     "kei_battery",
 }
+
+local MINI_ALICE_SLOT = 8
+
+local function FindMiniAliceItem(inst)
+    local inventory = inst ~= nil and inst.components ~= nil and inst.components.inventory or nil
+    if inventory == nil then
+        return nil
+    end
+
+    for slot = 1, inventory:GetNumSlots() do
+        local item = inventory:GetItemInSlot(slot)
+        if item ~= nil and item:HasTag("kei_mini_alice") then
+            return item
+        end
+    end
+end
+
+local function DropReplacedInventoryItem(inst, item)
+    if item == nil then
+        return
+    end
+
+    item.Transform:SetPosition(inst.Transform:GetWorldPosition())
+    if item.components ~= nil and item.components.inventoryitem ~= nil then
+        item.components.inventoryitem:OnDropped(true)
+    end
+    inst:PushEvent("dropitem", { item = item })
+end
+
+local function EnsureMiniAliceItem(inst)
+    if not TheWorld.ismastersim
+        or inst == nil
+        or not inst:IsValid()
+        or inst.components == nil
+        or inst.components.inventory == nil
+    then
+        return
+    end
+
+    local inventory = inst.components.inventory
+    local icon = inventory:GetItemInSlot(MINI_ALICE_SLOT)
+
+    if icon ~= nil and icon:HasTag("kei_mini_alice") then
+        icon.components.inventoryitem.islockedinslot = true
+        return
+    end
+
+    if icon ~= nil then
+        icon = inventory:RemoveItemBySlot(MINI_ALICE_SLOT)
+        DropReplacedInventoryItem(inst, icon)
+    end
+
+    icon = FindMiniAliceItem(inst)
+    if icon == nil then
+        icon = SpawnPrefab("kei_mini_alice")
+        if icon == nil then
+            return
+        end
+    else
+        icon = inventory:RemoveItem(icon, true)
+        if icon == nil then
+            return
+        end
+    end
+
+    inventory.ignoresound = true
+    local inserted = inventory:GiveItem(icon, MINI_ALICE_SLOT)
+    inventory.ignoresound = false
+    if not inserted then
+        inventory:GiveItem(icon, nil, inst:GetPosition())
+    end
+end
 
 local function SetReticulePrefab(reticule, prefab)
     if reticule == nil then
@@ -954,6 +1027,8 @@ local function OnLoad(inst, data)
     if data ~= nil and data.kei_experience ~= nil and inst.components.kei_experience ~= nil then
         inst.components.kei_experience:OnLoad(data.kei_experience)
     end
+
+    inst:DoTaskInTime(0, EnsureMiniAliceItem)
 end
 
 local function master_postinit(inst)
@@ -997,6 +1072,7 @@ local function master_postinit(inst)
     inst:ListenForEvent("onremove", RemoveKeiPersonalLight)
 
     KeiBackupBody.ConfigurePlayer(inst)
+    inst:DoTaskInTime(0, EnsureMiniAliceItem)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave

@@ -135,6 +135,21 @@ configuration_options = {
         default = 0,
     },
     {
+        name = "KEI_MINI_ALICE_MAX_PAGES",
+        label = "Mini Alice max pages",
+        hover = "Sets the maximum number of accessible pages for Mini Alice. Each unlocked protocol slot unlocks one page.",
+        options = {
+            { description = "1", data = 1 },
+            { description = "2", data = 2 },
+            { description = "3", data = 3 },
+            { description = "4", data = 4 },
+            { description = "5", data = 5 },
+            { description = "6", data = 6 },
+            { description = "7", data = 7 },
+        },
+        default = 1,
+    },
+    {
         name = "KEI_WANDERING_TRADER_MAP_MARKER",
         label = "流浪商人地图标记",
         hover = "设置是否在地图上显示流浪商人的专属标记。",

@@ -2,28 +2,18 @@
 
 local FullmoonRecipe = {}
 local GrowthRecipes = require("kei/growth_recipes")
+local RecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 
 local PROTOCOL = "fullmoon_recipe"
 local RECIPE = "kei_fullmoon_spell"
 local EXPERIENCE_COST = TUNING.KEI_LIFE_FULLMOON_EXPERIENCE_COST or 100
 
-local function HasFullmoonProtocol(inst)
-    return inst ~= nil
-        and inst.components ~= nil
-        and inst.components.kei_protocolslots ~= nil
-        and inst.components.kei_protocolslots:HasLifeProtocol(PROTOCOL)
-end
-
 local function AddRecipeToBuilder(inst)
-    if inst ~= nil and inst.components ~= nil and inst.components.builder ~= nil then
-        inst.components.builder:AddRecipe(RECIPE)
-    end
+    RecipeUnlocks.Enable(inst, PROTOCOL, RECIPE)
 end
 
 local function RemoveRecipeFromBuilder(inst)
-    if inst ~= nil and inst.components ~= nil and inst.components.builder ~= nil then
-        inst.components.builder:RemoveRecipe(RECIPE)
-    end
+    RecipeUnlocks.Disable(inst, RECIPE)
 end
 
 
@@ -51,7 +41,7 @@ function FullmoonRecipe.DoBuild(builder, recname, pt, rotation, skin)
     local recipe = GetValidRecipe(recname)
     if inst == nil
         or recipe == nil
-        or not HasFullmoonProtocol(inst)
+        or not RecipeUnlocks.CanUse(inst, PROTOCOL, RECIPE)
         or PREFAB_SKINS_SHOULD_NOT_SELECT[skin]
     then
         return false
@@ -83,6 +73,10 @@ function FullmoonRecipe.DoBuild(builder, recname, pt, rotation, skin)
     end
     if not GrowthRecipes.TrySpendExperience(inst, EXPERIENCE_COST) then
         return false, "KEI_EXPERIENCE_NOT_FULL"
+    end
+
+    if not RecipeUnlocks.UnlockAfterBuild(inst, PROTOCOL, RECIPE) then
+        return false, "KEI_PROTOCOL_CONSUME_FAILED"
     end
     return true
 end

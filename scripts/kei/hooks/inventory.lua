@@ -1,4 +1,5 @@
 local GrowthRecipes = require("kei/growth_recipes")
+local MiniAlice = require("kei/mini_alice")
 local FISH_CALL_RECIPE = "kei_fish_call_spell"
 local FULLMOON_RECIPE = "kei_fullmoon_spell"
 local NEWMOON_RECIPE = "kei_newmoon_spell"
@@ -152,11 +153,138 @@ local function IsSpentEquipment(item)
     return false
 end
 
+local function IsCraftingContainer(container)
+    return container ~= nil
+        and container.excludefromcrafting ~= true
+        and container.readonlycontainer ~= true
+end
+
+local function AddCraftingItems(target, container, item, amount, total, use_open_containers)
+    if container == nil or total >= amount then
+        return total
+    end
+
+    local found = container:GetCraftingIngredient(
+        item,
+        amount - total,
+        use_open_containers
+    )
+    for found_item, count in pairs(found) do
+        local accepted = math.min(count, amount - total)
+        target[found_item] = accepted
+        total = total + accepted
+        if total >= amount then
+            break
+        end
+    end
+
+    return total
+end
+
+local function AddInventoryCraftingItems(target, inventory, item, amount, total)
+    local candidates = {}
+    for slot = 1, inventory.maxslots do
+        local candidate = inventory:GetItemInSlot(slot)
+        if candidate ~= nil
+            and candidate.prefab == item
+            and not candidate:HasTag("nocrafting")
+        then
+            table.insert(candidates, {
+                item = candidate,
+                stacksize = candidate.components.stackable
+                    and candidate.components.stackable:StackSize()
+                    or 1,
+                slot = slot,
+            })
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.stacksize == b.stacksize then
+            return a.slot < b.slot
+        end
+        return a.stacksize < b.stacksize
+    end)
+
+    for _, candidate in ipairs(candidates) do
+        local count = math.min(candidate.stacksize, amount - total)
+        target[candidate.item] = count
+        total = total + count
+        if total >= amount then
+            break
+        end
+    end
+
+    return total
+end
+
+local function GetOtherOpenCraftingContainers(inventory, overflow, alice)
+    local containers = {}
+    for container_inst in pairs(inventory.opencontainers) do
+        local container = container_inst.components.container or container_inst.components.inventory
+        if container ~= nil
+            and container ~= overflow
+            and container ~= alice
+            and not MiniAlice.IsContainer(container)
+            and IsCraftingContainer(container)
+        then
+            table.insert(containers, container)
+        end
+    end
+    return containers
+end
+
 AddComponentPostInit("inventory", function(self)
     local old_DropItem = self.DropItem
     local old_RemoveItem = self.RemoveItem
     local old_Unequip = self.Unequip
     local old_Equip = self.Equip
+
+    function self:GetCraftingIngredient(item, amount)
+        local overflow = self:GetOverflowContainer()
+        local alice = MiniAlice.GetOpenContainer(self.inst)
+        local crafting_items = {}
+        local total = 0
+
+        -- Preserve the vanilla order for other opened containers.
+        for _, container in ipairs(GetOtherOpenCraftingContainers(self, overflow, alice)) do
+            total = AddCraftingItems(crafting_items, container, item, amount, total, true)
+            if total >= amount then
+                return crafting_items
+            end
+        end
+
+        total = AddInventoryCraftingItems(crafting_items, self, item, amount, total)
+        if total >= amount then
+            return crafting_items
+        end
+
+        -- Mini Alice is deliberately between the player's inventory and the body backpack.
+        total = AddCraftingItems(crafting_items, alice, item, amount, total, false)
+        if total >= amount then
+            return crafting_items
+        end
+
+        total = AddCraftingItems(crafting_items, overflow, item, amount, total, false)
+        if total >= amount then
+            return crafting_items
+        end
+
+        local activeitem = self.activeitem
+        if activeitem ~= nil
+            and activeitem.prefab == item
+            and not activeitem:HasTag("nocrafting")
+        then
+            crafting_items[activeitem] = math.min(
+                activeitem.components.stackable
+                    and activeitem.components.stackable:StackSize()
+                    or 1,
+                amount - total
+            )
+        end
+
+        return crafting_items
+    end
 
     function self:Unequip(equipslot, slip, force)
         local item = self.equipslots ~= nil and self.equipslots[equipslot] or nil

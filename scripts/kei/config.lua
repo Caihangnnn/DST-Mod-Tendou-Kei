@@ -11,6 +11,7 @@ local protocol_slot_hard_max = 7
 local protocol_slot_max = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_SLOT_MAX"), protocol_slot_hard_max, 1, protocol_slot_hard_max)
 local protocol_slot_base_initial = 1
 local protocol_slot_initial_extra = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_INITIAL_EXTRA_SLOTS"), 0, 0, protocol_slot_max - protocol_slot_base_initial)
+local mini_alice_max_pages = ClampConfigNumber(GetModConfigData("KEI_MINI_ALICE_MAX_PAGES"), 1, 1, 7)
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
 TUNING.KEI_ALLOW_DATA_COPY = GetModConfigData("KEI_ALLOW_DATA_COPY") ~= false
@@ -35,6 +36,7 @@ TUNING.KEI_PROTOCOL_SLOT_HARD_MAX = protocol_slot_hard_max -- 协议槽位的硬
 TUNING.KEI_PROTOCOL_SLOT_BASE_INITIAL = protocol_slot_base_initial -- 基础解锁的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_INITIAL = protocol_slot_base_initial + protocol_slot_initial_extra -- 当前配置中初始拥有的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_max -- 协议槽位的最大数量（根据配置）
+TUNING.KEI_MINI_ALICE_MAX_PAGES = mini_alice_max_pages -- 娇小爱丽丝的最大页数，当前页数随已解锁协议槽数量增加
 TUNING.KEI_EXPERIENCE_BASE_MAX = 1000
 TUNING.KEI_EXPERIENCE_COST_PER_SLOT = 1000
 TUNING.KEI_EXPERIENCE_PACK_AMOUNT = 1000
@@ -67,6 +69,10 @@ TUNING.KEI_EXPERIENCE_BLUEPRINT_DAILY_CAP = 50
 -- 累计经验能力：心灵手巧。
 TUNING.KEI_CRAFTSMANSHIP_EXPERIENCE_THRESHOLD = 2000 -- 激活心灵手巧所需的累计经验值
 TUNING.KEI_FARMING_MASTER_EXPERIENCE_STEP = 500 -- 种地高手每增加一级范围所需的累计经验值
+TUNING.KEI_ZOOLOGIST_EXPERIENCE_THRESHOLD = 10000 -- 激活动物学家所需的累计经验值
+TUNING.KEI_BOTANIST_EXPERIENCE_THRESHOLD = 5000 -- 激活植物学家所需的累计经验值
+TUNING.KEI_ECONOMIST_EXPERIENCE_THRESHOLD = 15000 -- 激活经济学家所需的累计经验值
+TUNING.KEI_SCRAP_MASTER_EXPERIENCE_THRESHOLD = 20000 -- 激活边角料大师所需的累计经验值
 TUNING.KEI_FARMING_MASTER_MAX_RANGE = 12 -- 种地高手的最大植物对话范围
 TUNING.KEI_BACKUP_BODY_TOTAL_EXPERIENCE = 1000 -- 解锁备份体能力所需的累计经验值
 TUNING.KEI_BACKUP_BODY_REVIVE_EXPERIENCE = 500 -- 作祟备份体复活消耗的当前经验值

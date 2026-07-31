@@ -1,6 +1,7 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local LifeRecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
@@ -102,6 +103,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
     self.implanted_combat_protocols = {}
+    self.permanent_life_recipes = {}
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
@@ -610,6 +612,55 @@ function KeiProtocolSlots:HasLifeProtocol(protocol)
     return self:GetLifeProtocolCount(protocol) > 0
 end
 
+function KeiProtocolSlots:IsLifeRecipeUnlocked(recipe)
+    return self.permanent_life_recipes ~= nil
+        and self.permanent_life_recipes[recipe] == true
+end
+
+function KeiProtocolSlots:ConsumeLifeProtocol(protocol)
+    if protocol == nil or not self:IsFunctional() then
+        return false
+    end
+
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    if inventory == nil then
+        return false
+    end
+
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
+        local protocol_container = inventory:GetItemInSlot(slot)
+        local container = protocol_container ~= nil
+            and IsProtocolContainer(protocol_container)
+            and protocol_container.components ~= nil
+            and protocol_container.components.container
+            or nil
+        local item = container ~= nil and container:GetItemInSlot(1) or nil
+        local data = IsProtocol(item) and item.kei_protocol_data or nil
+
+        if slot <= self.unlocked_slots
+            and data ~= nil
+            and data.kind == "life"
+            and data.protocol == protocol
+            and self:CanRun(data)
+        then
+            local consumed = container:RemoveItemBySlot(1, true)
+            if consumed == nil then
+                return false
+            end
+
+            if consumed:IsValid() then
+                consumed:Remove()
+            end
+
+            self._protocol_state_dirty = true
+            self:Refresh()
+            return true
+        end
+    end
+
+    return false
+end
+
 ----------------------------------------------------------------
 -- 网络同步
 ----------------------------------------------------------------
@@ -651,6 +702,7 @@ end
 ----------------------------------------------------------------
 
 function KeiProtocolSlots:RefreshLifeEffects()
+    LifeRecipeUnlocks.Sync(self.inst)
     for protocol, handler in pairs(LIFE_EFFECTS) do
         local stacks = self.active_life[protocol] or 0
         if stacks > 0 then
@@ -841,6 +893,7 @@ function KeiProtocolSlots:OnSave()
     return {
         unlocked_slots = self.unlocked_slots,
         implanted_combat_protocols = self.implanted_combat_protocols,
+        permanent_life_recipes = self.permanent_life_recipes,
     }
 end
 
@@ -852,6 +905,7 @@ function KeiProtocolSlots:OnLoad(data)
         self.inst.components.kei_experience:RecalculateMax()
     end
     self.implanted_combat_protocols = data ~= nil and data.implanted_combat_protocols or {}
+    self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()
     self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()

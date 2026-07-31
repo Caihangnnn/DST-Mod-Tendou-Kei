@@ -81,6 +81,8 @@ local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
 end
 
+ 
+
 local function IsKeiMapTeleportBlocked(doer)
     return not IsKei(doer)
         or doer:HasTag("playerghost")
