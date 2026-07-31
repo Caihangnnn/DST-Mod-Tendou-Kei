@@ -14,7 +14,7 @@ local ALICE_ICON_OPEN = "kei_mini_alice_open"
 
 local function OpenWithoutClosingProtocolSlots(container, doer, ...)
     local inventory = doer ~= nil and doer.components.inventory or nil
-    local kept_open = nil
+    local blocked_closes = nil
 
     if inventory ~= nil then
         for open_inst in pairs(inventory.opencontainers) do
@@ -23,22 +23,23 @@ local function OpenWithoutClosingProtocolSlots(container, doer, ...)
                 and open_inst.components.container ~= nil
                 and open_inst.components.container:IsOpenedBy(doer)
             then
-                kept_open = kept_open or {}
-                kept_open[open_inst] = true
-                inventory.opencontainers[open_inst] = nil
+                local other_container = open_inst.components.container
+                blocked_closes = blocked_closes or {}
+                blocked_closes[#blocked_closes + 1] = {
+                    container = other_container,
+                    close = other_container.Close,
+                }
+                other_container.Close = function() end
             end
         end
     end
 
     local result = container._kei_old_open(container, doer, ...)
 
-    if kept_open ~= nil and inventory ~= nil then
-        for open_inst in pairs(kept_open) do
-            if open_inst:IsValid()
-                and open_inst.components.container ~= nil
-                and open_inst.components.container:IsOpenedBy(doer)
-            then
-                inventory.opencontainers[open_inst] = true
+    if blocked_closes ~= nil then
+        for _, blocked in ipairs(blocked_closes) do
+            if blocked.container ~= nil then
+                blocked.container.Close = blocked.close
             end
         end
     end

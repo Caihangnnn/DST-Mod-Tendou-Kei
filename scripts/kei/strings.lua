@@ -87,6 +87,7 @@ STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_EXPERIENCE_PACK = "其中封存着可以
 
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
+local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
 
 local function RegisterProtocolItemStrings(def, suffix)
     if def == nil or def.prefab == nil then
@@ -102,4 +103,7 @@ for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
 end
 for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
     RegisterProtocolItemStrings(def, "生活协议 CD")
+end
+for _, def in ipairs(BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOL_LIST) do
+    RegisterProtocolItemStrings(def, "基础属性协议 CD")
 end

@@ -51,17 +51,13 @@ local function ApplyWaterBonuses(slots, inst, enabled)
         end
 
         local mult = TUNING.KEI_MALBATROSS_OCEAN_DAMAGE_MULT or 1.5
-        if inst.components.combat ~= nil then
-            inst.components.combat.externaldamagemultipliers:SetModifier(inst, mult, WATER_BONUS_MODIFIER)
-        end
+        slots:SetCombatDamageMultiplier(WATER_BONUS_MODIFIER, mult)
         if inst.components.locomotor ~= nil then
             inst.components.locomotor:SetExternalSpeedMultiplier(inst, WATER_BONUS_MODIFIER, TUNING.KEI_MALBATROSS_OCEAN_SPEED_MULT or 1.5)
         end
         slots._kei_malbatross_water_bonus_active = true
     elseif slots._kei_malbatross_water_bonus_active then
-        if inst.components.combat ~= nil then
-            inst.components.combat.externaldamagemultipliers:RemoveModifier(inst, WATER_BONUS_MODIFIER)
-        end
+        slots:SetCombatDamageMultiplier(WATER_BONUS_MODIFIER, nil)
         if inst.components.locomotor ~= nil then
             inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, WATER_BONUS_MODIFIER)
         end

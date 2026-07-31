@@ -1,4 +1,4 @@
--- 邪天翁初级协议：水面行动与涨潮湿度。
+-- 邪天翁初级协议：水面行动涨潮湿度。
 local MalbatrossCommon = require("kei/protocols/combat/effects/beast/_malbatross_common")
 
 local MalbatrossBasicEffect = {}

@@ -81,16 +81,12 @@ function Daywalker2Common.DisableImmunity(slots, inst, source)
     slots._kei_daywalker2_sources = nil
 end
 
-function Daywalker2Common.SetAbsorb(inst, amount)
-    if inst.components.health ~= nil then
-        inst.components.health.externalabsorbmodifiers:SetModifier(inst, amount, "kei_daywalker2")
-    end
+function Daywalker2Common.SetAbsorb(slots, inst, amount)
+    slots:SetCombatDamageReduction("kei_daywalker2", amount)
 end
 
-function Daywalker2Common.ClearAbsorb(inst)
-    if inst.components.health ~= nil then
-        inst.components.health.externalabsorbmodifiers:SetModifier(inst, nil, "kei_daywalker2")
-    end
+function Daywalker2Common.ClearAbsorb(slots, inst)
+    slots:SetCombatDamageReduction("kei_daywalker2", nil)
 end
 
 return Daywalker2Common

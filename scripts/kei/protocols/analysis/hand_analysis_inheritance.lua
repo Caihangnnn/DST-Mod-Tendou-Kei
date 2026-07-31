@@ -29,30 +29,17 @@ end
 local function FinalizeDamage(stats)
     local count = stats.inherited_damage_count or 0
     if count <= 0 then
-        stats.damage_bonus = 0
+        stats.base_damage_bonus = 0
         return
     end
 
     local average = (stats.inherited_damage_total or 0) / count
-    stats.damage_bonus = average * GetDamageMultiplier(count)
+    stats.base_damage_bonus = average * GetDamageMultiplier(count)
 end
 
--- 把解析继承产生的伤害加值写入 combat.damagebonus，并先撤销旧值避免重复叠加
-local function SetDamageBonus(protocolslots, amount)
-    local combat = protocolslots.inst.components.combat
-    local old = protocolslots.analysis_damage_bonus or 0
-    amount = amount or 0
-
-    if combat ~= nil then
-        if old ~= 0 then
-            combat.damagebonus = (combat.damagebonus or 0) - old
-        end
-        if amount ~= 0 then
-            combat.damagebonus = (combat.damagebonus or 0) + amount
-        end
-    end
-
-    protocolslots.analysis_damage_bonus = amount
+-- 保存解析继承产生的基础伤害，统一由协议槽的 CalcDamage 包装器接入基础伤害段。
+local function SetBaseDamageBonus(protocolslots, amount)
+    protocolslots.analysis_base_damage_bonus = amount or 0
 end
 
 -- 清理解析继承注入的工具动作、标签和临时 worker 组件，并恢复到应用前的原始状态
@@ -135,7 +122,7 @@ end
 -- 创建一份新的继承统计表，用于累计多个协议提供的手部解析结果
 function HandAnalysisInheritance.NewStats()
     return {
-        damage_bonus = 0,
+        base_damage_bonus = 0,
         inherited_damage_total = 0,
         inherited_damage_count = 0,
         speed_mult = 1,
@@ -169,10 +156,7 @@ end
 function HandAnalysisInheritance.Apply(protocolslots, stats)
     FinalizeDamage(stats)
 
-    if protocolslots.inst.components.combat ~= nil then
-        protocolslots.inst.components.combat.externaldamagemultipliers:RemoveModifier(protocolslots.inst, MODIFIER)
-        SetDamageBonus(protocolslots, stats.damage_bonus)
-    end
+    SetBaseDamageBonus(protocolslots, stats.base_damage_bonus)
 
     if stats.planar_bonus > 0 then
         if protocolslots.inst.components.planardamage == nil then
@@ -193,11 +177,8 @@ end
 -- 清空当前解析继承对角色施加的所有影响，恢复为未继承状态
 function HandAnalysisInheritance.Clear(protocolslots)
     ClearToolActions(protocolslots)
-    SetDamageBonus(protocolslots, 0)
+    SetBaseDamageBonus(protocolslots, 0)
 
-    if protocolslots.inst.components.combat ~= nil then
-        protocolslots.inst.components.combat.externaldamagemultipliers:RemoveModifier(protocolslots.inst, MODIFIER)
-    end
     if protocolslots.inst.components.planardamage ~= nil then
         protocolslots.inst.components.planardamage:RemoveBonus(protocolslots.inst, MODIFIER)
     end

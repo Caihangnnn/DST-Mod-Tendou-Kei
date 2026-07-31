@@ -878,7 +878,12 @@ local function DoDormantTick(inst)
     if (sanity ~= nil and sanity_before ~= nil and sanity.current > sanity_before)
         or (health.currenthealth or 0) > health_before
     then
-        inst.components.hunger:DoDelta(-(TUNING.KEI_DORMANT_POWER_DRAIN or 1), nil, true)
+        local power_drain = TUNING.KEI_DORMANT_POWER_DRAIN or 1
+        local slots = inst.components.kei_protocolslots
+        if slots ~= nil and slots.GetPowerDrainMultiplier ~= nil then
+            power_drain = power_drain * slots:GetPowerDrainMultiplier()
+        end
+        inst.components.hunger:DoDelta(-power_drain, nil, true)
     end
 end
 

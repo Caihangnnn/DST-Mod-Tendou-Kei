@@ -1,5 +1,6 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
+local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
 
 local COMMON_ITEM_ATLAS = "images/inventoryimages/kei_items.xml"
 local COMMON_ITEM_BANK = "kei_item"
@@ -518,11 +519,18 @@ local function ApplyFixedProtocolData(inst, def, kind)
         kind = kind,
         protocol = def.protocol,
         source = def.source_protocol or def.protocol,
-        category = def.category,
+        category = def.category or kind,
         tier = def.tier,
         display_name = def.display_name,
         implemented = def.implemented == true,
     }
+
+    if kind == "basic_attribute" then
+        local min_value = TUNING["KEI_BASIC_ATTRIBUTE_" .. string.upper(def.attribute) .. "_MIN"] or def.range_min
+        local max_value = TUNING["KEI_BASIC_ATTRIBUTE_" .. string.upper(def.attribute) .. "_MAX"] or def.range_max
+        inst.kei_protocol_data.attribute = def.attribute
+        inst.kei_protocol_data.attribute_value = math.random(min_value, max_value)
+    end
 
     if kind == "combat" then
         inst.kei_combat_protocol = def.protocol
@@ -530,12 +538,45 @@ local function ApplyFixedProtocolData(inst, def, kind)
     elseif kind == "life" then
         inst.kei_life_protocol = def.protocol
         SetNamedName(inst, def.display_name or def.protocol)
+    elseif kind == "basic_attribute" then
+        inst.kei_basic_attribute_protocol = def.protocol
+        SetNamedName(inst, (def.display_name or def.protocol) .. "基础属性协议")
     end
 end
 
 local function FixedProtocolDescriptionFn(inst)
     local def = inst.kei_protocol_definition
-    return def ~= nil and def.description or nil
+    if def == nil then
+        return nil
+    end
+    if def.kind == "basic_attribute"
+        and inst.kei_protocol_data ~= nil
+        and inst.kei_protocol_data.attribute_value ~= nil
+    then
+        local value = inst.kei_protocol_data.attribute_value
+        local suffix = def.is_percent and "%" or ""
+        return (def.description or "") .. "\n当前数值: " .. tostring(value) .. suffix
+    end
+    return def.description
+end
+
+local function FixedProtocolOnSave(inst, data)
+    if data ~= nil
+        and inst.kei_protocol_data ~= nil
+        and inst.kei_protocol_data.kind == "basic_attribute"
+    then
+        data.attribute_value = inst.kei_protocol_data.attribute_value
+    end
+end
+
+local function FixedProtocolOnLoad(inst, data)
+    if inst.kei_protocol_data ~= nil
+        and inst.kei_protocol_data.kind == "basic_attribute"
+        and data ~= nil
+        and data.attribute_value ~= nil
+    then
+        inst.kei_protocol_data.attribute_value = tonumber(data.attribute_value) or inst.kei_protocol_data.attribute_value
+    end
 end
 
 local function MakeFixedProtocolCD(def, kind, visual_key, tags, deps)
@@ -586,6 +627,8 @@ local function MakeFixedProtocolCD(def, kind, visual_key, tags, deps)
         inst.components.inventoryitem.keepondeath = true
 
         ApplyFixedProtocolData(inst, def, kind)
+        inst.OnSave = FixedProtocolOnSave
+        inst.OnLoad = FixedProtocolOnLoad
         MakeHauntableLaunch(inst)
 
         return inst
@@ -606,6 +649,20 @@ local function MakeLifeProtocolCDs()
     local prefabs = {}
     for _, def in ipairs(LifeProtocolDefs.LIFE_PROTOCOL_LIST) do
         table.insert(prefabs, MakeFixedProtocolCD(def, "life", "life_cd", { "kei_life_protocol" }))
+    end
+    return prefabs
+end
+
+local function MakeBasicAttributeProtocolCDs()
+    local prefabs = {}
+    for _, def in ipairs(BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOL_LIST) do
+        table.insert(prefabs, MakeFixedProtocolCD(
+            def,
+            "basic_attribute",
+            "blank_cd",
+            { "kei_basic_attribute_protocol" },
+            nil
+        ))
     end
     return prefabs
 end
@@ -734,6 +791,9 @@ for _, prefab in ipairs(MakeCombatProtocolCDs()) do
     table.insert(prefabs, prefab)
 end
 for _, prefab in ipairs(MakeLifeProtocolCDs()) do
+    table.insert(prefabs, prefab)
+end
+for _, prefab in ipairs(MakeBasicAttributeProtocolCDs()) do
     table.insert(prefabs, prefab)
 end
 

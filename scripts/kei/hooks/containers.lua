@@ -50,25 +50,13 @@ local function ContainerHasRoomForItem(container, item)
             and stored.components.stackable ~= nil
             and not stored.components.stackable:IsFull()
             and stored.components.stackable:CanStackWith(item)
+            and container:CanTakeItemInSlot(item, slot)
         then
             return true
         end
     end
 
     return false
-end
-
-local function InventoryHasNonProtocolRoomForItem(inventory, item)
-    if inventory == nil
-        or item == nil
-        or not inventory:IsOpenedBy(inventory.inst)
-    then
-        return false
-    end
-
-    local slot, target = inventory:GetNextAvailableSlot(item)
-    return slot ~= nil
-        and not (target ~= nil and target.inst ~= nil and target.inst:HasTag("kei_protocol_slot"))
 end
 
 local function FindOpenProtocolBinderWithRoom(opener, item)
@@ -86,6 +74,80 @@ local function FindOpenProtocolBinderWithRoom(opener, item)
         then
             return container_inst
         end
+    end
+end
+
+local function FindOpenMiniAliceWithRoom(opener, item)
+    local inventory = opener ~= nil and opener.components.inventory or nil
+    if inventory == nil then
+        return nil
+    end
+
+    for container_inst in pairs(inventory.opencontainers) do
+        local container = container_inst.components.container
+        if container_inst:HasTag("kei_mini_alice")
+            and container ~= nil
+            and container:IsOpenedBy(opener)
+            and ContainerHasRoomForItem(container, item)
+        then
+            return container_inst
+        end
+    end
+end
+
+local function InventoryHasMainRoomForItem(inventory, item)
+    if inventory == nil
+        or item == nil
+        or not inventory:IsOpenedBy(inventory.inst)
+    then
+        return false
+    end
+
+    for slot = 1, inventory.maxslots do
+        local stored = inventory:GetItemInSlot(slot)
+        if stored == nil then
+            if inventory:CanTakeItemInSlot(item, slot) then
+                return true
+            end
+        elseif stored.components.stackable ~= nil
+            and not stored.components.stackable:IsFull()
+            and stored.components.stackable:CanStackWith(item)
+            and inventory:CanTakeItemInSlot(item, slot)
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function FindProtocolMoveDestination(opener, item)
+    local inventory = opener ~= nil and opener.components.inventory or nil
+    if inventory == nil or item == nil then
+        return nil
+    end
+
+    -- Keep this order identical to the client-side prediction below.
+    local binder = FindOpenProtocolBinderWithRoom(opener, item)
+    if binder ~= nil then
+        return binder
+    end
+
+    if InventoryHasMainRoomForItem(inventory, item) then
+        return opener
+    end
+
+    local alice = FindOpenMiniAliceWithRoom(opener, item)
+    if alice ~= nil then
+        return alice
+    end
+
+    local overflow = inventory:GetOverflowContainer()
+    if overflow ~= nil
+        and overflow:IsOpenedBy(opener)
+        and ContainerHasRoomForItem(overflow, item)
+    then
+        return overflow.inst
     end
 end
 
@@ -143,14 +205,9 @@ AddComponentPostInit("container", function(self)
             and item.components.inventoryitem ~= nil
             and not item.components.inventoryitem.islockedinslot
         then
-            local binder = FindOpenProtocolBinderWithRoom(opener, item)
-            if binder ~= nil then
-                old_MoveItemFromAllOfSlot(self, slot, binder, opener, ...)
-                return
-            end
-
-            if InventoryHasNonProtocolRoomForItem(opener.components.inventory, item) then
-                old_MoveItemFromAllOfSlot(self, slot, opener, opener, ...)
+            local destination = FindProtocolMoveDestination(opener, item)
+            if destination ~= nil then
+                old_MoveItemFromAllOfSlot(self, slot, destination, opener, ...)
                 return
             end
 
@@ -171,11 +228,14 @@ local function ClientContainerHasRoomForItem(container, item)
 
     local item_stackable = item.replica.stackable
     if container:AcceptsStacks() and item_stackable ~= nil then
-        for _, stored in pairs(container:GetItems()) do
-            local stored_stackable = stored.replica.stackable
-            if stored_stackable ~= nil
+        for slot = 1, container:GetNumSlots() do
+            local stored = container:GetItemInSlot(slot)
+            local stored_stackable = stored ~= nil and stored.replica.stackable or nil
+            if stored ~= nil
+                and stored_stackable ~= nil
                 and not stored_stackable:IsFull()
                 and stored_stackable:CanStackWith(item)
+                and container:CanTakeItemInSlot(item, slot)
             then
                 return true
             end
@@ -210,18 +270,62 @@ local function ClientFindOpenProtocolBinderWithRoom(character, item)
     end
 end
 
-local function ClientInventoryHasRoomForItem(character, item)
+local function ClientFindOpenMiniAliceWithRoom(character, item)
     local inventory = character ~= nil and character.replica.inventory or nil
-    if inventory == nil or item == nil then
+    local opencontainers = inventory ~= nil and inventory:GetOpenContainers() or nil
+    if opencontainers == nil then
+        return nil
+    end
+
+    for container_inst in pairs(opencontainers) do
+        local container = container_inst.replica.container
+        if container_inst:HasTag("kei_mini_alice")
+            and container ~= nil
+            and container:IsOpenedBy(character)
+            and ClientContainerHasRoomForItem(container, item)
+        then
+            return container_inst
+        end
+    end
+end
+
+local function ClientInventoryHasMainRoomForItem(character, item)
+    local inventory = character ~= nil and character.replica.inventory or nil
+    if inventory == nil or item == nil or not inventory:IsOpenedBy(character) then
         return false
     end
 
-    if ClientContainerHasRoomForItem(inventory, item) then
-        return true
+    return ClientContainerHasRoomForItem(inventory, item)
+end
+
+local function ClientFindProtocolMoveDestination(character, item)
+    local inventory = character ~= nil and character.replica.inventory or nil
+    if inventory == nil or item == nil then
+        return nil
+    end
+
+    -- Keep this order identical to the server-side validation above.
+    local binder = ClientFindOpenProtocolBinderWithRoom(character, item)
+    if binder ~= nil then
+        return binder
+    end
+
+    if ClientInventoryHasMainRoomForItem(character, item) then
+        return character
+    end
+
+    local alice = ClientFindOpenMiniAliceWithRoom(character, item)
+    if alice ~= nil then
+        return alice
     end
 
     local overflow = inventory:GetOverflowContainer()
-    return overflow ~= nil and ClientContainerHasRoomForItem(overflow, item)
+    if overflow ~= nil
+        and overflow:IsOpenedBy(character)
+        and ClientContainerHasRoomForItem(overflow, item)
+    then
+        return overflow.inst
+    end
 end
 
 if not TheNet:IsDedicated() then
@@ -249,10 +353,7 @@ if not TheNet:IsDedicated() then
                 and container_item.replica.inventoryitem ~= nil
                 and not container_item.replica.inventoryitem:IsLockedInSlot()
             then
-                local dest_inst = ClientFindOpenProtocolBinderWithRoom(character, container_item)
-                if dest_inst == nil and ClientInventoryHasRoomForItem(character, container_item) then
-                    dest_inst = character
-                end
+                local dest_inst = ClientFindProtocolMoveDestination(character, container_item)
 
                 if dest_inst ~= nil then
                     container:MoveItemFromAllOfSlot(slot_number, dest_inst)
@@ -300,6 +401,37 @@ local MINI_ALICE_SLOT_POSITIONS = {
     Vector3(252, 0, 0),
 }
 
+local PROTOCOL_SLOT_UI_OFFSET = Vector3(0, 100, 0)
+
+-- 通过角色物品栏的真实槽位定位容器，避免 HUD 尚未刷新时多个容器共用首格坐标。
+local function GetInventorySlotWidget(container, doer)
+    if container == nil
+        or doer == nil
+        or doer.HUD == nil
+        or doer.HUD.controls == nil
+        or doer.HUD.controls.inv == nil
+        or doer.HUD.controls.inv.inv == nil
+    then
+        return nil
+    end
+
+    local inventory = doer.replica ~= nil and doer.replica.inventory or nil
+    if inventory ~= nil and inventory.GetNumSlots ~= nil then
+        for slot = 1, inventory:GetNumSlots() do
+            if inventory:GetItemInSlot(slot) == container then
+                return doer.HUD.controls.inv.inv[slot]
+            end
+        end
+    end
+
+    -- 兼容部分客户端 replica 尚未同步物品栏数据的瞬间。
+    for _, slot in pairs(doer.HUD.controls.inv.inv) do
+        if slot.tile ~= nil and slot.tile.item == container then
+            return slot
+        end
+    end
+end
+
 local function MakeMiniAliceAllSlotPositions(max_pages)
     local positions = {}
     for _ = 1, max_pages do
@@ -322,25 +454,25 @@ local function MakeMiniAliceSlotBgs(count)
 end
 
 local MINI_ALICE_UI_OFFSET = Vector3(290, 100, 0)
-local MINI_ALICE_PAGE_TWEEN_TIME = 0.2
+local MINI_ALICE_PAGE_TWEEN_TIME = 0.1
 local MINI_ALICE_PAGE_TWEEN_DISTANCE = 620
 
 local function GetMiniAlicePosition(container, doer)
-    if doer ~= nil
-        and doer.HUD ~= nil
-        and doer.HUD.controls ~= nil
-        and doer.HUD.controls.inv ~= nil
-        and doer.HUD.controls.inv.inv ~= nil
-    then
-        for _, v in pairs(doer.HUD.controls.inv.inv) do
-            if v.tile ~= nil and v.tile.item == container then
-                return v:GetPosition() + MINI_ALICE_UI_OFFSET
-            end
-        end
+    local slot = GetInventorySlotWidget(container, doer)
+    if slot ~= nil then
+        return slot:GetPosition() + MINI_ALICE_UI_OFFSET
     end
 
     return MINI_ALICE_UI_OFFSET
 end
+
+local function GetProtocolSlotPosition(container, doer)
+    local slot = GetInventorySlotWidget(container, doer)
+    return slot ~= nil and slot:GetPosition() + PROTOCOL_SLOT_UI_OFFSET or nil
+end
+
+-- 不使用 wx78_inventorycontainer 的备份体定位逻辑。
+containers.params.kei_protocol_container.widget.posfn = GetProtocolSlotPosition
 
 local function GetContainerOwner(container)
     local inventoryitem = container ~= nil
@@ -589,6 +721,10 @@ if not TheNet:IsDedicated() then
         return container ~= nil and container:HasTag("kei_mini_alice")
     end
 
+    local function IsProtocolWidgetContainer(container)
+        return container ~= nil and container:HasTag("kei_protocol_slot")
+    end
+
     local function ApplyMiniAliceItemScale(slot)
         local container = slot ~= nil and slot.container or nil
         if container == nil
@@ -647,18 +783,29 @@ if not TheNet:IsDedicated() then
 
     local function UpdateMiniAlicePageButtons(widget, page, unlocked_pages)
         local transition = widget._kei_mini_alice_page_transition == true
+        local has_multiple_pages = unlocked_pages > 1
 
         if widget._kei_mini_alice_previous_button ~= nil then
-            if not transition and page > 1 then
+            if not MiniAlice.HasLeftArrow() then
+                widget._kei_mini_alice_previous_button:Disable()
+                widget._kei_mini_alice_previous_button:Hide()
+            elseif not transition and (page > 1 or (MiniAlice.IsArrowLooping() and has_multiple_pages)) then
+                widget._kei_mini_alice_previous_button:Show()
                 widget._kei_mini_alice_previous_button:Enable()
             else
+                widget._kei_mini_alice_previous_button:Show()
                 widget._kei_mini_alice_previous_button:Disable()
             end
         end
         if widget._kei_mini_alice_next_button ~= nil then
-            if not transition and page < unlocked_pages then
+            if not MiniAlice.HasRightArrow() then
+                widget._kei_mini_alice_next_button:Disable()
+                widget._kei_mini_alice_next_button:Hide()
+            elseif not transition and (page < unlocked_pages or (MiniAlice.IsArrowLooping() and has_multiple_pages)) then
+                widget._kei_mini_alice_next_button:Show()
                 widget._kei_mini_alice_next_button:Enable()
             else
+                widget._kei_mini_alice_next_button:Show()
                 widget._kei_mini_alice_next_button:Disable()
             end
         end
@@ -762,7 +909,9 @@ if not TheNet:IsDedicated() then
         previous_button.scale_on_focus = false
         previous_button:SetPosition(Vector3(-320, 0, 0))
         previous_button:SetOnClick(function()
-            AnimateMiniAlicePage(widget, (widget._kei_mini_alice_page or 1) - 1, owner)
+            local page = widget._kei_mini_alice_page or 1
+            local page_count = MiniAlice.GetUnlockedPages(owner)
+            AnimateMiniAlicePage(widget, MiniAlice.GetPreviousPage(page, page_count), owner)
         end)
 
         local next_button = widget:AddChild(ImageButton(
@@ -778,7 +927,9 @@ if not TheNet:IsDedicated() then
         next_button.scale_on_focus = false
         next_button:SetPosition(Vector3(320, 0, 0))
         next_button:SetOnClick(function()
-            AnimateMiniAlicePage(widget, (widget._kei_mini_alice_page or 1) + 1, owner)
+            local page = widget._kei_mini_alice_page or 1
+            local page_count = MiniAlice.GetUnlockedPages(owner)
+            AnimateMiniAlicePage(widget, MiniAlice.GetNextPage(page, page_count), owner)
         end)
 
         widget._kei_mini_alice_controls = true
@@ -859,6 +1010,24 @@ if not TheNet:IsDedicated() then
             end
 
             old_Open(widget, container, doer, ...)
+            if IsProtocolWidgetContainer(container) then
+                if widget._kei_protocol_position_task ~= nil then
+                    widget._kei_protocol_position_task:Cancel()
+                end
+                -- ContainerWidget.Open 会先显示默认坐标，再等待物品栏 HUD
+                -- 刷新。先隐藏一帧，避免从首个协议槽位置闪现。
+                widget:Hide()
+                widget._kei_protocol_position_task = widget.inst:DoTaskInTime(0, function()
+                    widget._kei_protocol_position_task = nil
+                    if widget.isopen and widget.container == container then
+                        local position = GetProtocolSlotPosition(container, doer)
+                        if position ~= nil then
+                            widget:SetPosition(position)
+                        end
+                        widget:Show()
+                    end
+                end)
+            end
             if IsMiniAliceWidgetContainer(container) then
                 ApplyMiniAliceScale(widget, container)
                 InstallMiniAliceSlotClip(widget)
@@ -868,6 +1037,11 @@ if not TheNet:IsDedicated() then
         end
 
         self.Close = function(widget, ...)
+            if widget._kei_protocol_position_task ~= nil then
+                widget._kei_protocol_position_task:Cancel()
+                widget._kei_protocol_position_task = nil
+            end
+
             if widget._kei_mini_alice_slots_dirty_fn ~= nil
                 and widget._kei_mini_alice_page_owner ~= nil
             then
@@ -885,17 +1059,17 @@ if not TheNet:IsDedicated() then
             end
             widget._kei_mini_alice_page_transition = false
 
-            widget._kei_mini_alice_controls = nil
-            widget._kei_mini_alice_page = nil
-            widget._kei_mini_alice_unlocked_pages = nil
-            widget._kei_mini_alice_previous_button = nil
-            widget._kei_mini_alice_next_button = nil
             local container = widget.container
             if IsMiniAliceWidgetContainer(container)
                 and widget._kei_mini_alice_page ~= nil
             then
                 container._kei_mini_alice_page = widget._kei_mini_alice_page
             end
+            widget._kei_mini_alice_controls = nil
+            widget._kei_mini_alice_page = nil
+            widget._kei_mini_alice_unlocked_pages = nil
+            widget._kei_mini_alice_previous_button = nil
+            widget._kei_mini_alice_next_button = nil
             local result = old_Close(widget, ...)
             if IsMiniAliceWidgetContainer(container)
                 and widget._kei_mini_alice_slot_clip ~= nil

@@ -5,6 +5,10 @@ local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local MiniAlice = {}
 
 MiniAlice.SLOTS_PER_PAGE = 8
+MiniAlice.ARROW_MODE_BOTH = 1
+MiniAlice.ARROW_MODE_BOTH_LOOP = 2
+MiniAlice.ARROW_MODE_LEFT_LOOP = 3
+MiniAlice.ARROW_MODE_RIGHT_LOOP = 4
 
 function MiniAlice.IsContainer(container)
     return container ~= nil
@@ -36,7 +40,46 @@ function MiniAlice.GetOpenContainer(owner)
 end
 
 function MiniAlice.GetMaxPages()
-    return math.clamp(tonumber(TUNING.KEI_MINI_ALICE_MAX_PAGES) or 1, 1, 7)
+    return math.clamp(ProtocolSlotUnlocks.GetMaxSlots(), 1, 7)
+end
+
+function MiniAlice.GetArrowMode()
+    return math.clamp(tonumber(TUNING.KEI_MINI_ALICE_ARROW_MODE) or MiniAlice.ARROW_MODE_BOTH, 1, 4)
+end
+
+function MiniAlice.HasLeftArrow()
+    local mode = MiniAlice.GetArrowMode()
+    return mode == MiniAlice.ARROW_MODE_BOTH
+        or mode == MiniAlice.ARROW_MODE_BOTH_LOOP
+        or mode == MiniAlice.ARROW_MODE_LEFT_LOOP
+end
+
+function MiniAlice.HasRightArrow()
+    local mode = MiniAlice.GetArrowMode()
+    return mode == MiniAlice.ARROW_MODE_BOTH
+        or mode == MiniAlice.ARROW_MODE_BOTH_LOOP
+        or mode == MiniAlice.ARROW_MODE_RIGHT_LOOP
+end
+
+function MiniAlice.IsArrowLooping()
+    return MiniAlice.GetArrowMode() ~= MiniAlice.ARROW_MODE_BOTH
+end
+
+function MiniAlice.GetPreviousPage(page, page_count)
+    page = math.clamp(page or 1, 1, page_count or 1)
+    if page > 1 then
+        return page - 1
+    end
+    return MiniAlice.IsArrowLooping() and math.max(page_count or 1, 1) or page
+end
+
+function MiniAlice.GetNextPage(page, page_count)
+    page_count = math.max(page_count or 1, 1)
+    page = math.clamp(page or 1, 1, page_count)
+    if page < page_count then
+        return page + 1
+    end
+    return MiniAlice.IsArrowLooping() and 1 or page
 end
 
 function MiniAlice.GetUnlockedPages(owner)
@@ -52,16 +95,56 @@ function MiniAlice.GetAccessibleSlotCount(owner)
     return MiniAlice.GetUnlockedPages(owner) * MiniAlice.SLOTS_PER_PAGE
 end
 
+local function GetContainerOwner(container)
+    local inst = container ~= nil and container.inst or nil
+    local inventoryitem = inst ~= nil
+        and inst.components ~= nil
+        and inst.components.inventoryitem
+        or nil
+
+    if inventoryitem ~= nil then
+        if inventoryitem.GetGrandOwner ~= nil then
+            return inventoryitem:GetGrandOwner() or inventoryitem.owner
+        end
+        return inventoryitem.owner
+    end
+
+    -- 客户端通常只有 replica；娇小爱丽丝只能由自己的持有者打开，
+    -- 因此使用本地玩家作为当前分页权限的所有者。
+    local inventoryitem_replica = inst ~= nil
+        and inst.replica ~= nil
+        and inst.replica.inventoryitem
+        or nil
+    if inventoryitem_replica ~= nil
+        and ThePlayer ~= nil
+        and inventoryitem_replica.IsGrandOwner ~= nil
+        and inventoryitem_replica:IsGrandOwner(ThePlayer)
+    then
+        return ThePlayer
+    end
+
+    local replica_container = container ~= nil and container.IsOpenedBy ~= nil and container or nil
+    if replica_container ~= nil and ThePlayer ~= nil and replica_container:IsOpenedBy(ThePlayer) then
+        return ThePlayer
+    end
+
+    -- 服务端容器可能暂时还没有同步 inventoryitem.owner，使用当前开启者兜底。
+    if container ~= nil and container.openlist ~= nil then
+        for opener in pairs(container.openlist) do
+            return opener
+        end
+    end
+    if container ~= nil and container.opener ~= nil then
+        return container.opener
+    end
+end
+
 function MiniAlice.IsSlotAccessible(container, slot)
     if container == nil or slot == nil then
         return true
     end
 
-    local owner = container.inst ~= nil
-        and container.inst.components ~= nil
-        and container.inst.components.inventoryitem ~= nil
-        and container.inst.components.inventoryitem.owner
-        or nil
+    local owner = GetContainerOwner(container)
 
     return slot >= 1 and slot <= MiniAlice.GetAccessibleSlotCount(owner)
 end

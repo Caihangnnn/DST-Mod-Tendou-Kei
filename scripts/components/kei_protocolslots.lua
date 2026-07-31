@@ -1,5 +1,6 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
+local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local LifeRecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
@@ -7,6 +8,7 @@ local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_in
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
+local BASIC_ATTRIBUTE_PROTOCOLS = BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOLS
 
 local function GetCombatEffectPath(def)
     if def.category == "beast" or def.category == "biome" then
@@ -37,6 +39,10 @@ local EFFECT_HANDLERS = BuildCombatEffectHandlers()
 --- 生活协议效果处理器（导出 Apply 方法，非 EffectHandler 接口）。
 local LIFE_EFFECTS = BuildLifeEffects()
 local ANALYSIS_ARMOR_MODIFIER = "kei_analysis_armor"
+local BASIC_DAMAGE_MODIFIER = "kei_basic_attribute_damage"
+local COMBAT_PROTOCOL_DAMAGE_MODIFIER = "kei_combat_protocol_damage"
+local BASIC_SPEED_MODIFIER = "kei_basic_attribute_speed"
+local BASIC_ABSORB_MODIFIER = "kei_basic_attribute_absorb"
 
 ----------------------------------------------------------------
 -- 辅助函数
@@ -103,19 +109,251 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
     self.implanted_combat_protocols = {}
+    self.implanted_basic_attributes = {}
     self.permanent_life_recipes = {}
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
     self.virtual_equips = {}
     self.virtual_hand_equip = nil
-    self.analysis_damage_bonus = 0
+    self.analysis_base_damage_bonus = 0
     self.analysis_tool_actions = {}
     self._kei_worker_action_old_values = {}
     self._kei_tool_action_old_tags = {}
     self._kei_mutateddeerclops_slowed = {}
     self._protocol_state_dirty = true
     self._prev_active_combat = {}
+    self.basic_attribute_modifiers = {}
+    self._combat_damage_multipliers = {}
+    self._combat_damage_reductions = {}
+    self._kei_combat_attack_depth = 0
+    self._kei_damage_parts_context = 0
+    self._kei_damage_parts_multiplier = 1
+    self._kei_damage_parts_fixed_bonus = 0
+    self._kei_last_damage_parts = nil
+
+    local combat = inst.components ~= nil and inst.components.combat or nil
+    if combat ~= nil then
+        self._old_combat_getattacked = combat.GetAttacked
+        combat.GetAttacked = function(component, attacker, damage, weapon, stimuli, spdamage, ...)
+            local reduction = self.basic_attribute_modifiers.fixed_damage_reduction or 0
+            local true_fixed_damage = 0
+            local attacker_combat = attacker ~= nil
+                and attacker.components ~= nil
+                and attacker.components.combat
+                or nil
+            local damage_parts = attacker_combat ~= nil
+                and attacker_combat._kei_last_damage_parts
+                or nil
+            if type(damage) == "number" then
+                if attacker_combat ~= nil
+                    and (attacker_combat._kei_damage_parts_context or 0) > 0
+                    and damage_parts ~= nil
+                    and damage_parts.target == component.inst
+                then
+                    local attack_multiplier = math.max(0, damage_parts.multiplier or 1)
+                    local scalable_damage = (damage_parts.scalable or 0) * attack_multiplier
+                    -- Negative fixed damage only offsets the fixed damage segment.
+                    -- The resulting true damage segment cannot be below zero.
+                    true_fixed_damage = math.max(0, (damage_parts.fixed or 0) * attack_multiplier)
+                    damage = math.max(0, scalable_damage - reduction)
+                    attacker_combat._kei_last_damage_parts = nil
+                else
+                    damage = math.max(0, damage - reduction)
+                end
+            end
+
+            -- 固定伤害减免后、进入原版护甲结算前，执行需要提前结算的防御效果。
+            if self._kei_pre_armor_damagefn ~= nil then
+                local adjusted_damage = self._kei_pre_armor_damagefn(
+                    attacker,
+                    damage,
+                    weapon,
+                    stimuli,
+                    spdamage
+                )
+                if type(adjusted_damage) == "number" then
+                    damage = math.max(0, adjusted_damage)
+                end
+            end
+            self._kei_combat_attack_depth = self._kei_combat_attack_depth + 1
+            local ok, result = pcall(
+                self._old_combat_getattacked,
+                component,
+                attacker,
+                damage,
+                weapon,
+                stimuli,
+                spdamage,
+                ...
+            )
+            self._kei_combat_attack_depth = math.max(0, self._kei_combat_attack_depth - 1)
+            if not ok then
+                error(result)
+            end
+
+            if true_fixed_damage > 0
+                and component.inst.components ~= nil
+                and component.inst.components.health ~= nil
+            then
+                -- Bypass armor and percentage damage reduction, but keep the normal
+                -- invincibility check and attribute the damage to the attacker.
+                component.inst.components.health:DoDelta(
+                    -true_fixed_damage,
+                    nil,
+                    "kei_fixed_damage",
+                    nil,
+                    attacker,
+                    true
+                )
+            end
+            return result
+        end
+
+        self._old_combat_calcdamage = combat.CalcDamage
+        combat.CalcDamage = function(component, target, weapon, multiplier, ...)
+            local base_bonus = self:GetBaseDamageBonus()
+            local old_getdamage = nil
+            local old_defaultdamage = nil
+            local defaultdamage_was_overridden = false
+            local damage_source = nil
+
+            if weapon ~= nil
+                and weapon.components ~= nil
+                and weapon.components.weapon ~= nil
+                and weapon.components.weapon.GetDamage ~= nil
+                and base_bonus ~= 0
+            then
+                damage_source = weapon.components.weapon
+                old_getdamage = damage_source.GetDamage
+                damage_source.GetDamage = function(weapon_component, ...)
+                    local basedamage, spdamage = old_getdamage(weapon_component, ...)
+                    if type(basedamage) == "number" then
+                        basedamage = basedamage + base_bonus
+                    end
+                    return basedamage, spdamage
+                end
+            elseif weapon == nil and base_bonus ~= 0 then
+                damage_source = component
+                if component.inst.components ~= nil
+                    and component.inst.components.rider ~= nil
+                    and component.inst.components.rider:IsRiding()
+                then
+                    local mount = component.inst.components.rider:GetMount()
+                    if mount ~= nil and mount.components ~= nil and mount.components.combat ~= nil then
+                        damage_source = mount.components.combat
+                    end
+                end
+                old_defaultdamage = damage_source.defaultdamage
+                damage_source.defaultdamage = (old_defaultdamage or 0) + base_bonus
+                defaultdamage_was_overridden = true
+            end
+
+            local results = { pcall(
+                self._old_combat_calcdamage,
+                component,
+                target,
+                weapon,
+                multiplier,
+                ...
+            ) }
+
+            if old_getdamage ~= nil then
+                damage_source.GetDamage = old_getdamage
+            end
+            if defaultdamage_was_overridden then
+                damage_source.defaultdamage = old_defaultdamage
+            end
+            if not results[1] then
+                error(results[2])
+            end
+
+            local damage = results[2]
+            local fixed_bonus = component._kei_damage_parts_fixed_bonus or 0
+            if self._kei_damage_parts_context > 0 and type(damage) == "number" then
+                self._kei_last_damage_parts = {
+                    target = target,
+                    scalable = damage - fixed_bonus,
+                    fixed = fixed_bonus,
+                    multiplier = self._kei_damage_parts_multiplier or 1,
+                }
+            end
+            return unpack(results, 2)
+        end
+
+        self._old_combat_doattack = combat.DoAttack
+        combat.DoAttack = function(component, ...)
+            local bonus = self.basic_attribute_modifiers.fixed_damage_bonus or 0
+            local old_bonus = component.damagebonus or 0
+            local old_context = component._kei_damage_parts_context or 0
+            local old_multiplier = component._kei_damage_parts_multiplier or 1
+            local old_fixed_bonus = component._kei_damage_parts_fixed_bonus or 0
+            component.damagebonus = old_bonus + bonus
+            component._kei_damage_parts_context = old_context + 1
+            component._kei_damage_parts_multiplier = select(5, ...) or 1
+            component._kei_damage_parts_fixed_bonus = bonus
+            local result = { pcall(self._old_combat_doattack, component, ...) }
+            component._kei_damage_parts_context = old_context
+            component._kei_damage_parts_multiplier = old_multiplier
+            component._kei_damage_parts_fixed_bonus = old_fixed_bonus
+            component.damagebonus = old_bonus
+            if not result[1] then
+                error(result[2])
+            end
+            return unpack(result, 2)
+        end
+    end
+
+    local health = inst.components ~= nil and inst.components.health or nil
+    if health ~= nil then
+        -- Health:DoDelta 会先处理外部百分比减伤，再调用 deltamodifierfn。
+        -- 因此基础属性减伤在这里执行时，已经位于护甲和战斗协议减伤之后。
+        self._old_health_deltamodifierfn = health.deltamodifierfn
+        self._kei_basic_attribute_deltamodifierfn = function(component, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+            if self._old_health_deltamodifierfn ~= nil then
+                amount = self._old_health_deltamodifierfn(
+                    component,
+                    amount,
+                    overtime,
+                    cause,
+                    ignore_invincible,
+                    afflicter,
+                    ignore_absorb
+                )
+            end
+
+            local reduction = math.min(
+                TUNING.KEI_BASIC_ATTRIBUTE_MAX_DAMAGE_REDUCTION or 90,
+                self.basic_attribute_modifiers.percent_damage_reduction or 0
+            )
+            if type(amount) == "number"
+                and amount < 0
+                and not ignore_absorb
+                and self._kei_combat_attack_depth > 0
+            then
+                local combat_reduction = self:GetCombatDamageReduction()
+                if combat_reduction > 0 then
+                    amount = amount * math.max(1 - combat_reduction, 0)
+                end
+            end
+
+            if type(amount) == "number"
+                and amount < 0
+                and not ignore_absorb
+                and reduction ~= 0
+            then
+                amount = amount * (1 - reduction / 100)
+            end
+
+            -- 这是最后一层固定扣血修正，正值抵扣，负值增加每次生命损失。
+            local fixed_health_loss_reduction = self.basic_attribute_modifiers.fixed_health_loss_reduction or 0
+            if type(amount) == "number" and amount < 0 then
+                amount = math.min(0, amount + fixed_health_loss_reduction)
+            end
+            return amount
+        end
+        health.deltamodifierfn = self._kei_basic_attribute_deltamodifierfn
+    end
 
     self:SyncUnlockedSlots()
 
@@ -201,19 +439,143 @@ end
 
 function KeiProtocolSlots:ApplyStatProgression()
     local max_stats = ProtocolSlotUnlocks.GetStatMaximums(self.unlocked_slots)
+    local modifiers = self.basic_attribute_modifiers or {}
+    max_stats.integrity = math.max(1, max_stats.integrity + (modifiers.integrity_max or 0))
+    max_stats.power = math.max(1, max_stats.power + (modifiers.power_max or 0))
+    max_stats.stability = math.max(1, max_stats.stability + (modifiers.stability_max or 0))
     local health = self.inst.components.health
     local hunger = self.inst.components.hunger
     local sanity = self.inst.components.sanity
 
     if health ~= nil and health.maxhealth ~= max_stats.integrity then
+        local current = health.currenthealth
         health:SetMaxHealth(max_stats.integrity)
+        -- 原版 SetMaxHealth 会将当前生命值设为新上限；属性协议只应修改上限。
+        health.currenthealth = math.min(current or max_stats.integrity, health:GetMaxWithPenalty())
     end
     if hunger ~= nil and hunger.max ~= max_stats.power then
+        local current = hunger.current
         hunger:SetMax(max_stats.power)
+        -- 原版 SetMax 会回满饥饿度；属性协议只应修改电量上限。
+        hunger.current = math.min(current or max_stats.power, hunger.max)
     end
     if sanity ~= nil and sanity.max ~= max_stats.stability then
+        local current = sanity.current
         sanity:SetMax(max_stats.stability)
+        -- 原版 SetMax 会回满精神值；属性协议只应修改稳定性上限。
+        sanity.current = math.min(current or max_stats.stability, sanity.max)
     end
+end
+
+local function AddBasicAttributeValue(target, data)
+    if data == nil
+        or data.kind ~= "basic_attribute"
+        or BASIC_ATTRIBUTE_PROTOCOLS[data.protocol] == nil
+        or data.attribute == nil
+        or type(data.attribute_value) ~= "number"
+    then
+        return
+    end
+    target[data.attribute] = (target[data.attribute] or 0) + data.attribute_value
+end
+
+function KeiProtocolSlots:GetPowerDrainMultiplier()
+    local reduction = math.min(
+        TUNING.KEI_BASIC_ATTRIBUTE_MAX_POWER_DRAIN_REDUCTION or 90,
+        math.max(0, self.basic_attribute_modifiers.power_drain_reduction or 0)
+    )
+    return math.max(0.1, 1 - reduction / 100)
+end
+
+function KeiProtocolSlots:ApplyBasicAttributes(modifiers)
+    modifiers = modifiers or {}
+    self.basic_attribute_modifiers = modifiers
+
+    self:ApplyStatProgression()
+
+    local combat = self.inst.components ~= nil and self.inst.components.combat or nil
+    if combat ~= nil then
+        combat.externaldamagemultipliers:RemoveModifier(self.inst, BASIC_DAMAGE_MODIFIER)
+        local damage_multiplier = math.max(0, 1 + (modifiers.percent_damage_bonus or 0) / 100)
+        if damage_multiplier ~= 1 then
+            combat.externaldamagemultipliers:SetModifier(self.inst, damage_multiplier, BASIC_DAMAGE_MODIFIER)
+        end
+    end
+
+    local locomotor = self.inst.components ~= nil and self.inst.components.locomotor or nil
+    if locomotor ~= nil then
+        locomotor:RemoveExternalSpeedMultiplier(self.inst, BASIC_SPEED_MODIFIER)
+        local speed_multiplier = math.max(0, 1 + (modifiers.percent_speed_bonus or 0) / 100)
+        if speed_multiplier ~= 1 then
+            locomotor:SetExternalSpeedMultiplier(self.inst, BASIC_SPEED_MODIFIER, speed_multiplier)
+        end
+    end
+
+    local health = self.inst.components ~= nil and self.inst.components.health or nil
+    if health ~= nil then
+        health.externalabsorbmodifiers:RemoveModifier(self.inst, BASIC_ABSORB_MODIFIER)
+    end
+end
+
+-- 获取进入原版 CalcDamage 基础伤害段的额外伤害。
+function KeiProtocolSlots:GetBaseDamageBonus()
+    return (self.basic_attribute_modifiers.base_damage_bonus or 0)
+        + (self.analysis_base_damage_bonus or 0)
+end
+
+local function RefreshCombatDamageMultiplier(self)
+    local combat = self.inst.components ~= nil and self.inst.components.combat or nil
+    if combat == nil then
+        return
+    end
+
+    local multiplier = 1
+    for _, value in pairs(self._combat_damage_multipliers or {}) do
+        multiplier = multiplier + (value - 1)
+    end
+    multiplier = math.max(0, multiplier)
+    combat.externaldamagemultipliers:RemoveModifier(self.inst, COMBAT_PROTOCOL_DAMAGE_MODIFIER)
+    if multiplier ~= 1 then
+        combat.externaldamagemultipliers:SetModifier(self.inst, multiplier, COMBAT_PROTOCOL_DAMAGE_MODIFIER)
+    end
+end
+
+-- 战斗协议的攻击倍率统一采用加算，最后以一个乘区接入原版普通伤害。
+function KeiProtocolSlots:SetCombatDamageMultiplier(source, multiplier)
+    if source == nil then
+        return
+    end
+    if multiplier == nil then
+        self._combat_damage_multipliers[source] = nil
+    else
+        self._combat_damage_multipliers[source] = tonumber(multiplier) or 1
+    end
+    RefreshCombatDamageMultiplier(self)
+end
+
+-- 设置一个战斗协议的攻击减伤来源。该列表只在 Combat:GetAttacked 的扣血路径中使用。
+function KeiProtocolSlots:SetCombatDamageReduction(source, value)
+    if source == nil then
+        return
+    end
+    if value == nil then
+        self._combat_damage_reductions[source] = nil
+    else
+        self._combat_damage_reductions[source] = math.max(0, tonumber(value) or 0)
+    end
+end
+
+-- 战斗协议之间采用加算，最终限制在配置的最大减伤以内。
+function KeiProtocolSlots:GetCombatDamageReduction()
+    local reduction = 0
+    for _, value in pairs(self._combat_damage_reductions or {}) do
+        reduction = reduction + value
+    end
+    local maximum_percent = math.min(
+        90,
+        math.max(0, tonumber(TUNING.KEI_COMBAT_PROTOCOL_MAX_DAMAGE_REDUCTION) or 90)
+    )
+    return math.min(math.max(reduction, 0), maximum_percent / 100)
 end
 
 function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
@@ -294,6 +656,19 @@ end
 
 function KeiProtocolSlots:OnRemoveFromEntity()
     self:ClearModifiers()
+
+    local combat = self.inst.components ~= nil and self.inst.components.combat or nil
+    if combat ~= nil then
+        if self._old_combat_getattacked ~= nil then
+            combat.GetAttacked = self._old_combat_getattacked
+        end
+        if self._old_combat_calcdamage ~= nil then
+            combat.CalcDamage = self._old_combat_calcdamage
+        end
+        if self._old_combat_doattack ~= nil then
+            combat.DoAttack = self._old_combat_doattack
+        end
+    end
 end
 
 function KeiProtocolSlots:CanUnlockNextSlot()
@@ -320,7 +695,7 @@ function KeiProtocolSlots:UnlockNextSlot()
     return true
 end
 
-function KeiProtocolSlots:GetFirstCombatProtocol()
+function KeiProtocolSlots:GetFirstImplantableProtocol()
     local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
     if inventory == nil or self.unlocked_slots < ProtocolSlotUnlocks.GetMaxSlots() then
         return nil, nil
@@ -333,19 +708,25 @@ function KeiProtocolSlots:GetFirstCombatProtocol()
 
     local item = container.components.container:GetItemInSlot(1)
     local data = IsProtocol(item) and item.kei_protocol_data or nil
-    if data == nil or data.kind ~= "combat" or data.protocol == nil then
+    if data == nil
+        or (data.kind ~= "combat" and data.kind ~= "basic_attribute")
+        or data.protocol == nil
+    then
         return nil, nil
     end
     return item, data
 end
 
 function KeiProtocolSlots:CanDeepImplantFirst()
-    local _, data = self:GetFirstCombatProtocol()
+    local _, data = self:GetFirstImplantableProtocol()
     if data == nil then
         return false, "KEI_DEEP_IMPLANT_NO_PROTOCOL"
     end
-    if self.implanted_combat_protocols[data.protocol] then
+    if data.kind == "combat" and self.implanted_combat_protocols[data.protocol] then
         return false, "KEI_DEEP_IMPLANT_ALREADY_IMPLANTED"
+    end
+    if data.kind == "basic_attribute" and type(data.attribute_value) ~= "number" then
+        return false, "KEI_DEEP_IMPLANT_NO_PROTOCOL"
     end
     return true
 end
@@ -356,7 +737,7 @@ function KeiProtocolSlots:DeepImplantFirst()
         return false, reason
     end
 
-    local item, data = self:GetFirstCombatProtocol()
+    local item, data = self:GetFirstImplantableProtocol()
     local inventory = self.inst.components.inventory
     local container = inventory:GetItemInSlot(1)
     local removed = container.components.container:RemoveItem(item, true)
@@ -364,7 +745,15 @@ function KeiProtocolSlots:DeepImplantFirst()
         return false, "KEI_DEEP_IMPLANT_NO_PROTOCOL"
     end
 
-    self.implanted_combat_protocols[data.protocol] = true
+    if data.kind == "combat" then
+        self.implanted_combat_protocols[data.protocol] = true
+    else
+        table.insert(self.implanted_basic_attributes, {
+            protocol = data.protocol,
+            attribute = data.attribute,
+            attribute_value = data.attribute_value,
+        })
+    end
     removed:Remove()
     self._protocol_state_dirty = true
     self:Refresh()
@@ -583,13 +972,21 @@ function KeiProtocolSlots:ClearModifiers()
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
         self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
+        if self.inst.components.health.deltamodifierfn == self._kei_basic_attribute_deltamodifierfn then
+            self.inst.components.health.deltamodifierfn = self._old_health_deltamodifierfn
+        end
     end
+    self._combat_damage_reductions = {}
+    self._combat_damage_multipliers = {}
+    RefreshCombatDamageMultiplier(self)
+    self:ApplyBasicAttributes({})
 end
 
 function KeiProtocolSlots:DisableAllProtocols()
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
+    self.active_basic_attributes = {}
     self:SyncCombatProtocolFlags()
     self:SyncLifeProtocolFlags()
     self:SetProtocolContainersPowered(false)
@@ -759,6 +1156,7 @@ function KeiProtocolSlots:Refresh()
     self._protocol_state_dirty = nil
     local combat = {}
     local life = {}
+    local basic_attributes = {}
     local hand_stats = HandAnalysisInheritance.NewStats()
     local desired_virtuals = {}
     local wants_hand_virtual = false
@@ -776,14 +1174,20 @@ function KeiProtocolSlots:Refresh()
             else
                 life[data.protocol] = 1
             end
+        elseif data.kind == "basic_attribute" then
+            AddBasicAttributeValue(basic_attributes, data)
         elseif data.kind == "analysis" then
             if data.slot == "head" or data.slot == "body" then
                 desired_virtuals[entry.slot] = true
                 self:ApplyVirtualEquip(entry)
             elseif data.slot == "hands" then
-                if entry.slot == 1 and not self._kei_suppress_hand_virtual and self:ApplyHandVirtualEquip(entry) then
-                    wants_hand_virtual = true
+                if entry.slot == 1 then
+                    -- 第一格是完整继承：虚拟手部装备无法生成时，第一格协议整体不生效。
+                    if not self._kei_suppress_hand_virtual and self:ApplyHandVirtualEquip(entry) then
+                        wants_hand_virtual = true
+                    end
                 else
+                    -- 只有第二格及之后的手部协议才提供 2 类继承的面板伤害。
                     HandAnalysisInheritance.AddStats(hand_stats, data)
                 end
             end
@@ -797,9 +1201,14 @@ function KeiProtocolSlots:Refresh()
     for protocol in pairs(self.implanted_combat_protocols) do
         combat[protocol] = true
     end
+    for _, data in ipairs(self.implanted_basic_attributes) do
+        AddBasicAttributeValue(basic_attributes, data)
+    end
 
     self.active_combat = combat
     self.active_life = life
+    self.active_basic_attributes = basic_attributes
+    self:ApplyBasicAttributes(basic_attributes)
     self:RefreshEffects()
     self:SyncLifeProtocolFlags()
     self:SyncCombatProtocolFlags()
@@ -850,7 +1259,7 @@ function KeiProtocolSlots:DrainProtocols()
 
     local silent_drain = not TUNING.KEI_PROTOCOL_DRAIN_SOUND
     if power_cost > 0 and self.inst.components.hunger ~= nil then
-        self.inst.components.hunger:DoDelta(-power_cost, silent_drain)
+        self.inst.components.hunger:DoDelta(-power_cost * self:GetPowerDrainMultiplier(), silent_drain)
     end
     if stability_cost > 0 and self.inst.components.sanity ~= nil then
         self.inst.components.sanity:DoDelta(-stability_cost, silent_drain)
@@ -893,6 +1302,7 @@ function KeiProtocolSlots:OnSave()
     return {
         unlocked_slots = self.unlocked_slots,
         implanted_combat_protocols = self.implanted_combat_protocols,
+        implanted_basic_attributes = self.implanted_basic_attributes,
         permanent_life_recipes = self.permanent_life_recipes,
     }
 end
@@ -905,6 +1315,7 @@ function KeiProtocolSlots:OnLoad(data)
         self.inst.components.kei_experience:RecalculateMax()
     end
     self.implanted_combat_protocols = data ~= nil and data.implanted_combat_protocols or {}
+    self.implanted_basic_attributes = data ~= nil and data.implanted_basic_attributes or {}
     self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()
     self:ApplyStatProgression()

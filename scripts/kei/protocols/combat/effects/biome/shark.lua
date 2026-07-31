@@ -15,14 +15,6 @@ local function EnsureMoisture(inst)
     return inst.components.moisture
 end
 
-local function RunOldDeltaModifier(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
-    local old = slots._kei_shark_old_deltamodifierfn
-    if old ~= nil then
-        return old(inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
-    end
-    return amount
-end
-
 local function SpawnSplashFx(inst, absorbed_damage, max_absorbed_damage)
     if absorbed_damage <= 0 or max_absorbed_damage <= 0 then
         return
@@ -37,26 +29,26 @@ local function SpawnSplashFx(inst, absorbed_damage, max_absorbed_damage)
     end
 end
 
--- 参考沃特技能树：护甲/减伤结算后，真正扣血前，将负伤害转为潮湿度消耗。
-local function RedirectDamageToMoisture(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
-    if ignore_absorb or amount >= 0 or overtime or afflicter == nil then
-        return RunOldDeltaModifier(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+-- 参考沃特技能树：在护甲结算前，将部分受到的攻击伤害转为潮湿度消耗。
+local function RedirectDamageToMoisture(inst, amount, attacker)
+    if type(amount) ~= "number" or amount <= 0 or attacker == nil then
+        return amount
     end
 
     local moisture = inst.components.moisture
     if moisture == nil then
-        return RunOldDeltaModifier(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+        return amount
     end
 
     local current = moisture:GetMoisture()
     if current <= 0 then
-        return RunOldDeltaModifier(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+        return amount
     end
 
     local rate = math.max(TUNING.KEI_SHARK_MOISTURE_DAMAGE_RATE or 2, 0.1)
-    local absorbed_damage = math.min(-amount, current / rate)
+    local absorbed_damage = math.min(amount, current / rate)
     if absorbed_damage <= 0 then
-        return RunOldDeltaModifier(slots, inst, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+        return amount
     end
 
     moisture:DoDelta(-absorbed_damage * rate, true)
@@ -64,7 +56,7 @@ local function RedirectDamageToMoisture(slots, inst, amount, overtime, cause, ig
     local max_moisture = moisture.GetMaxMoisture ~= nil and moisture:GetMaxMoisture() or TUNING.MAX_WETNESS or current
     SpawnSplashFx(inst, absorbed_damage, max_moisture / rate)
 
-    return RunOldDeltaModifier(slots, inst, amount + absorbed_damage, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+    return amount - absorbed_damage
 end
 
 -- 启用潮湿装甲，并保留进入协议前已有的生命变化修正函数。
@@ -72,17 +64,20 @@ function SharkEffect.Enable(slots, inst)
     if slots == nil or inst == nil or inst.components.health == nil then
         return
     end
-    if slots._kei_shark_deltamodifierfn ~= nil then
+    if slots._kei_shark_pre_armor_damagefn ~= nil then
         return
     end
 
     EnsureMoisture(inst)
 
-    slots._kei_shark_old_deltamodifierfn = inst.components.health.deltamodifierfn
-    slots._kei_shark_deltamodifierfn = function(owner, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
-        return RedirectDamageToMoisture(slots, owner, amount, overtime, cause, ignore_invincible, afflicter, ignore_absorb)
+    slots._kei_shark_old_pre_armor_damagefn = slots._kei_pre_armor_damagefn
+    slots._kei_shark_pre_armor_damagefn = function(attacker, amount, weapon, stimuli, spdamage)
+        if slots._kei_shark_old_pre_armor_damagefn ~= nil then
+            amount = slots._kei_shark_old_pre_armor_damagefn(attacker, amount, weapon, stimuli, spdamage)
+        end
+        return RedirectDamageToMoisture(inst, amount, attacker)
     end
-    inst.components.health.deltamodifierfn = slots._kei_shark_deltamodifierfn
+    slots._kei_pre_armor_damagefn = slots._kei_shark_pre_armor_damagefn
 end
 
 -- 协议移除时，只在当前函数仍属于本协议时恢复旧函数。
@@ -91,11 +86,11 @@ function SharkEffect.Disable(slots, inst)
         return
     end
 
-    if inst.components.health.deltamodifierfn == slots._kei_shark_deltamodifierfn then
-        inst.components.health.deltamodifierfn = slots._kei_shark_old_deltamodifierfn
+    if slots._kei_pre_armor_damagefn == slots._kei_shark_pre_armor_damagefn then
+        slots._kei_pre_armor_damagefn = slots._kei_shark_old_pre_armor_damagefn
     end
-    slots._kei_shark_deltamodifierfn = nil
-    slots._kei_shark_old_deltamodifierfn = nil
+    slots._kei_shark_pre_armor_damagefn = nil
+    slots._kei_shark_old_pre_armor_damagefn = nil
 end
 
 return SharkEffect

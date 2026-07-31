@@ -8,27 +8,20 @@ local function GetMoisture(inst)
     return inst.components.moisture ~= nil and inst.components.moisture:GetMoisture() or 0
 end
 
-local function RemoveDamageMultiplier(inst)
-    if inst.components.combat ~= nil then
-        inst.components.combat.externaldamagemultipliers:RemoveModifier(inst, DAMAGE_MODIFIER)
-    end
-end
-
 -- 按当前潮湿度刷新攻击倍率：潮湿度 20 提供 20% 增伤，最终倍率为 1.2。
 local function RefreshDamageMultiplier(slots, inst)
-    if inst.components.combat == nil then
+    if slots == nil or inst.components.combat == nil then
         return
     end
 
     local moisture = GetMoisture(inst)
     if moisture > 0 then
-        inst.components.combat.externaldamagemultipliers:SetModifier(
-            inst,
-            1 + moisture / 100,
-            DAMAGE_MODIFIER
+        slots:SetCombatDamageMultiplier(
+            DAMAGE_MODIFIER,
+            1 + moisture / 100
         )
     else
-        RemoveDamageMultiplier(inst)
+        slots:SetCombatDamageMultiplier(DAMAGE_MODIFIER, nil)
     end
 end
 
@@ -58,7 +51,7 @@ function OtterEffect.Disable(slots, inst)
         inst:RemoveEventCallback("moisturedelta", slots._kei_otter_moisture_delta_fn)
         slots._kei_otter_moisture_delta_fn = nil
     end
-    RemoveDamageMultiplier(inst)
+    slots:SetCombatDamageMultiplier(DAMAGE_MODIFIER, nil)
 end
 
 return OtterEffect

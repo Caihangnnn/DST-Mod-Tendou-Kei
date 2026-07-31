@@ -5,26 +5,19 @@ local SpiderWebCommon = require('kei/protocols/combat/effects/biome/_spider_web_
 local SpiderHiderEffect = {}
 local ABSORB_MODIFIER = 'kei_spider_hider_web_absorb'
 
-local function RemoveAbsorbModifier(inst)
-    if inst.components.health ~= nil then
-        inst.components.health.externalabsorbmodifiers:RemoveModifier(inst, ABSORB_MODIFIER)
-    end
+local function RemoveAbsorbModifier(slots)
+    slots:SetCombatDamageReduction(ABSORB_MODIFIER, nil)
 end
 
 -- 根据当前位置刷新蜘蛛网区域减伤。
 local function RefreshAbsorbModifier(slots, inst)
-    if inst.components.health == nil then
-        return
-    end
-
     if SpiderWebCommon.IsInSpiderWebArea(slots, inst) then
-        inst.components.health.externalabsorbmodifiers:SetModifier(
-            inst,
-            TUNING.KEI_SPIDER_HIDER_WEB_ABSORB or 0.5,
-            ABSORB_MODIFIER
+        slots:SetCombatDamageReduction(
+            ABSORB_MODIFIER,
+            TUNING.KEI_SPIDER_HIDER_WEB_ABSORB or 0.5
         )
     else
-        RemoveAbsorbModifier(inst)
+        RemoveAbsorbModifier(slots)
     end
 end
 
@@ -45,7 +38,7 @@ function SpiderHiderEffect.Disable(slots, inst)
         slots._kei_spider_hider_absorb_task:Cancel()
         slots._kei_spider_hider_absorb_task = nil
     end
-    RemoveAbsorbModifier(inst)
+    RemoveAbsorbModifier(slots)
 end
 
 return SpiderHiderEffect
