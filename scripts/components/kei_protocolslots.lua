@@ -108,6 +108,7 @@ end
 local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
+    self.mini_alice_pages = 1
     self.implanted_combat_protocols = {}
     self.implanted_basic_attributes = {}
     self.permanent_life_recipes = {}
@@ -356,6 +357,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     end
 
     self:SyncUnlockedSlots()
+    self:SyncMiniAlicePages()
 
     inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()
@@ -430,6 +432,18 @@ end)
 function KeiProtocolSlots:SyncUnlockedSlots()
     if self.inst._kei_unlocked_protocol_slots ~= nil then
         self.inst._kei_unlocked_protocol_slots:set(self.unlocked_slots)
+    end
+end
+
+function KeiProtocolSlots:SyncMiniAlicePages()
+    local max_pages = math.clamp(tonumber(TUNING.KEI_MINI_ALICE_MAX_PAGES) or 7, 1, 7)
+    self.mini_alice_pages = math.clamp(
+        math.floor(tonumber(self.mini_alice_pages) or 1),
+        1,
+        max_pages
+    )
+    if self.inst._kei_mini_alice_pages ~= nil then
+        self.inst._kei_mini_alice_pages:set(self.mini_alice_pages)
     end
 end
 
@@ -692,6 +706,29 @@ function KeiProtocolSlots:UnlockNextSlot()
     end
     self:EnsureProtocolContainers()
     self:Refresh()
+    return true
+end
+
+function KeiProtocolSlots:CanUnlockMiniAlicePage()
+    local max_pages = math.clamp(tonumber(TUNING.KEI_MINI_ALICE_MAX_PAGES) or 7, 1, 7)
+    if (self.mini_alice_pages or 1) >= max_pages then
+        return false, "KEI_MINI_ALICE_PAGES_FULL"
+    end
+    return true
+end
+
+function KeiProtocolSlots:UnlockMiniAlicePage()
+    local can_unlock, reason = self:CanUnlockMiniAlicePage()
+    if not can_unlock then
+        return false, reason
+    end
+
+    self.mini_alice_pages = (self.mini_alice_pages or 1) + 1
+    self:SyncMiniAlicePages()
+    self._protocol_state_dirty = true
+    self.inst:PushEvent("kei_mini_alice_pages_unlocked", {
+        pages = self.mini_alice_pages,
+    })
     return true
 end
 
@@ -1301,6 +1338,7 @@ end
 function KeiProtocolSlots:OnSave()
     return {
         unlocked_slots = self.unlocked_slots,
+        mini_alice_pages = self.mini_alice_pages,
         implanted_combat_protocols = self.implanted_combat_protocols,
         implanted_basic_attributes = self.implanted_basic_attributes,
         permanent_life_recipes = self.permanent_life_recipes,
@@ -1311,6 +1349,7 @@ function KeiProtocolSlots:OnLoad(data)
     if data ~= nil and data.unlocked_slots ~= nil then
         self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(data.unlocked_slots)
     end
+    self.mini_alice_pages = data ~= nil and data.mini_alice_pages or 1
     if self.inst.components ~= nil and self.inst.components.kei_experience ~= nil then
         self.inst.components.kei_experience:RecalculateMax()
     end
@@ -1318,6 +1357,7 @@ function KeiProtocolSlots:OnLoad(data)
     self.implanted_basic_attributes = data ~= nil and data.implanted_basic_attributes or {}
     self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()
+    self:SyncMiniAlicePages()
     self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()

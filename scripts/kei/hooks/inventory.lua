@@ -1,5 +1,6 @@
 local GrowthRecipes = require("kei/growth_recipes")
 local MiniAlice = require("kei/mini_alice")
+local RotorSurveyRegistry = require("kei/rotor_survey_registry")
 local FISH_CALL_RECIPE = "kei_fish_call_spell"
 local FULLMOON_RECIPE = "kei_fullmoon_spell"
 local NEWMOON_RECIPE = "kei_newmoon_spell"
@@ -8,7 +9,21 @@ local WEATHER_RECIPE = "kei_weather_spell"
 
 AddComponentPostInit("builder", function(self)
     local old_HasCharacterIngredient = self.HasCharacterIngredient
+    local old_HasIngredients = self.HasIngredients
     local old_DoBuild = self.DoBuild
+
+    local function IsRotorSurveyRecipe(recipe)
+        return (type(recipe) == "string" and recipe or recipe ~= nil and recipe.name) == "kei_rotor_surveyor"
+    end
+
+    function self:HasIngredients(recipe)
+        if IsRotorSurveyRecipe(recipe)
+            and RotorSurveyRegistry.FindControllerInOwner(self.inst) ~= nil
+        then
+            return false
+        end
+        return old_HasIngredients(self, recipe)
+    end
 
     function self:HasCharacterIngredient(ingredient)
         if GrowthRecipes.IsExperienceIngredient(ingredient) then
@@ -54,6 +69,7 @@ end)
 
 AddClassPostConstruct("components/builder_replica", function(self)
     local old_HasCharacterIngredient = self.HasCharacterIngredient
+    local old_HasIngredients = self.HasIngredients
 
     function self:HasCharacterIngredient(ingredient)
         if GrowthRecipes.IsExperienceIngredient(ingredient) then
@@ -62,6 +78,16 @@ AddClassPostConstruct("components/builder_replica", function(self)
             return GrowthRecipes.HasEnoughExperienceIngredient(self.inst, ingredient), amount
         end
         return old_HasCharacterIngredient(self, ingredient)
+    end
+
+    function self:HasIngredients(recipe)
+        local recname = type(recipe) == "string" and recipe or recipe ~= nil and recipe.name or nil
+        if recname == "kei_rotor_surveyor"
+            and RotorSurveyRegistry.FindControllerInOwner(self.inst) ~= nil
+        then
+            return false
+        end
+        return old_HasIngredients(self, recipe)
     end
 end)
 
@@ -76,6 +102,10 @@ end
 
 local function IsKeiVirtualHandEquipment(item)
     return item ~= nil and item:HasTag("kei_virtual_hand_equipment")
+end
+
+local function IsRotorSurveyController(item)
+    return item ~= nil and item:HasTag("kei_rotor_survey_controller")
 end
 
 local function IsEquippedKeiHandItem(inventory, item)
@@ -235,10 +265,70 @@ local function GetOtherOpenCraftingContainers(inventory, overflow, alice)
 end
 
 AddComponentPostInit("inventory", function(self)
+    local old_CanTakeItemInSlot = self.CanTakeItemInSlot
+    local old_MoveItemFromAllOfSlot = self.MoveItemFromAllOfSlot
+    local old_MoveItemFromHalfOfSlot = self.MoveItemFromHalfOfSlot
+    local old_MoveItemFromCountOfSlot = self.MoveItemFromCountOfSlot
     local old_DropItem = self.DropItem
     local old_RemoveItem = self.RemoveItem
     local old_Unequip = self.Unequip
     local old_Equip = self.Equip
+
+    function self:CanTakeItemInSlot(item, slot)
+        if IsRotorSurveyController(item) then
+            return item.GetControllerOwnerUserId ~= nil
+                and self.inst ~= nil
+                and self.inst.userid ~= nil
+                and item:GetControllerOwnerUserId() == self.inst.userid
+        end
+        return old_CanTakeItemInSlot(self, item, slot)
+    end
+
+    local function IsAllowedControllerDestination(container, owner, item)
+        if item == nil or not IsRotorSurveyController(item) then
+            return true
+        end
+        if container == nil or owner == nil or owner.userid == nil then
+            return false
+        end
+        if container == owner then
+            return item.GetControllerOwnerUserId ~= nil
+                and item:GetControllerOwnerUserId() == owner.userid
+        end
+        if not container:HasTag("kei_mini_alice") then
+            return false
+        end
+        local inventoryitem = container.components ~= nil
+            and container.components.inventoryitem or nil
+        return inventoryitem ~= nil
+            and inventoryitem:GetGrandOwner() == owner
+            and item.GetControllerOwnerUserId ~= nil
+            and item:GetControllerOwnerUserId() == owner.userid
+    end
+
+    function self:MoveItemFromAllOfSlot(slot, container, ...)
+        local item = self:GetItemInSlot(slot)
+        if item ~= nil and not IsAllowedControllerDestination(container, self.inst, item) then
+            return
+        end
+        return old_MoveItemFromAllOfSlot(self, slot, container, ...)
+    end
+
+    function self:MoveItemFromHalfOfSlot(slot, container, ...)
+        local item = self:GetItemInSlot(slot)
+        if item ~= nil and not IsAllowedControllerDestination(container, self.inst, item) then
+            return
+        end
+        return old_MoveItemFromHalfOfSlot(self, slot, container, ...)
+    end
+
+    function self:MoveItemFromCountOfSlot(slot, container, count, ...)
+        local item = self:GetItemInSlot(slot)
+        if item ~= nil and not IsAllowedControllerDestination(container, self.inst, item) then
+            return
+        end
+        return old_MoveItemFromCountOfSlot(self, slot, container, count, ...)
+    end
 
     function self:GetCraftingIngredient(item, amount)
         local overflow = self:GetOverflowContainer()
@@ -326,6 +416,10 @@ AddComponentPostInit("inventory", function(self)
         end
 
         if IsProtectedVirtualEquipment(item) then
+            return nil
+        end
+
+        if IsRotorSurveyController(item) then
             return nil
         end
 

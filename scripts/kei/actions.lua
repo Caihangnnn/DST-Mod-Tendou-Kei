@@ -9,10 +9,37 @@ local function AddKeiActionHandler(action, state)
     AddStategraphActionHandler("wilson_client", ActionHandler(action, state))
 end
 
+local function GetSpellbookActionObject(act)
+    return act ~= nil and (act.invobject or act.target) or nil
+end
+
+-- 为旋翼调查仪控制器使用专用的打开/关闭文本，不影响其他 spellbook。
+local usespellbook_strfn = ACTIONS.USESPELLBOOK.strfn
+ACTIONS.USESPELLBOOK.strfn = function(act)
+    local object = GetSpellbookActionObject(act)
+    if object ~= nil and object:HasTag("kei_rotor_survey_controller") then
+        return "KEI_ROTOR_SURVEY_CONTROLLER"
+    end
+    return usespellbook_strfn ~= nil and usespellbook_strfn(act) or nil
+end
+
+local closespellbook_strfn = ACTIONS.CLOSESPELLBOOK.strfn
+ACTIONS.CLOSESPELLBOOK.strfn = function(act)
+    local object = GetSpellbookActionObject(act)
+    if object ~= nil and object:HasTag("kei_rotor_survey_controller") then
+        return "KEI_ROTOR_SURVEY_CONTROLLER"
+    end
+    return closespellbook_strfn ~= nil and closespellbook_strfn(act) or nil
+end
+
+-- 控制器使用独立的瞬时动作，并复用电刑机的控制动画。
+-- 使用 inventoryitem 发现动作，避免 spellbook 组件在客户端动作列表同步时漏注册。
 local ANALYSIS_BLACKLIST = {
     armorwagpunk = true,
     batnosehat = true,
     wagpunkhat = true,
+    kei_rotor_surveyor = true,
+    kei_rotor_survey_controller = true,
 }
 
 local RECORDER_STATE = {
@@ -92,6 +119,36 @@ local function IsKeiMapTeleportBlocked(doer)
         or (doer.components.rider ~= nil and doer.components.rider:IsRiding())
         or (doer.components.inventory ~= nil and doer.components.inventory:IsHeavyLifting())
 end
+
+local function CastRotorControllerSpell(act)
+    local controller = act.invobject or act.target
+    if controller == nil
+        or not controller:HasTag("kei_rotor_survey_controller")
+        or controller.components.spellbook == nil
+    then
+        return false
+    end
+
+    -- 控制器必须已经装备在手部，避免存放在背包或娇小爱丽丝中时误触发轮盘。
+    if controller.components.inventoryitem == nil
+        or controller.components.inventoryitem:GetGrandOwner() ~= act.doer
+        or controller.components.equippable == nil
+        or not controller.components.equippable:IsEquipped()
+    then
+        return false
+    end
+
+    return controller.components.spellbook:CastSpell(act.doer)
+end
+
+local rotor_control_action = AddAction("KEI_ROTOR_CONTROL", "控制", CastRotorControllerSpell)
+rotor_control_action.mount_valid = true
+
+local rotor_pilot_action = AddAction("KEI_ROTOR_PILOT", "驾驶", CastRotorControllerSpell)
+rotor_pilot_action.mount_valid = true
+
+local rotor_beam_action = AddAction("KEI_ROTOR_BEAM", "光束", CastRotorControllerSpell)
+rotor_beam_action.mount_valid = true
 
 local function IsClearTeleportPoint(pt)
     local x, y, z = pt:Get()
@@ -665,6 +722,28 @@ charge_action.mount_valid = true
 charge_action.rmb = true
 charge_action.priority = 2
 AddKeiActionHandler(ACTIONS.KEI_CHARGE, "doshortaction")
+
+local rotor_recharge_action = AddAction("KEI_RECHARGE_ROTOR", "充电", function(act)
+    local controller = act.target
+    if not IsKei(act.doer)
+        or act.invobject == nil
+        or controller == nil
+        or not controller:HasTag("kei_rotor_survey_controller")
+        or controller.components == nil
+        or controller.components.kei_rotor_power == nil
+    then
+        return false
+    end
+
+    controller.components.kei_rotor_power:Recharge(TUNING.KEI_BATTERY_POWER or 240)
+    ConsumeOne(act.invobject)
+    Say(act.doer, "ANNOUNCE_KEI_CHARGED")
+    return true
+end)
+rotor_recharge_action.mount_valid = true
+rotor_recharge_action.rmb = true
+rotor_recharge_action.priority = 2
+AddKeiActionHandler(ACTIONS.KEI_RECHARGE_ROTOR, "give")
 
 -- 右键修理工具：恢复机体完整度，也就是 health 组件。
 local repair_action = AddAction("KEI_REPAIR", "修复", function(act)
@@ -1700,7 +1779,11 @@ AddComponentAction("USEITEM", "inventoryitem", function(inst, doer, target, acti
     if not right or not IsKei(doer) or target == nil then
         return
     end
-    if target:HasTag("kei_data_recorder")
+    if inst:HasTag("kei_battery")
+        and target:HasTag("kei_rotor_survey_controller")
+    then
+        table.insert(actions, ACTIONS.KEI_RECHARGE_ROTOR)
+    elseif target:HasTag("kei_data_recorder")
         and CombatProtocolDefs.GetRecorderChallenge(GetCombatProtocolFromItem(inst)) ~= nil
     then
         table.insert(actions, ACTIONS.KEI_SUBMIT_CD)

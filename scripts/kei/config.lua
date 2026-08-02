@@ -12,6 +12,8 @@ local protocol_slot_max = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_SLOT_
 local protocol_slot_base_initial = 1
 local protocol_slot_initial_extra = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_INITIAL_EXTRA_SLOTS"), 0, 0, protocol_slot_max - protocol_slot_base_initial)
 local mini_alice_arrow_mode = ClampConfigNumber(GetModConfigData("KEI_MINI_ALICE_ARROW_MODE"), 1, 1, 4)
+local mini_alice_max_pages = ClampConfigNumber(GetModConfigData("KEI_MINI_ALICE_MAX_PAGES"), 7, 1, 7)
+local rotor_surveyor_range = 500 -- 旋翼调查仪无人机的最大飞行半径，可直接修改
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
 TUNING.KEI_ALLOW_DATA_COPY = GetModConfigData("KEI_ALLOW_DATA_COPY") ~= false
@@ -37,6 +39,8 @@ TUNING.KEI_PROTOCOL_SLOT_BASE_INITIAL = protocol_slot_base_initial -- 基础解�
 TUNING.KEI_PROTOCOL_SLOT_INITIAL = protocol_slot_base_initial + protocol_slot_initial_extra -- 当前配置中初始拥有的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_max -- 协议槽位的最大数量（根据配置）
 TUNING.KEI_MINI_ALICE_ARROW_MODE = mini_alice_arrow_mode -- 娇小爱丽丝箭头显示与循环翻页模式
+TUNING.KEI_MINI_ALICE_MAX_PAGES = mini_alice_max_pages -- 娇小爱丽丝可通过扩容配方解锁的最大页数
+TUNING.KEI_ROTOR_SURVEYOR_RANGE = rotor_surveyor_range -- 旋翼调查仪无人机的最大飞行半径
 TUNING.KEI_EXPERIENCE_BASE_MAX = 1000
 TUNING.KEI_EXPERIENCE_COST_PER_SLOT = 1000
 TUNING.KEI_EXPERIENCE_PACK_AMOUNT = 1000
@@ -80,7 +84,7 @@ TUNING.KEI_BACKUP_BODY_LIFETIME = 30 -- 备份体从生成到开始消失的时�
 
 -- 设计中"普通食物转化电量效率较低"的实现参数。
 TUNING.KEI_FOOD_ABSORPTION = 0.2 -- 普通食物转化为电量的效率系数（20%）
-TUNING.KEI_BATTERY_POWER = 60 -- 电池类物品提供的电量值
+TUNING.KEI_BATTERY_POWER = 240 -- 电池类物品提供的电量值
 TUNING.KEI_REPAIR_VALUE = 50 -- 修复物品恢复的机体完整度
 TUNING.KEI_MAP_TELEPORT_POWER_COST = 30 -- 地图传送生活协议的单次电量消耗
 TUNING.KEI_LIFE_GROWTH_ACCELERATION_RADIUS = 20
@@ -95,6 +99,19 @@ TUNING.KEI_LIFE_RIPEN_EXPERIENCE_COST = 50 -- 催熟魔法经验消耗
 TUNING.KEI_LIFE_WEATHER_EXPERIENCE_COST = 50 -- 晴雨魔法经验消耗
 TUNING.KEI_LIFE_DURABILITY_RESTORE_PERIOD = 60
 TUNING.KEI_LIFE_DURABILITY_RESTORE_PER_STACK = 0.1
+TUNING.KEI_ROTOR_CONTROLLER_MAX_POWER = 240
+TUNING.KEI_ROTOR_CONTROLLER_DRAIN_RATE = 1
+TUNING.KEI_ROTOR_CONTROLLER_REGEN_RATE = 1
+TUNING.KEI_ROTOR_BEAM_RADIUS = 8
+TUNING.KEI_ROTOR_BEAM_UPDATE_PERIOD = 0.2
+TUNING.KEI_ROTOR_BEAM_DRAIN_RATE = 2
+TUNING.KEI_ROTOR_RESURRECTION_DELAY = 5
+TUNING.KEI_ROTOR_RESURRECTION_POWER_COST = 120
+TUNING.KEI_ROTOR_HEAL_AMOUNT = 1
+TUNING.KEI_ROTOR_STRENGTHEN_DAMAGE_MULT = 1.5
+TUNING.KEI_ROTOR_STRENGTHEN_SHIELD_COOLDOWN = 5
+TUNING.KEI_ROTOR_CONFINEMENT_SPEED_MULT = 0.5
+TUNING.KEI_ROTOR_CONFINEMENT_ANIM_MULT = 0.5
 TUNING.KEI_DORMANT_POWER_DRAIN = 1 -- 休眠状态每秒消耗的电量
 TUNING.KEI_DORMANT_STABILITY_REGEN = 3 -- 休眠状态每秒恢复的数据稳定性
 TUNING.KEI_DORMANT_INTEGRITY_REGEN = 3 -- 休眠状态每秒恢复的机体完整度
@@ -229,7 +246,6 @@ TUNING.KEI_BEEQUEEN_PANIC_RADIUS = 12 -- 蜂后协议嘶吼领域威压范围
 TUNING.KEI_BEEQUEEN_BASIC_PANIC_COOLDOWN = 0.5 -- 蜂后初级协议恐惧攻击者触发冷却
 TUNING.KEI_BEEQUEEN_PANIC_COOLDOWN = 3 -- 蜂后协议嘶吼领域触发冷却
 
--- 头部 / 身体解析协议使用的隐藏虚拟装备槽。
 for i = 1, TUNING.KEI_PROTOCOL_SLOT_HARD_MAX do
     EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(i)] = "kei_protocol_" .. tostring(i)
 end

@@ -1,11 +1,13 @@
 -- Growth recipes consume experience and perform their operation directly.
 
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local MiniAlice = require("kei/mini_alice")
 
 local GrowthRecipes = {
     SLOT_UNLOCK_RECIPE = "kei_protocol_slot_unlock",
     DEEP_IMPLANT_RECIPE = "kei_deep_implant",
     POTENTIAL_RECIPE = "kei_potential_activation",
+    MINI_ALICE_PAGE_RECIPE = "kei_mini_alice_page_unlock",
 }
 
 function GrowthRecipes.IsExperienceIngredient(ingredient)
@@ -33,6 +35,8 @@ function GrowthRecipes.GetExperienceCost(recname, experience, builder)
         or recname == GrowthRecipes.POTENTIAL_RECIPE
     then
         slot_count = ProtocolSlotUnlocks.GetMaxSlots()
+    elseif recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE then
+        return TUNING.KEI_EXPERIENCE_COST_PER_SLOT or 1000, false
     else
         return 0, true
     end
@@ -167,10 +171,25 @@ function GrowthRecipes.CanBuildPotential(recipe, builder)
     return true
 end
 
+function GrowthRecipes.CanBuildMiniAlicePage(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return false
+    end
+
+    if MiniAlice.GetUnlockedPages(builder) >= MiniAlice.GetMaxPages() then
+        return false, "KEI_MINI_ALICE_PAGES_FULL"
+    end
+    if not GrowthRecipes.HasEnoughExperience(builder, GrowthRecipes.MINI_ALICE_PAGE_RECIPE) then
+        return false, "KEI_EXPERIENCE_NOT_FULL"
+    end
+    return true
+end
+
 function GrowthRecipes.IsGrowthRecipe(recname)
     return recname == GrowthRecipes.SLOT_UNLOCK_RECIPE
         or recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
         or recname == GrowthRecipes.POTENTIAL_RECIPE
+        or recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE
 end
 
 local function PrepareDirectBuild(builder, recname, pt, rotation, skin)
@@ -263,6 +282,25 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
         experience:StartPotential(TUNING.KEI_POTENTIAL_DURATION or 240)
         if inst.components.talker ~= nil then
             inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_POTENTIAL)
+        end
+        return true
+    elseif recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE then
+        local can_unlock, unlock_reason = slots:CanUnlockMiniAlicePage()
+        if not can_unlock then
+            return false, unlock_reason
+        end
+
+        local spent, spend_reason = ConsumeConfiguredExperience(inst, recname)
+        if not spent then
+            return false, spend_reason
+        end
+
+        local unlocked, actual_reason = slots:UnlockMiniAlicePage()
+        if not unlocked then
+            return false, actual_reason or unlock_reason
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_MINI_ALICE_PAGE_UNLOCK)
         end
         return true
     end

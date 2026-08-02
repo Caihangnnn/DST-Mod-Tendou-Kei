@@ -239,6 +239,16 @@ local function CanUseRookGuard(inst)
         and (inst.replica.inventory == nil or inst.replica.inventory:GetActiveItem() == nil)
 end
 local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
+    -- 地图打开时才提供原版 MAPSCOUTSELECT_MAP；有效目标与所有权由动作回调校验。
+    if inst.checkingmapactions
+        and right
+        and useitem == nil
+        and ACTIONS.MAPSCOUTSELECT_MAP ~= nil
+        and not inst:HasTag("playerghost")
+    then
+        return { ACTIONS.MAPSCOUTSELECT_MAP }, pos
+    end
+
     if ACTIONS.KEI_DAYWALKER_LEAP ~= nil
         and DaywalkerLeap.HasProtocol(inst)
         and DaywalkerLeap.IsAiming(inst)
@@ -482,6 +492,7 @@ local function common_postinit(inst)
     inst.CreateHealthBadge = CreateKeiIntegrityBadge
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
+    inst._kei_mini_alice_pages = net_smallbyte(inst.GUID, "kei.mini_alice_pages", "kei_mini_alice_pages_dirty")
     inst._kei_experience_current = net_float(inst.GUID, "kei.experience_current", "kei_experience_dirty")
     inst._kei_experience_max = net_float(inst.GUID, "kei.experience_max", "kei_experience_dirty")
     inst._kei_experience_total = net_float(inst.GUID, "kei.experience_total", "kei_experience_dirty")
@@ -500,6 +511,9 @@ local function common_postinit(inst)
         inst:PushEvent("refreshcrafting")
     end)
     inst:ListenForEvent("kei_protocol_slots_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
+    inst:ListenForEvent("kei_mini_alice_pages_dirty", function()
         inst:PushEvent("refreshcrafting")
     end)
 

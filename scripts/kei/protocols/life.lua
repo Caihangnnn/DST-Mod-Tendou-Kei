@@ -76,7 +76,7 @@ local LIFE_PROTOCOL_LIST = {
         prefab = "kei_life_cd_ripen",
         display_name = "催熟配方",
         description = "插入后解锁催熟魔法；制作时推进周围可生长实体一个阶段，并使农作物强制巨大化。",
-        source = "deciduoustree_tall",
+        source = "watertree_pillar",
         stackable = false,
         implemented = true,
     },

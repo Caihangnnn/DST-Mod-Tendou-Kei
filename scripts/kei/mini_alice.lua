@@ -1,7 +1,5 @@
 -- 娇小爱丽丝的分页容量与槽位访问规则。
 
-local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
-
 local MiniAlice = {}
 
 MiniAlice.SLOTS_PER_PAGE = 8
@@ -40,7 +38,7 @@ function MiniAlice.GetOpenContainer(owner)
 end
 
 function MiniAlice.GetMaxPages()
-    return math.clamp(ProtocolSlotUnlocks.GetMaxSlots(), 1, 7)
+    return math.clamp(tonumber(TUNING.KEI_MINI_ALICE_MAX_PAGES) or 7, 1, 7)
 end
 
 function MiniAlice.GetArrowMode()
@@ -87,8 +85,16 @@ function MiniAlice.GetUnlockedPages(owner)
         return 1
     end
 
-    local unlocked_slots = ProtocolSlotUnlocks.GetUnlockedSlots(owner)
-    return math.clamp(unlocked_slots, 1, MiniAlice.GetMaxPages())
+    local pages
+    if owner.components ~= nil
+        and owner.components.kei_protocolslots ~= nil
+    then
+        pages = owner.components.kei_protocolslots.mini_alice_pages
+    elseif owner._kei_mini_alice_pages ~= nil then
+        pages = owner._kei_mini_alice_pages:value()
+    end
+
+    return math.clamp(tonumber(pages) or 1, 1, MiniAlice.GetMaxPages())
 end
 
 function MiniAlice.GetAccessibleSlotCount(owner)

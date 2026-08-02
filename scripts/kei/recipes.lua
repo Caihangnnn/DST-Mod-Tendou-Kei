@@ -137,6 +137,19 @@ AddRecipe2(
     filters
 )
 
+-- 旋翼调查仪控制器：制作只生成控制器，无人机由控制器技能召唤。
+AddRecipe2(
+    "kei_rotor_surveyor",
+    { Ingredient("goldnugget", 10) },
+    TECH.NONE,
+    kei_config({
+        atlas = GetInventoryItemAtlas("wx78_drone_zap_remote.tex"),
+        image = "wx78_drone_zap_remote.tex",
+        product = "kei_rotor_survey_controller",
+    }),
+    filters
+)
+
 -- 协议预设盒：保存一组协议 CD，并可与当前已解锁协议槽一键交换。
 AddRecipe2(
     "kei_protocol_binder",
@@ -352,6 +365,20 @@ AddRecipe2(
         product = GrowthRecipes.POTENTIAL_RECIPE,
         nounlock = true,
         canbuild = GrowthRecipes.CanBuildPotential,
+    }),
+    filters
+)
+
+AddRecipe2(
+    GrowthRecipes.MINI_ALICE_PAGE_RECIPE,
+    { experience_ingredient(GrowthRecipes.MINI_ALICE_PAGE_RECIPE) },
+    TECH.NONE,
+    kei_config({
+        atlas = "images/inventoryimages/kei_alice_slot.xml",
+        image = "kei_alice_slot.tex",
+        product = GrowthRecipes.MINI_ALICE_PAGE_RECIPE,
+        nounlock = true,
+        canbuild = GrowthRecipes.CanBuildMiniAlicePage,
     }),
     filters
 )

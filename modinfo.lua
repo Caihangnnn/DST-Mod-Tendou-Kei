@@ -137,7 +137,7 @@ configuration_options = {
     {
         name = "KEI_MINI_ALICE_ARROW_MODE",
         label = "娇小爱丽丝箭头模式",
-        hover = "设置娇小爱丽丝两侧箭头的显示方式与翻页方式。页数与已解锁协议槽数量绑定。",
+        hover = "设置娇小爱丽丝两侧箭头的显示方式与翻页方式。",
         options = {
             {
                 description = "两侧箭头，不循环翻页",
@@ -161,6 +161,21 @@ configuration_options = {
             },
         },
         default = 1,
+    },
+    {
+        name = "KEI_MINI_ALICE_MAX_PAGES",
+        label = "娇小爱丽丝最大页数",
+        hover = "设置娇小爱丽丝最多可以通过扩容配方解锁的页数，每次扩容消耗1000点经验值。",
+        options = {
+            { description = "1", data = 1 },
+            { description = "2", data = 2 },
+            { description = "3", data = 3 },
+            { description = "4", data = 4 },
+            { description = "5", data = 5 },
+            { description = "6", data = 6 },
+            { description = "7", data = 7 },
+        },
+        default = 7,
     },
     {
         name = "KEI_WANDERING_TRADER_MAP_MARKER",
