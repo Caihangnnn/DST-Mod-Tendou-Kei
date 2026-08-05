@@ -2,12 +2,13 @@
 
 local easing = require("easing")
 local RotorSurveyRegistry = require("kei/rotor_survey_registry")
+local RotorUpgrades = require("kei/rotor_upgrades")
 
 local assets =
 {
     Asset("ANIM", "anim/wx78_drone_scout.zip"),
     Asset("ANIM", "anim/wx78_map_marker.zip"),
-    Asset("ANIM", "anim/kei_halo_animations.zip"),
+    Asset("ANIM", "anim/kei_halo_350.zip"),
 }
 
 local prefabs =
@@ -102,9 +103,18 @@ local function CreateHaloPart(animation, onground)
 
     inst.entity:AddTransform()
     inst.entity:AddAnimState()
-    inst.AnimState:SetBank("KEI_HALO")
-    inst.AnimState:SetBuild("kei_halo_animations")
-    inst.AnimState:PlayAnimation(animation, true)
+    local animation_name = animation
+    if onground then
+        inst.AnimState:SetBank("kei_halo_350")
+        inst.AnimState:SetBuild("kei_halo_350")
+    else
+        -- The old custom halo build was removed. Airborne beams use the
+        -- vanilla scout projection, while kei_halo_350 remains ground-only.
+        inst.AnimState:SetBank("wx78_drone_scout")
+        inst.AnimState:SetBuild("wx78_drone_scout")
+        animation_name = "scan_projection"
+    end
+    inst.AnimState:PlayAnimation(animation_name, true)
     inst.AnimState:SetLightOverride(0.15)
 
     if onground then
@@ -188,18 +198,40 @@ local function CreateSkillBeam(beam_name)
         return CreateBeam(0)
     end
 
+    if beam_name == "collect" then
+        local inst = CreateBeam(0)
+        if inst.decal ~= nil and inst.decal:IsValid() then
+            inst.decal:Remove()
+        end
+        inst.decal = CreateHaloPart("kei_halo_collect", true)
+        return inst
+    end
+
     if beam_name == "resurrection"
         or beam_name == "heal"
         or beam_name == "strengthen"
         or beam_name == "confinement"
         or beam_name == "dead"
+        or beam_name == "teleport"
+        or beam_name == "collect"
+        or beam_name == "fishing"
+        or beam_name == "nature"
+        or beam_name == "friendly"
     then
         -- 光束沿用旋翼测绘机的投影动画，地面纹理使用新的光环动画。
         local inst = CreateBeam(0)
         if inst.decal ~= nil and inst.decal:IsValid() then
             inst.decal:Remove()
         end
-        inst.decal = CreateHaloPart("kei_halo_" .. beam_name, true)
+        local ground_animation
+        if beam_name == "teleport" then
+            ground_animation = "kei_halo_transmit"
+        elseif beam_name == "friendly" then
+            ground_animation = "kei_halo_friendly"
+        else
+            ground_animation = "kei_halo_" .. beam_name
+        end
+        inst.decal = CreateHaloPart(ground_animation, true)
         if beam_name == "strengthen" then
             StartStrengthenGroundFlicker(inst)
         end
@@ -244,7 +276,7 @@ end
 local function CalcDeliveryTime(inst, dest, doer)
     local x, _, z = inst.Transform:GetWorldPosition()
     local dist = math.sqrt(math2d.DistSq(x, z, dest.x, dest.z))
-    local speed = TUNING.SKILLS.WX78.SCOUTDRONE_SPEED
+    local speed = RotorUpgrades.GetDroneSpeed(inst._kei_drone_owner)
     local accel_and_decel_dist = speed
     return dist <= accel_and_decel_dist and 2 or 2 + (dist - accel_and_decel_dist) / speed
 end
@@ -259,13 +291,13 @@ local function OnStartDelivery(inst, dest, doer)
     return true
 end
 
-local function CalcProgress(t, length, dx, dz)
+local function CalcProgress(t, length, dx, dz, speed)
     if length <= 2 then
         return easing.inOutQuad(t, 0, 1, length)
     end
 
     local distance = math.sqrt(dx * dx + dz * dz)
-    local accel_and_decel_dist = TUNING.SKILLS.WX78.SCOUTDRONE_SPEED
+    local accel_and_decel_dist = speed or TUNING.SKILLS.WX78.SCOUTDRONE_SPEED
     local accel_part = accel_and_decel_dist / 2 / distance
     if t <= 1 then
         return easing.inQuad(t, 0, accel_part, 1)
@@ -278,8 +310,9 @@ end
 local function OnDeliveryProgress(inst, t, length, origin, dest)
     local dx = dest.x - origin.x
     local dz = dest.z - origin.z
-    local k = CalcProgress(t, length, dx, dz)
-    local k1 = math.min(1, CalcProgress(t + FRAMES, length, dx, dz))
+    local speed = RotorUpgrades.GetDroneSpeed(inst._kei_drone_owner)
+    local k = CalcProgress(t, length, dx, dz, speed)
+    local k1 = math.min(1, CalcProgress(t + FRAMES, length, dx, dz, speed))
 
     local x, y, z = inst.Transform:GetWorldPosition()
     x = origin.x + k * dx
@@ -372,6 +405,16 @@ local function OnBuildDirty(inst)
 end
 
 local function OnDroneRemoved(inst)
+    local follow_controller = inst._kei_drone_controller
+    if follow_controller ~= nil
+        and follow_controller:IsValid()
+        and follow_controller.StopDroneFollow ~= nil
+    then
+        follow_controller:StopDroneFollow(inst._kei_drone_owner)
+    end
+    if inst.StopFollowing ~= nil then
+        inst:StopFollowing()
+    end
     local beam_controller = inst._kei_rotor_beam_controller
     if beam_controller ~= nil
         and beam_controller:IsValid()
@@ -389,6 +432,97 @@ local function OnDroneRemoved(inst)
     RotorSurveyRegistry.Unregister(inst)
 end
 
+local function UpdateFollow(inst)
+    local owner = inst._kei_rotor_follow_owner
+    if owner == nil or not owner:IsValid() or owner:HasTag("playerghost") then
+        local controller = inst._kei_drone_controller
+        if controller ~= nil
+            and controller:IsValid()
+            and controller.StopDroneFollow ~= nil
+        then
+            controller:StopDroneFollow(owner)
+        elseif inst.StopFollowing ~= nil then
+            inst:StopFollowing()
+        end
+        return
+    end
+
+    if inst._kei_drone_pilot ~= nil then
+        inst:StopRotorMovement()
+        return
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local ox, _, oz = owner.Transform:GetWorldPosition()
+    local dx, dz = ox - x, oz - z
+    local distance = math.sqrt(dx * dx + dz * dz)
+    local follow_distance = 3
+
+    if distance <= follow_distance then
+        inst:StopRotorMovement()
+        return
+    end
+
+    local speed = RotorUpgrades.GetDroneSpeed(owner)
+    local step = math.min(distance - follow_distance, speed * FRAMES)
+    local next_x = x + dx / distance * step
+    local next_z = z + dz / distance * step
+
+    -- Keep the visual heading consistent with the vanilla scout drone while
+    -- moving the entity in world space instead of using local motor velocity.
+    inst.Transform:SetRotation(math.atan2(-dz, dx) / DEGREES)
+    inst.Transform:SetPosition(next_x, y, next_z)
+    if inst.Physics ~= nil then
+        local _, vy, _ = inst.Physics:GetMotorVel()
+        inst.Physics:SetMotorVel(0, vy, 0)
+    end
+end
+
+local function StartFollowing(inst, owner)
+    if not TheWorld.ismastersim or inst == nil or owner == nil then
+        return false
+    end
+
+    if inst._kei_drone_pilot ~= nil then
+        return false
+    end
+
+    if inst._kei_rotor_follow_task ~= nil then
+        inst._kei_rotor_follow_task:Cancel()
+        inst._kei_rotor_follow_task = nil
+    end
+
+    inst._kei_rotor_follow_owner = owner
+    inst._kei_rotor_follow_task = inst:DoPeriodicTask(FRAMES, function(drone)
+        UpdateFollow(drone)
+    end)
+    UpdateFollow(inst)
+    return true
+end
+
+local function StopFollowing(inst)
+    if inst == nil then
+        return
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+
+    if inst._kei_rotor_follow_task ~= nil then
+        inst._kei_rotor_follow_task:Cancel()
+        inst._kei_rotor_follow_task = nil
+    end
+    inst._kei_rotor_follow_owner = nil
+    inst.entity:SetParent(nil)
+    inst.Transform:SetPosition(x, y, z)
+
+    if inst.StopRotorMovement ~= nil then
+        inst:StopRotorMovement()
+    elseif inst.Physics ~= nil then
+        local _, vy, _ = inst.Physics:GetMotorVel()
+        inst.Physics:SetMotorVel(0, vy, 0)
+    end
+end
+
 local function OnPilotLocomote(inst, data)
     if not TheWorld.ismastersim then
         return
@@ -403,7 +537,7 @@ local function OnPilotLocomote(inst, data)
         return
     end
 
-    local speed = TUNING.SKILLS.WX78.SCOUTDRONE_SPEED or 8
+    local speed = RotorUpgrades.GetDroneSpeed(inst._kei_drone_owner)
     inst._kei_rotor_auto_drive = data ~= nil and data.auto_drive == true
     if inst._kei_rotor_auto_drive then
         inst._kei_rotor_move_deadline = nil
@@ -420,7 +554,7 @@ local function OnPilotLocomote(inst, data)
         local x, y, z = inst.Transform:GetWorldPosition()
         local dx, dz = x - ox, z - oz
         local distance = math.sqrt(dx * dx + dz * dz)
-        local range = TUNING.KEI_ROTOR_SURVEYOR_RANGE or 200
+        local range = RotorUpgrades.GetControlRange(owner)
         if distance >= range then
             local outward = dx * math.cos(angle) - dz * math.sin(angle)
             if outward > 0 then
@@ -532,6 +666,8 @@ local function fn()
     inst.OnDroneScoutSkinChanged = OnSurveyorSkinChanged
     inst.SetSkillBeam = SetSkillBeam
     inst.GetSkillBeam = GetSkillBeam
+    inst.StartFollowing = StartFollowing
+    inst.StopFollowing = StopFollowing
     inst.StopRotorMovement = StopRotorMovement
     inst.persists = false
 
@@ -539,7 +675,7 @@ local function fn()
 end
 
 local function GetSurveyorRange(inst, owner)
-    return TUNING.KEI_ROTOR_SURVEYOR_RANGE or 200
+    return RotorUpgrades.GetControlRange(owner or inst._kei_drone_owner)
 end
 
 local globalicon, revealableicon = MakeGlobalTrackingIcons("kei_rotor_surveyor", {

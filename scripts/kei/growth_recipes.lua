@@ -2,12 +2,16 @@
 
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local MiniAlice = require("kei/mini_alice")
+local RotorSurveySkills = require("kei/rotor_survey_skills")
+local RotorUpgrades = require("kei/rotor_upgrades")
 
 local GrowthRecipes = {
     SLOT_UNLOCK_RECIPE = "kei_protocol_slot_unlock",
     DEEP_IMPLANT_RECIPE = "kei_deep_implant",
     POTENTIAL_RECIPE = "kei_potential_activation",
     MINI_ALICE_PAGE_RECIPE = "kei_mini_alice_page_unlock",
+    ROTOR_SKILL_EXPERIENCE_COST = 1000,
+    ROTOR_UPGRADE_EXPERIENCE_COST = 1000,
 }
 
 function GrowthRecipes.IsExperienceIngredient(ingredient)
@@ -29,7 +33,15 @@ function GrowthRecipes.GetExperienceCost(recname, experience, builder)
     local cost_per_slot = TUNING.KEI_EXPERIENCE_COST_PER_SLOT or 1000
     local slot_count
 
-    if recname == GrowthRecipes.SLOT_UNLOCK_RECIPE then
+    if RotorSurveySkills.IsSkillRecipe(recname) then
+        return TUNING.KEI_ROTOR_SKILL_EXPERIENCE_COST
+            or GrowthRecipes.ROTOR_SKILL_EXPERIENCE_COST,
+            false
+    elseif RotorUpgrades.IsUpgradeRecipe(recname) then
+        return TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST
+            or GrowthRecipes.ROTOR_UPGRADE_EXPERIENCE_COST,
+            false
+    elseif recname == GrowthRecipes.SLOT_UNLOCK_RECIPE then
         slot_count = GetUnlockedSlots(builder)
     elseif recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
         or recname == GrowthRecipes.POTENTIAL_RECIPE
@@ -138,6 +150,86 @@ function GrowthRecipes.CanBuildSlotUnlock(recipe, builder)
     return true
 end
 
+function GrowthRecipes.CanBuildRotorSkill(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return false
+    end
+
+    local recname = type(recipe) == "string"
+        and recipe
+        or recipe ~= nil and recipe.name
+        or nil
+    local skill = RotorSurveySkills.GetSkillForRecipe(recname)
+    if skill == nil then
+        return false, "KEI_ROTOR_SKILL_INVALID"
+    end
+    if RotorSurveySkills.HasSkill(builder, skill) then
+        return false, "KEI_ROTOR_SKILL_ALREADY_UNLOCKED"
+    end
+    if not GrowthRecipes.HasEnoughExperience(builder, recname) then
+        return false, "KEI_EXPERIENCE_NOT_ENOUGH"
+    end
+    return true
+end
+
+function GrowthRecipes.CanBuildRotorUpgrade(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return false
+    end
+
+    local recname = type(recipe) == "string"
+        and recipe
+        or recipe ~= nil and recipe.name
+        or nil
+    local upgrade = RotorUpgrades.GetUpgradeForRecipe(recname)
+    if upgrade == nil then
+        return false, "KEI_ROTOR_UPGRADE_INVALID"
+    end
+    if RotorUpgrades.GetLevel(builder, upgrade) >= RotorUpgrades.GetMaxLevel(upgrade) then
+        return false, "KEI_ROTOR_UPGRADE_MAX"
+    end
+    if not GrowthRecipes.HasEnoughExperience(builder, recname) then
+        return false, "KEI_EXPERIENCE_NOT_ENOUGH"
+    end
+    return true
+end
+
+function GrowthRecipes.GetRotorUpgradeRecipeCount(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return 0
+    end
+
+    local recname = type(recipe) == "string"
+        and recipe
+        or recipe ~= nil and recipe.name
+        or nil
+    local upgrade = RotorUpgrades.GetUpgradeForRecipe(recname)
+    if upgrade == nil then
+        return 0
+    end
+
+    -- This callback is the recipe's remaining lifetime count. Each build
+    -- raises the upgrade by exactly one level, so return the remaining levels
+    -- instead of a boolean availability flag.
+    return math.max(
+        0,
+        RotorUpgrades.GetMaxLevel(upgrade) - RotorUpgrades.GetLevel(builder, upgrade)
+    )
+end
+
+function GrowthRecipes.GetRotorSkillRecipeCount(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return 0
+    end
+
+    local recname = type(recipe) == "string"
+        and recipe
+        or recipe ~= nil and recipe.name
+        or nil
+    local skill = RotorSurveySkills.GetSkillForRecipe(recname)
+    return skill ~= nil and not RotorSurveySkills.HasSkill(builder, skill) and 1 or 0
+end
+
 function GrowthRecipes.CanBuildDeepImplant(recipe, builder)
     if not IsKeiBuilder(builder) then
         return false
@@ -190,6 +282,8 @@ function GrowthRecipes.IsGrowthRecipe(recname)
         or recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
         or recname == GrowthRecipes.POTENTIAL_RECIPE
         or recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE
+        or RotorSurveySkills.IsSkillRecipe(recname)
+        or RotorUpgrades.IsUpgradeRecipe(recname)
 end
 
 local function PrepareDirectBuild(builder, recname, pt, rotation, skin)
@@ -201,6 +295,22 @@ local function PrepareDirectBuild(builder, recname, pt, rotation, skin)
         or PREFAB_SKINS_SHOULD_NOT_SELECT[skin]
     then
         return nil, nil, "INVALID"
+    end
+
+    local is_rotor_recipe = RotorSurveySkills.IsSkillRecipe(recname)
+        or RotorUpgrades.IsUpgradeRecipe(recname)
+    if is_rotor_recipe and recipe.canbuild ~= nil then
+        local canbuild, canbuild_reason = recipe.canbuild(
+            recipe,
+            inst,
+            pt,
+            rotation,
+            builder.current_prototyper,
+            skin
+        )
+        if not canbuild then
+            return nil, nil, canbuild_reason
+        end
     end
 
     if not (builder:IsBuildBuffered(recname) or builder:HasIngredients(recipe)) then
@@ -231,6 +341,54 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
 
     local experience = inst.components ~= nil and inst.components.kei_experience or nil
     local slots = inst.components ~= nil and inst.components.kei_protocolslots or nil
+    local skill = RotorSurveySkills.GetSkillForRecipe(recname)
+    if skill ~= nil then
+        local skills = inst.components ~= nil and inst.components.kei_rotor_skills or nil
+        if skills == nil then
+            return false, "KEI_ROTOR_SKILL_INVALID"
+        end
+        if skills:HasSkill(skill) then
+            return false, "KEI_ROTOR_SKILL_ALREADY_UNLOCKED"
+        end
+
+        local spent, spend_reason = ConsumeConfiguredExperience(inst, recname)
+        if not spent then
+            return false, spend_reason
+        end
+
+        local unlocked, unlock_reason = skills:UnlockSkill(skill)
+        if not unlocked then
+            return false, unlock_reason
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ROTOR_SKILL_UNLOCKED)
+        end
+        return true
+    end
+    local upgrade = RotorUpgrades.GetUpgradeForRecipe(recname)
+    if upgrade ~= nil then
+        local upgrades = inst.components ~= nil and inst.components.kei_rotor_upgrades or nil
+        if upgrades == nil then
+            return false, "KEI_ROTOR_UPGRADE_INVALID"
+        end
+        if not upgrades:CanUpgrade(upgrade) then
+            return false, "KEI_ROTOR_UPGRADE_MAX"
+        end
+
+        local spent, spend_reason = ConsumeConfiguredExperience(inst, recname)
+        if not spent then
+            return false, spend_reason
+        end
+
+        local upgraded, upgrade_reason = upgrades:Upgrade(upgrade)
+        if not upgraded then
+            return false, upgrade_reason
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ROTOR_UPGRADE)
+        end
+        return true
+    end
     if slots == nil then
         return false, "KEI_EXPERIENCE_NOT_FULL"
     end

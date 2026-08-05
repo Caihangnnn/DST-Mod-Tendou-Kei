@@ -2,6 +2,7 @@
 
 local CONTROLLER_TAG = "kei_rotor_survey_controller"
 local RotorSurveyRegistry = require("kei/rotor_survey_registry")
+local RotorUpgrades = require("kei/rotor_upgrades")
 local CONTROL_PRE = "kei_rotor_control_pre"
 local CONTROL_LOOP = "kei_rotor_control_loop"
 local CONTROL_STOP = "kei_rotor_control_stop"
@@ -286,7 +287,7 @@ local function FindRotorDroneByNetworkID(networkid)
     local x, y, z = ThePlayer.Transform:GetWorldPosition()
     -- 调查仪的飞行范围可配置到远大于默认实体搜索半径，搜索范围必须覆盖
     -- 无人机的最大飞行半径，否则无人机仍存在时客户端也会误判为已丢失。
-    local radius = math.max(300, TUNING.KEI_ROTOR_SURVEYOR_RANGE or 200) + 32
+    local radius = RotorUpgrades.GetControlRange(ThePlayer) + 32
     local ents = TheSim:FindEntities(x, y, z, radius)
     for _, ent in ipairs(ents) do
         if ent ~= nil

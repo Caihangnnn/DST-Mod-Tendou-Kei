@@ -7,6 +7,8 @@ local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
 local KeiBackupBody = require("kei/growth/backup_body")
+local RotorSurveySkills = require("kei/rotor_survey_skills")
+local RotorSurveyRegistry = require("kei/rotor_survey_registry")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
@@ -146,6 +148,47 @@ local function EnsureMiniAliceItem(inst)
     if not inserted then
         inventory:GiveItem(icon, nil, inst:GetPosition())
     end
+end
+
+local function EnsureRotorSurveyController(inst)
+    if not TheWorld.ismastersim
+        or inst == nil
+        or not inst:IsValid()
+        or inst.components == nil
+        or inst.components.inventory == nil
+    then
+        return
+    end
+
+    local controller = RotorSurveyRegistry.FindControllerInOwner(inst)
+    if controller ~= nil then
+        if controller.SetControllerOwner ~= nil then
+            controller:SetControllerOwner(inst)
+        end
+        return
+    end
+
+    controller = SpawnPrefab("kei_rotor_survey_controller")
+    if controller == nil then
+        return
+    end
+    if controller.SetControllerOwner ~= nil then
+        controller:SetControllerOwner(inst)
+    end
+
+    local inventory = inst.components.inventory
+    if inventory:GiveItem(controller) then
+        return
+    end
+
+    local alice = FindMiniAliceItem(inst)
+    local container = alice ~= nil and alice.components ~= nil and alice.components.container or nil
+    if container ~= nil and container:GiveItem(controller) then
+        return
+    end
+
+    -- Keep the unique controller available if both storage locations are full.
+    controller.Transform:SetPosition(inst.Transform:GetWorldPosition())
 end
 
 local function SetReticulePrefab(reticule, prefab)
@@ -493,6 +536,11 @@ local function common_postinit(inst)
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
     inst._kei_mini_alice_pages = net_smallbyte(inst.GUID, "kei.mini_alice_pages", "kei_mini_alice_pages_dirty")
+    inst._kei_rotor_skill_mask = net_ushortint(inst.GUID, "kei.rotor_skill_mask", "kei_rotor_skills_dirty")
+    inst._kei_rotor_upgrade_signal = net_smallbyte(inst.GUID, "kei.rotor_upgrade_signal", "kei_rotor_upgrades_dirty")
+    inst._kei_rotor_upgrade_mobility = net_smallbyte(inst.GUID, "kei.rotor_upgrade_mobility", "kei_rotor_upgrades_dirty")
+    inst._kei_rotor_upgrade_battery = net_smallbyte(inst.GUID, "kei.rotor_upgrade_battery", "kei_rotor_upgrades_dirty")
+    inst._kei_rotor_upgrade_power_reduction = net_smallbyte(inst.GUID, "kei.rotor_upgrade_power_reduction", "kei_rotor_upgrades_dirty")
     inst._kei_experience_current = net_float(inst.GUID, "kei.experience_current", "kei_experience_dirty")
     inst._kei_experience_max = net_float(inst.GUID, "kei.experience_max", "kei_experience_dirty")
     inst._kei_experience_total = net_float(inst.GUID, "kei.experience_total", "kei_experience_dirty")
@@ -514,6 +562,12 @@ local function common_postinit(inst)
         inst:PushEvent("refreshcrafting")
     end)
     inst:ListenForEvent("kei_mini_alice_pages_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
+    inst:ListenForEvent("kei_rotor_skills_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
+    inst:ListenForEvent("kei_rotor_upgrades_dirty", function()
         inst:PushEvent("refreshcrafting")
     end)
 
@@ -1037,6 +1091,12 @@ local function OnSave(inst, data)
     if inst.components.kei_experience ~= nil then
         data.kei_experience = inst.components.kei_experience:OnSave()
     end
+    if inst.components.kei_rotor_skills ~= nil then
+        data.kei_rotor_skills = inst.components.kei_rotor_skills:OnSave()
+    end
+    if inst.components.kei_rotor_upgrades ~= nil then
+        data.kei_rotor_upgrades = inst.components.kei_rotor_upgrades:OnSave()
+    end
 end
 
 local function OnLoad(inst, data)
@@ -1046,8 +1106,15 @@ local function OnLoad(inst, data)
     if data ~= nil and data.kei_experience ~= nil and inst.components.kei_experience ~= nil then
         inst.components.kei_experience:OnLoad(data.kei_experience)
     end
+    if data ~= nil and data.kei_rotor_skills ~= nil and inst.components.kei_rotor_skills ~= nil then
+        inst.components.kei_rotor_skills:OnLoad(data.kei_rotor_skills)
+    end
+    if data ~= nil and data.kei_rotor_upgrades ~= nil and inst.components.kei_rotor_upgrades ~= nil then
+        inst.components.kei_rotor_upgrades:OnLoad(data.kei_rotor_upgrades)
+    end
 
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    inst:DoTaskInTime(0, EnsureRotorSurveyController)
 end
 
 local function master_postinit(inst)
@@ -1073,6 +1140,8 @@ local function master_postinit(inst)
     -- 协议槽负责扫描背包前 1/3/5/7 格中的协议 CD 并施加效果。
     inst:AddComponent("kei_protocolslots")
     inst:AddComponent("kei_experience")
+    inst:AddComponent("kei_rotor_skills")
+    inst:AddComponent("kei_rotor_upgrades")
 
     PatchKeiCurseImmunity(inst)
 
@@ -1092,6 +1161,7 @@ local function master_postinit(inst)
 
     KeiBackupBody.ConfigurePlayer(inst)
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    inst:DoTaskInTime(0, EnsureRotorSurveyController)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave

@@ -179,6 +179,13 @@ function Registry.FindControllerInOwner(owner)
         return nil
     end
 
+    if inventory.GetEquippedItem ~= nil then
+        local equipped = inventory:GetEquippedItem(EQUIPSLOTS.HANDS)
+        if IsController(equipped) then
+            return equipped
+        end
+    end
+
     for slot = 1, inventory:GetNumSlots() do
         local item = inventory:GetItemInSlot(slot)
         if IsController(item) then

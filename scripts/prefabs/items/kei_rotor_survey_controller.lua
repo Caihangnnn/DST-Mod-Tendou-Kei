@@ -1,7 +1,25 @@
 -- 旋翼调查仪控制器：手部装备，右键打开无人机控制轮盘。
 local RotorSurveyRegistry = require("kei/rotor_survey_registry")
+local RotorSurveySkills = require("kei/rotor_survey_skills")
 
 local DRONE_CONTROL_WHEEL_RADIUS = 100
+local StopDroneFollow
+
+local function RequireRotorSkill(doer, skill)
+    if RotorSurveySkills.HasSkill(doer, skill) then
+        return true
+    end
+
+    if TheWorld ~= nil
+        and TheWorld.ismastersim
+        and doer ~= nil
+        and doer.components ~= nil
+        and doer.components.talker ~= nil
+    then
+        doer.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ROTOR_SKILL_LOCKED)
+    end
+    return false
+end
 
 local function IsDroneBoundToOwner(drone, owner)
     return drone ~= nil
@@ -60,12 +78,28 @@ local function FindBoundDrone(inst, owner)
     return nil
 end
 
+local function SetFollowActive(inst, active)
+    active = active == true
+    if inst._kei_follow_active_net ~= nil then
+        inst._kei_follow_active_net:set(active)
+    end
+    if inst.components ~= nil and inst.components.kei_rotor_power ~= nil then
+        inst.components.kei_rotor_power:SetFollowDrain(
+            active and (TUNING.KEI_ROTOR_FOLLOW_DRAIN_RATE or 2) or 0
+        )
+    end
+end
+
 local function SetBoundDrone(inst, drone, owner)
     local previous_drone = inst.linked_drone
     if previous_drone ~= nil and previous_drone ~= drone then
         if inst.components ~= nil and inst.components.kei_rotor_beam ~= nil then
             inst.components.kei_rotor_beam:Stop()
         end
+        if previous_drone.StopFollowing ~= nil then
+            previous_drone:StopFollowing()
+        end
+        SetFollowActive(inst, false)
         if previous_drone._kei_detach_owner_callbacks ~= nil then
             previous_drone._kei_detach_owner_callbacks(previous_drone)
         end
@@ -166,11 +200,15 @@ end
 
 local function SetControllerOwner(inst, owner)
     local userid = owner ~= nil and owner.userid or nil
+    inst._kei_controller_owner = owner
     inst._kei_controller_owner_userid = userid
     if inst._kei_controller_owner_userid_net ~= nil then
         inst._kei_controller_owner_userid_net:set(userid or "")
     end
     RotorSurveyRegistry.RegisterController(inst, userid)
+    if inst.components ~= nil and inst.components.kei_rotor_power ~= nil then
+        inst.components.kei_rotor_power:RefreshMaxPower(owner)
+    end
 end
 
 local function OnBuilt(inst, data)
@@ -200,7 +238,11 @@ local function OnRemove(inst)
     if inst.components ~= nil and inst.components.kei_rotor_beam ~= nil then
         inst.components.kei_rotor_beam:Stop()
     end
+    StopDroneFollow(inst, inst._kei_controller_owner)
     local drone = inst.linked_drone
+    if drone ~= nil and drone:IsValid() and drone.StopFollowing ~= nil then
+        drone:StopFollowing()
+    end
     if drone ~= nil and drone._kei_drone_pilot ~= nil then
         local pilot = drone._kei_drone_pilot
         if pilot:IsValid() and pilot.sg ~= nil then
@@ -328,8 +370,55 @@ local function EnsureBoundDrone(inst, doer)
     return drone
 end
 
+StopDroneFollow = function(inst, owner)
+    local drone = inst.linked_drone
+    if drone == nil or not drone:IsValid() then
+        drone = FindBoundDrone(inst, owner)
+    end
+    if drone ~= nil and drone.StopFollowing ~= nil then
+        drone:StopFollowing()
+    end
+    SetFollowActive(inst, false)
+end
+
+local function ToggleDroneFollow(inst, doer)
+    if not TheWorld.ismastersim or inst == nil or doer == nil then
+        return false
+    end
+    if not RequireRotorSkill(doer, "follow") then
+        return false
+    end
+
+    local drone = EnsureBoundDrone(inst, doer)
+    if drone == nil then
+        return false
+    end
+
+    if drone._kei_rotor_follow_owner == doer then
+        StopDroneFollow(inst, doer)
+        return true
+    end
+
+    if drone._kei_drone_pilot == doer then
+        StopPilotForOwner(inst, doer)
+    elseif drone._kei_drone_pilot ~= nil
+        and drone._kei_drone_pilot:IsValid()
+    then
+        return false
+    end
+
+    if drone.StartFollowing == nil or not drone:StartFollowing(doer) then
+        return false
+    end
+    SetFollowActive(inst, true)
+    return true
+end
+
 local function ToggleDronePilot(inst, doer)
     if not TheWorld.ismastersim or inst == nil or doer == nil then
+        return false
+    end
+    if not RequireRotorSkill(doer, "pilot") then
         return false
     end
 
@@ -343,6 +432,10 @@ local function ToggleDronePilot(inst, doer)
         if drone == nil then
             return false
         end
+    end
+
+    if drone._kei_rotor_follow_owner == doer then
+        StopDroneFollow(inst, doer)
     end
 
     if drone._kei_drone_pilot == doer or doer._kei_rotor_pilot_drone == drone then
@@ -398,12 +491,19 @@ local function CastDronePilot(inst)
     CastControllerSpell(inst)
 end
 
+local function CastDroneFollow(inst)
+    CastControllerSpell(inst)
+end
+
 local function CastRotorBeam(inst)
     CastControllerSpell(inst)
 end
 
 local function ActivateRotorBeam(inst, doer, beam_name)
     if not TheWorld.ismastersim or inst == nil or doer == nil then
+        return false
+    end
+    if not RequireRotorSkill(doer, beam_name) then
         return false
     end
 
@@ -428,19 +528,34 @@ local function ActivateRotorBeam(inst, doer, beam_name)
     return true
 end
 
-local function MakeDroneControlSpell(label, icon, pilot)
+local function IsRotorSkillUnlocked(owner, skill)
+    return skill == nil or RotorSurveySkills.HasSkill(owner, skill)
+end
+
+local function MakeRotorSkillAnim(anim, skill, loop)
+    return function(owner)
+        if not IsRotorSkillUnlocked(owner, skill) then
+            return { anim = "icon_target_disabled" }
+        end
+        return { anim = anim, loop = loop }
+    end
+end
+
+local function MakeDroneControlSpell(label, icon, pilot, skill)
     icon = "icon_target"
     local spell = {
         label = label,
         bank = "spell_icons_winona",
         build = "spell_icons_winona",
         anims = {
-            idle = { anim = icon },
-            focus = { anim = icon.."_focus", loop = true },
-            down = { anim = icon.."_pressed" },
+            idle = MakeRotorSkillAnim(icon, skill),
+            focus = MakeRotorSkillAnim(icon.."_focus", skill, true),
+            down = MakeRotorSkillAnim(icon.."_pressed", skill),
             disabled = { anim = icon.."_disabled" },
         },
         execute = pilot and CastDronePilot or function() return true end,
+        kei_skill = skill,
+        kei_rotor_ring = 1,
         widget_scale = 0.6,
     }
     if pilot then
@@ -454,8 +569,11 @@ local function MakeDroneControlSpell(label, icon, pilot)
     return spell
 end
 
-local function MakeRotorBeamSpell(label, beam_name)
-    local spell = MakeDroneControlSpell(label, "icon_target")
+local function MakeRotorBeamSpell(label, beam_name, ring)
+    local spell = MakeDroneControlSpell(label, "icon_target", false, beam_name)
+    if ring ~= nil then
+        spell.kei_rotor_ring = ring
+    end
     spell.execute = CastRotorBeam
     spell.onselect = function(inst)
         inst.components.spellbook:SetSpellAction(ACTIONS.KEI_ROTOR_BEAM)
@@ -481,14 +599,16 @@ local DRONE_CONTROL_WHEEL_ITEMS = {
         bank = "spell_icons_winona",
         build = "spell_icons_winona",
         anims = {
-            idle = { anim = "icon_target" },
-            focus = { anim = "icon_target_focus", loop = true },
-            down = { anim = "icon_target_pressed" },
+            idle = MakeRotorSkillAnim("icon_target", "enable_drone"),
+            focus = MakeRotorSkillAnim("icon_target_focus", "enable_drone", true),
+            down = MakeRotorSkillAnim("icon_target_pressed", "enable_drone"),
             disabled = { anim = "icon_target_disabled" },
         },
         widget_scale = 0.6,
+        kei_skill = "enable_drone",
+        kei_rotor_ring = 1,
     },
-    MakeDroneControlSpell("驾驶", "icon_boost", true),
+    MakeDroneControlSpell("驾驶", "icon_boost", true, "pilot"),
     MakeRotorBeamSpell("苏生光束", "resurrection"),
     MakeRotorBeamSpell("治愈光束", "heal"),
     MakeRotorBeamSpell("强化光束", "strengthen"),
@@ -496,6 +616,66 @@ local DRONE_CONTROL_WHEEL_ITEMS = {
     MakeRotorBeamSpell("死亡光束", "dead"),
     MakeRotorBeamSpell("调查光束", "survey"),
 }
+
+local function MakeRotorPlaceholderSpell(label, skill)
+    return {
+        label = label,
+        bank = "spell_icons_winona",
+        build = "spell_icons_winona",
+        anims = {
+            idle = MakeRotorSkillAnim("icon_target", skill),
+            focus = MakeRotorSkillAnim("icon_target_focus", skill, true),
+            down = MakeRotorSkillAnim("icon_target_pressed", skill),
+            disabled = { anim = "icon_target_disabled" },
+        },
+        onselect = function(inst)
+            inst.components.spellbook:SetSpellAction(ACTIONS.KEI_ROTOR_CONTROL)
+            if TheWorld.ismastersim then
+                inst.components.spellbook:SetSpellFn(function(controller, doer)
+                    if not RequireRotorSkill(doer, skill) then
+                        return false
+                    end
+                    return true
+                end)
+            end
+        end,
+        execute = CastControllerSpell,
+        kei_skill = skill,
+        kei_rotor_ring = 2,
+        widget_scale = 0.6,
+    }
+end
+
+local function MakeRotorFollowSpell()
+    return {
+        label = "跟随",
+        bank = "spell_icons_winona",
+        build = "spell_icons_winona",
+        anims = {
+            idle = MakeRotorSkillAnim("icon_target", "follow"),
+            focus = MakeRotorSkillAnim("icon_target_focus", "follow", true),
+            down = MakeRotorSkillAnim("icon_target_pressed", "follow"),
+            disabled = { anim = "icon_target_disabled" },
+        },
+        onselect = function(inst)
+            inst.components.spellbook:SetSpellAction(ACTIONS.KEI_ROTOR_CONTROL)
+            if TheWorld.ismastersim then
+                inst.components.spellbook:SetSpellFn(ToggleDroneFollow)
+            end
+        end,
+        execute = CastDroneFollow,
+        kei_skill = "follow",
+        kei_rotor_ring = 2,
+        widget_scale = 0.6,
+    }
+end
+
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorFollowSpell()
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorBeamSpell("传送光束", "teleport", 2)
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorBeamSpell("收集光束", "collect", 2)
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorBeamSpell("捕捞光束", "fishing", 2)
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorBeamSpell("自然光束", "nature", 2)
+DRONE_CONTROL_WHEEL_ITEMS[#DRONE_CONTROL_WHEEL_ITEMS + 1] = MakeRotorBeamSpell("友善光束", "friendly", 2)
 
 local function CanOpenDroneControlWheel(inst, user)
     if inst == nil or user == nil or not user:HasTag("kei") or user:HasTag("playerghost") then
@@ -535,6 +715,7 @@ local function fn()
     inst._kei_controller_owner_userid_net = net_string(inst.GUID, "kei_rotor_survey_controller.owner_userid")
     inst._kei_linked_drone_net = net_entity(inst.GUID, "kei_rotor_survey_controller.linked_drone")
     inst._kei_pilot_active_net = net_bool(inst.GUID, "kei_rotor_survey_controller.pilot_active")
+    inst._kei_follow_active_net = net_bool(inst.GUID, "kei_rotor_survey_controller.follow_active")
 
     -- 复用 Willow 的 spellbook -> USESPELLBOOK -> HUD 技能轮盘流程。
     inst:AddComponent("spellbook")
@@ -577,6 +758,8 @@ local function fn()
     inst.FindBoundDrone = FindBoundDrone
     inst.ToggleBoundDrone = ToggleBoundDrone
     inst.ToggleDronePilot = ToggleDronePilot
+    inst.ToggleDroneFollow = ToggleDroneFollow
+    inst.StopDroneFollow = StopDroneFollow
     inst.StopPilotForOwner = StopPilotForOwner
     inst.onPreBuilt = function(item, builder)
         if builder ~= nil and builder:HasTag("kei") then

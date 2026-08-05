@@ -1,3 +1,7 @@
+local KeiTimeScale = require("kei/time_scale")
+
+AddComponentPostInit("combat", KeiTimeScale.InstallCombatHooks)
+
 local KEI_CONTROL_IMMUNE_EVENTS = {
     suspended = true,
     knockback = true,
@@ -78,7 +82,7 @@ local function ApplyKeiAttackSpeedToAttackState(inst, state)
     end
 
     if inst.AnimState ~= nil then
-        inst.AnimState:SetDeltaTimeMultiplier(mult)
+        inst.AnimState:SetDeltaTimeMultiplier(mult * KeiTimeScale.GetMultiplier(inst))
     end
 
     if type(inst.sg.timeout) == "number" and inst.sg.timeout > 0 then
@@ -91,7 +95,7 @@ local function ClearKeiAttackSpeedFromAttackState(inst)
         and inst.sg.statemem ~= nil
         and inst.sg.statemem.kei_attack_speed_mult ~= nil
         and inst.AnimState ~= nil then
-        inst.AnimState:SetDeltaTimeMultiplier(1)
+        KeiTimeScale.RefreshAnimation(inst)
     end
 end
 
@@ -267,13 +271,5 @@ end
 AddStategraphPostInit("wilson", AddKeiAttackStateOverridesToStategraph)
 AddStategraphPostInit("wilson_client", AddKeiAttackStateOverridesToStategraph)
 
-if StateGraphInstance ~= nil and StateGraphInstance.UpdateState ~= nil then
-    local old_StateGraphInstance_UpdateState = StateGraphInstance.UpdateState
-    function StateGraphInstance:UpdateState(dt)
-        if self.inst ~= nil and self.inst:HasTag("kei_mutateddeerclops_sg_slow") then
-            dt = dt * (TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
-        end
-        return old_StateGraphInstance_UpdateState(self, dt)
-    end
-end
+KeiTimeScale.InstallStateGraphHook()
 

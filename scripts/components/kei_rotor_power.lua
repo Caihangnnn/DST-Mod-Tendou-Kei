@@ -1,10 +1,14 @@
 -- 旋翼调查仪控制器的电量组件。
 
+local RotorUpgrades = require("kei/rotor_upgrades")
+
 local KeiRotorPower = Class(function(self, inst)
     self.inst = inst
-    self.max_power = TUNING.KEI_ROTOR_CONTROLLER_MAX_POWER or 240
+    self.base_max_power = TUNING.KEI_ROTOR_CONTROLLER_MAX_POWER or 240
+    self.max_power = self.base_max_power
     self.power = self.max_power
     self.skill_drain_rate = 0
+    self.follow_drain_rate = 0
     self.task = nil
 
     self:SyncPerishable()
@@ -16,7 +20,9 @@ local function GetOwner(inst)
         and inst.components ~= nil
         and inst.components.inventoryitem
         or nil
-    return inventoryitem ~= nil and inventoryitem.owner or nil
+    return inventoryitem ~= nil and inventoryitem.owner
+        or inst ~= nil and inst._kei_controller_owner
+        or nil
 end
 
 function KeiRotorPower:IsEquipped()
@@ -59,6 +65,22 @@ function KeiRotorPower:SetPower(value)
     self:SyncPerishable()
 end
 
+function KeiRotorPower:RefreshMaxPower(owner)
+    owner = owner or GetOwner(self.inst)
+    local desired = RotorUpgrades.GetControllerMaxPower(owner)
+    if desired == self.max_power then
+        return
+    end
+
+    self.max_power = desired
+    local perishable = self.inst.components ~= nil and self.inst.components.perishable or nil
+    if perishable ~= nil and perishable.SetPerishTime ~= nil then
+        perishable:SetPerishTime(desired)
+    end
+    -- Capacity changes must not refill an existing controller.
+    self:SetPower(self.power)
+end
+
 function KeiRotorPower:Recharge(amount)
     amount = tonumber(amount) or self.max_power
     self:SetPower(self.power + amount)
@@ -70,6 +92,14 @@ end
 
 function KeiRotorPower:GetSkillDrain()
     return self.skill_drain_rate or 0
+end
+
+function KeiRotorPower:SetFollowDrain(rate)
+    self.follow_drain_rate = math.max(0, tonumber(rate) or 0)
+end
+
+function KeiRotorPower:GetFollowDrain()
+    return self.follow_drain_rate or 0
 end
 
 function KeiRotorPower:HasPower(amount)
@@ -92,12 +122,19 @@ function KeiRotorPower:Update(dt)
         return
     end
 
+    local owner = GetOwner(self.inst)
+    self:RefreshMaxPower(owner)
     local equipped = self:IsEquipped()
     local rate = equipped
         and (TUNING.KEI_ROTOR_CONTROLLER_DRAIN_RATE or 1)
         or (TUNING.KEI_ROTOR_CONTROLLER_REGEN_RATE or 0.5)
-    local skill_drain = self.skill_drain_rate or 0
-    self:SetPower(self.power + ((equipped and -rate or rate) - skill_drain) * dt)
+    local reduction = equipped and RotorUpgrades.GetControllerDrainReduction(owner) or 0
+    local skill_drain = equipped and (self.skill_drain_rate or 0) or 0
+    local follow_drain = self.follow_drain_rate or 0
+    local delta = equipped
+        and -(math.max(0, rate - reduction) + skill_drain + follow_drain)
+        or rate - follow_drain
+    self:SetPower(self.power + delta * dt)
 
     if self.power <= 0 then
         if self.inst.components ~= nil
@@ -107,6 +144,9 @@ function KeiRotorPower:Update(dt)
         end
 
         local owner = GetOwner(self.inst)
+        if owner ~= nil and self.inst.StopDroneFollow ~= nil then
+            self.inst:StopDroneFollow(owner)
+        end
         if equipped and owner ~= nil and self.inst.StopPilotForOwner ~= nil then
             self.inst:StopPilotForOwner(owner)
         end

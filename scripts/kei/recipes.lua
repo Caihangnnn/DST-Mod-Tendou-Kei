@@ -1,5 +1,12 @@
 local KEI_FILTER = "KEI_PROTOCOLS"
+local KEI_ROTOR_FILTER = "KEI_ROTOR"
 local GrowthRecipes = require("kei/growth_recipes")
+local ROTOR_ICON = "wx78_drone_zap_remote.tex"
+local ROTOR_ATLAS = GetInventoryItemAtlas(ROTOR_ICON)
+if ROTOR_ATLAS == nil then
+    ROTOR_ICON = "goldnugget.tex"
+    ROTOR_ATLAS = GetInventoryItemAtlas(ROTOR_ICON) or "images/inventoryimages1.xml"
+end
 
 -- 独立配方筛选栏，方便把 Kei 的协议/工具类物品集中展示。
 AddRecipeFilter({
@@ -10,6 +17,13 @@ AddRecipeFilter({
 })
 
 STRINGS.UI.CRAFTING_FILTERS[KEI_FILTER] = "Kei"
+AddRecipeFilter({
+    name = KEI_ROTOR_FILTER,
+    atlas = ROTOR_ATLAS,
+    image = ROTOR_ICON,
+    image_size = 64,
+})
+STRINGS.UI.CRAFTING_FILTERS[KEI_ROTOR_FILTER] = "旋翼调查仪"
 
 local function image(tex)
     -- AddRecipe2 需要 atlas + image 成对传入。
@@ -74,6 +88,7 @@ end
 
 -- 同时挂到角色专属栏和 Kei 自己的协议栏。
 local filters = { "CHARACTER", KEI_FILTER }
+local rotor_filters = { "CHARACTER", KEI_ROTOR_FILTER }
 
 -- 空白 CD：保留用于其他数据复制测试，不再参与数据记录器流程。
 AddRecipe2(
@@ -143,12 +158,70 @@ AddRecipe2(
     { Ingredient("goldnugget", 10) },
     TECH.NONE,
     kei_config({
-        atlas = GetInventoryItemAtlas("wx78_drone_zap_remote.tex"),
-        image = "wx78_drone_zap_remote.tex",
+        atlas = ROTOR_ATLAS,
+        image = ROTOR_ICON,
         product = "kei_rotor_survey_controller",
     }),
-    filters
+    rotor_filters
 )
+
+-- 旋翼调查仪技能解锁：每项技能独立消耗 1000 点当前经验，制作后永久解锁。
+local rotor_skill_recipes = {
+    { name = "kei_rotor_skill_pilot", label = "驾驶" },
+    { name = "kei_rotor_skill_resurrection", label = "苏生光束" },
+    { name = "kei_rotor_skill_heal", label = "治愈光束" },
+    { name = "kei_rotor_skill_strengthen", label = "强化光束" },
+    { name = "kei_rotor_skill_confinement", label = "禁锢光束" },
+    { name = "kei_rotor_skill_dead", label = "死亡光束" },
+    { name = "kei_rotor_skill_survey", label = "调查光束" },
+    { name = "kei_rotor_skill_follow", label = "跟随" },
+    { name = "kei_rotor_skill_teleport", label = "传送光束" },
+    { name = "kei_rotor_skill_collect", label = "收集光束" },
+    { name = "kei_rotor_skill_fishing", label = "捕捞光束" },
+    { name = "kei_rotor_skill_nature", label = "自然光束" },
+    { name = "kei_rotor_skill_friendly", label = "友善光束" },
+}
+
+for _, data in ipairs(rotor_skill_recipes) do
+    AddRecipe2(
+        data.name,
+        { fixed_experience_ingredient(1000) },
+        TECH.NONE,
+        kei_config({
+            atlas = ROTOR_ATLAS,
+            image = ROTOR_ICON,
+            product = data.name,
+            nounlock = true,
+            canbuild = GrowthRecipes.CanBuildRotorSkill,
+            getlimitedrecipecount = GrowthRecipes.GetRotorSkillRecipeCount,
+        }),
+        rotor_filters
+    )
+end
+
+local rotor_upgrade_recipes = {
+    { name = "kei_rotor_upgrade_signal", label = "Signal Enhancement" },
+    { name = "kei_rotor_upgrade_mobility", label = "Power Enhancement" },
+    { name = "kei_rotor_upgrade_battery", label = "Battery Expansion" },
+    { name = "kei_rotor_upgrade_power_reduction", label = "Power Saving" },
+}
+
+for _, data in ipairs(rotor_upgrade_recipes) do
+    AddRecipe2(
+        data.name,
+        { fixed_experience_ingredient(TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST or 1000) },
+        TECH.NONE,
+        kei_config({
+            atlas = ROTOR_ATLAS,
+            image = ROTOR_ICON,
+            product = data.name,
+            nounlock = true,
+            canbuild = GrowthRecipes.CanBuildRotorUpgrade,
+            getlimitedrecipecount = GrowthRecipes.GetRotorUpgradeRecipeCount,
+        }),
+        rotor_filters
+    )
+end
 
 -- 协议预设盒：保存一组协议 CD，并可与当前已解锁协议槽一键交换。
 AddRecipe2(
