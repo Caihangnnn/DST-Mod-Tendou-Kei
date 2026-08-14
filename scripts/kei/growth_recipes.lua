@@ -4,12 +4,14 @@ local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local MiniAlice = require("kei/mini_alice")
 local RotorSurveySkills = require("kei/rotor_survey_skills")
 local RotorUpgrades = require("kei/rotor_upgrades")
+local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 
 local GrowthRecipes = {
     SLOT_UNLOCK_RECIPE = "kei_protocol_slot_unlock",
     DEEP_IMPLANT_RECIPE = "kei_deep_implant",
     POTENTIAL_RECIPE = "kei_potential_activation",
     MINI_ALICE_PAGE_RECIPE = "kei_mini_alice_page_unlock",
+    ANALYSIS_ARMOR_UPGRADE_RECIPE = AnalysisArmorUpgrade.RECIPE,
     ROTOR_SKILL_EXPERIENCE_COST = 1000,
     ROTOR_UPGRADE_EXPERIENCE_COST = 1000,
 }
@@ -41,6 +43,8 @@ function GrowthRecipes.GetExperienceCost(recname, experience, builder)
         return TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST
             or GrowthRecipes.ROTOR_UPGRADE_EXPERIENCE_COST,
             false
+    elseif AnalysisArmorUpgrade.IsRecipe(recname) then
+        return AnalysisArmorUpgrade.GetExperienceCost(builder), false
     elseif recname == GrowthRecipes.SLOT_UNLOCK_RECIPE then
         slot_count = GetUnlockedSlots(builder)
     elseif recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
@@ -48,7 +52,11 @@ function GrowthRecipes.GetExperienceCost(recname, experience, builder)
     then
         slot_count = ProtocolSlotUnlocks.GetMaxSlots()
     elseif recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE then
-        return TUNING.KEI_EXPERIENCE_COST_PER_SLOT or 1000, false
+        -- Kei starts with one Alice page. Each purchase unlocks the next
+        -- page, so the first costs 1000 and each following page costs one
+        -- additional 1000 experience.
+        return MiniAlice.GetUnlockedPages(builder)
+            * (TUNING.KEI_EXPERIENCE_COST_PER_SLOT or 1000), false
     else
         return 0, true
     end
@@ -194,6 +202,23 @@ function GrowthRecipes.CanBuildRotorUpgrade(recipe, builder)
     return true
 end
 
+function GrowthRecipes.CanBuildAnalysisArmorUpgrade(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return false
+    end
+
+    -- The protocol slot component exists only on the server. The crafting
+    -- screen runs this callback on the client too, so use the replicated
+    -- upgrade level rather than treating a missing server component as maxed.
+    if AnalysisArmorUpgrade.GetLevel(builder) >= AnalysisArmorUpgrade.MAX_LEVEL then
+        return false, "KEI_ANALYSIS_ARMOR_UPGRADE_MAX"
+    end
+    if not GrowthRecipes.HasEnoughExperience(builder, AnalysisArmorUpgrade.RECIPE) then
+        return false, "KEI_EXPERIENCE_NOT_ENOUGH"
+    end
+    return true
+end
+
 function GrowthRecipes.GetRotorUpgradeRecipeCount(recipe, builder)
     if not IsKeiBuilder(builder) then
         return 0
@@ -228,6 +253,16 @@ function GrowthRecipes.GetRotorSkillRecipeCount(recipe, builder)
         or nil
     local skill = RotorSurveySkills.GetSkillForRecipe(recname)
     return skill ~= nil and not RotorSurveySkills.HasSkill(builder, skill) and 1 or 0
+end
+
+function GrowthRecipes.GetAnalysisArmorUpgradeRecipeCount(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return 0
+    end
+    return math.max(
+        0,
+        AnalysisArmorUpgrade.MAX_LEVEL - AnalysisArmorUpgrade.GetLevel(builder)
+    )
 end
 
 function GrowthRecipes.CanBuildDeepImplant(recipe, builder)
@@ -277,11 +312,23 @@ function GrowthRecipes.CanBuildMiniAlicePage(recipe, builder)
     return true
 end
 
+function GrowthRecipes.GetMiniAlicePageRecipeCount(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return 0
+    end
+
+    return math.max(
+        0,
+        MiniAlice.GetMaxPages() - MiniAlice.GetUnlockedPages(builder)
+    )
+end
+
 function GrowthRecipes.IsGrowthRecipe(recname)
     return recname == GrowthRecipes.SLOT_UNLOCK_RECIPE
         or recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
         or recname == GrowthRecipes.POTENTIAL_RECIPE
         or recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE
+        or AnalysisArmorUpgrade.IsRecipe(recname)
         or RotorSurveySkills.IsSkillRecipe(recname)
         or RotorUpgrades.IsUpgradeRecipe(recname)
 end
@@ -386,6 +433,29 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
         end
         if inst.components.talker ~= nil then
             inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ROTOR_UPGRADE)
+        end
+        return true
+    end
+    if AnalysisArmorUpgrade.IsRecipe(recname) then
+        if slots == nil then
+            return false, "KEI_ANALYSIS_ARMOR_UPGRADE_MAX"
+        end
+        local can_upgrade, upgrade_reason = slots:CanUpgradeAnalysisArmor()
+        if not can_upgrade then
+            return false, upgrade_reason
+        end
+
+        local spent, spend_reason = ConsumeConfiguredExperience(inst, recname)
+        if not spent then
+            return false, spend_reason
+        end
+
+        local upgraded, actual_reason = slots:UpgradeAnalysisArmor()
+        if not upgraded then
+            return false, actual_reason or upgrade_reason
+        end
+        if inst.components.talker ~= nil then
+            inst.components.talker:Say(STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ANALYSIS_ARMOR_UPGRADE)
         end
         return true
     end

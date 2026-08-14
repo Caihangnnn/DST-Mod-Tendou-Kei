@@ -3,6 +3,7 @@
 modimport("scripts/kei/strings.lua")
 modimport("scripts/kei/presentation.lua")
 modimport("scripts/kei/actions.lua")
+modimport("scripts/kei/hooks/task_book.lua")
 modimport("scripts/kei/hooks/rotor_controller.lua")
 modimport("scripts/kei/hooks/rotor_wheel.lua")
 modimport("scripts/kei/hooks/rotor_survey_map.lua")

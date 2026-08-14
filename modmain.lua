@@ -19,6 +19,9 @@ GLOBAL.TENDOU_KEI_API = env
 PrefabFiles = { char_prefab .. "__all_prefabs" }
 
 Assets = {
+    Asset("ANIM", "anim/cookbook.zip"),
+    Asset("ATLAS", "images/quagmire_recipebook.xml"),
+    Asset("IMAGE", "images/quagmire_recipebook.tex"),
     Asset("ANIM", "anim/kei_exp.zip"),  -- Experience status animation
     Asset("ANIM", "anim/kei.zip"),  --人物模型
     Asset("ANIM", "anim/ghost_kei_build.zip"),  --人物灵魂状态模型
@@ -131,6 +134,7 @@ modimport("scripts/kei/hooks/storm.lua")
 modimport("scripts/kei/hooks/inventory.lua")
 modimport("scripts/kei/hooks/itemtile.lua")
 modimport("scripts/kei/hooks/experience.lua")
+modimport("scripts/kei/hooks/hermitcrab.lua")
 modimport("scripts/kei/init.lua")
 modimport("scripts/kei/hooks/network.lua")
 

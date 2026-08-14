@@ -152,7 +152,42 @@ AddRecipe2(
     filters
 )
 
--- 旋翼调查仪控制器：制作只生成控制器，无人机由控制器技能召唤。
+-- Life protocol CDs unlocked by Hermit Crab friendship.
+AddRecipe2(
+    "kei_life_cd_durability_restore",
+    {
+        Ingredient("sewing_kit", 1),
+        Ingredient("sewing_tape", 3),
+        Ingredient("greenamulet", 1),
+    },
+    TECH.NONE,
+    kei_config({
+        atlas = "images/inventoryimages/kei_life_cd_item.xml",
+        image = "kei_life_cd.tex",
+        product = "kei_life_cd_durability_restore",
+        nounlock = true,
+    }),
+    filters
+)
+
+AddRecipe2(
+    "kei_life_cd_map_teleport",
+    {
+        Ingredient("telestaff", 1),
+        Ingredient("orangestaff", 1),
+        Ingredient("trident", 1),
+    },
+    TECH.NONE,
+    kei_config({
+        atlas = "images/inventoryimages/kei_life_cd_item.xml",
+        image = "kei_life_cd.tex",
+        product = "kei_life_cd_map_teleport",
+        nounlock = true,
+    }),
+    filters
+)
+
+-- Rotor surveyor controller recipe.
 AddRecipe2(
     "kei_rotor_surveyor",
     { Ingredient("goldnugget", 10) },
@@ -452,6 +487,22 @@ AddRecipe2(
         product = GrowthRecipes.MINI_ALICE_PAGE_RECIPE,
         nounlock = true,
         canbuild = GrowthRecipes.CanBuildMiniAlicePage,
+        getlimitedrecipecount = GrowthRecipes.GetMiniAlicePageRecipeCount,
+    }),
+    filters
+)
+
+AddRecipe2(
+    GrowthRecipes.ANALYSIS_ARMOR_UPGRADE_RECIPE,
+    { experience_ingredient(GrowthRecipes.ANALYSIS_ARMOR_UPGRADE_RECIPE) },
+    TECH.NONE,
+    kei_config({
+        atlas = "images/inventoryimages/kei_items.xml",
+        image = "kei_analysis_cd.tex",
+        product = GrowthRecipes.ANALYSIS_ARMOR_UPGRADE_RECIPE,
+        nounlock = true,
+        canbuild = GrowthRecipes.CanBuildAnalysisArmorUpgrade,
+        getlimitedrecipecount = GrowthRecipes.GetAnalysisArmorUpgradeRecipeCount,
     }),
     filters
 )

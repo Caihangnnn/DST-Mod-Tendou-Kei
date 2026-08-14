@@ -2,6 +2,7 @@ local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 local LifeRecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
@@ -109,6 +110,7 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.inst = inst
     self.unlocked_slots = ProtocolSlotUnlocks.GetInitialSlots()
     self.mini_alice_pages = 1
+    self.analysis_armor_upgrade_level = 0
     self.implanted_combat_protocols = {}
     self.implanted_basic_attributes = {}
     self.permanent_life_recipes = {}
@@ -435,6 +437,63 @@ function KeiProtocolSlots:SyncUnlockedSlots()
     end
 end
 
+function KeiProtocolSlots:SyncProtocolSlotVisuals()
+    local visual_vars = self.inst._kei_protocol_slot_visuals
+    if visual_vars == nil then
+        return
+    end
+
+    local inventory = self.inst.components.inventory
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
+        local value = ""
+        local protocol_container = inventory ~= nil and inventory:GetItemInSlot(slot) or nil
+        local container = protocol_container ~= nil and protocol_container.components.container or nil
+        local item = container ~= nil and container:GetItemInSlot(1) or nil
+        local inventoryitem = item ~= nil and item.components.inventoryitem or nil
+        if inventoryitem ~= nil then
+            local image = inventoryitem.imagename or item.prefab
+            local atlas = inventoryitem.atlasname or GetInventoryItemAtlas(image .. ".tex")
+            if type(atlas) == "string" and atlas ~= "" and type(image) == "string" and image ~= "" then
+                value = atlas .. "\t" .. image
+            end
+        end
+
+        local visual_var = visual_vars[slot]
+        if visual_var ~= nil and visual_var:value() ~= value then
+            visual_var:set(value)
+        end
+    end
+end
+
+function KeiProtocolSlots:SyncAnalysisArmorUpgrade()
+    self.analysis_armor_upgrade_level = AnalysisArmorUpgrade.ClampLevel(
+        self.analysis_armor_upgrade_level
+    )
+    if self.inst._kei_analysis_armor_upgrade_level ~= nil then
+        self.inst._kei_analysis_armor_upgrade_level:set(self.analysis_armor_upgrade_level)
+    end
+end
+
+function KeiProtocolSlots:CanUpgradeAnalysisArmor()
+    if self.analysis_armor_upgrade_level >= AnalysisArmorUpgrade.MAX_LEVEL then
+        return false, "KEI_ANALYSIS_ARMOR_UPGRADE_MAX"
+    end
+    return true
+end
+
+function KeiProtocolSlots:UpgradeAnalysisArmor()
+    local can_upgrade, reason = self:CanUpgradeAnalysisArmor()
+    if not can_upgrade then
+        return false, reason
+    end
+
+    self.analysis_armor_upgrade_level = self.analysis_armor_upgrade_level + 1
+    self:SyncAnalysisArmorUpgrade()
+    self._protocol_state_dirty = true
+    self:Refresh()
+    return true
+end
+
 function KeiProtocolSlots:SyncMiniAlicePages()
     local max_pages = math.clamp(tonumber(TUNING.KEI_MINI_ALICE_MAX_PAGES) or 7, 1, 7)
     self.mini_alice_pages = math.clamp(
@@ -596,6 +655,15 @@ function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
     container:AddTag("kei_protocol_slot")
     container.kei_protocol_slot_index = slot
 
+    if container._kei_protocol_slot_contents_fn == nil then
+        container._kei_protocol_slot_contents_fn = function()
+            self._protocol_state_dirty = true
+            self:SyncProtocolSlotVisuals()
+        end
+        container:ListenForEvent("itemget", container._kei_protocol_slot_contents_fn)
+        container:ListenForEvent("itemlose", container._kei_protocol_slot_contents_fn)
+    end
+
     if container.components.inventoryitem ~= nil then
         container.components.inventoryitem.islockedinslot = true
         container.components.inventoryitem.canbepickedup = false
@@ -666,6 +734,8 @@ function KeiProtocolSlots:EnsureProtocolContainers()
             RemoveProtocolContainer(self.inst, inventory, current)
         end
     end
+
+    self:SyncProtocolSlotVisuals()
 end
 
 function KeiProtocolSlots:OnRemoveFromEntity()
@@ -790,6 +860,9 @@ function KeiProtocolSlots:DeepImplantFirst()
             attribute = data.attribute,
             attribute_value = data.attribute_value,
         })
+    end
+    if self.inst.components.kei_taskbook ~= nil then
+        self.inst.components.kei_taskbook:MarkImplanted(data, removed.prefab)
     end
     removed:Remove()
     self._protocol_state_dirty = true
@@ -1202,6 +1275,9 @@ function KeiProtocolSlots:Refresh()
 
     for _, entry in ipairs(items) do
         local data = entry.data
+        if self.inst.components.kei_taskbook ~= nil then
+            self.inst.components.kei_taskbook:RecordProtocolData(data, entry.item.prefab)
+        end
         if data.kind == "combat" and data.protocol ~= nil then
             combat[data.protocol] = true
         elseif data.kind == "life" and data.protocol ~= nil then
@@ -1342,6 +1418,7 @@ function KeiProtocolSlots:OnSave()
         implanted_combat_protocols = self.implanted_combat_protocols,
         implanted_basic_attributes = self.implanted_basic_attributes,
         permanent_life_recipes = self.permanent_life_recipes,
+        analysis_armor_upgrade_level = self.analysis_armor_upgrade_level,
     }
 end
 
@@ -1350,6 +1427,9 @@ function KeiProtocolSlots:OnLoad(data)
         self.unlocked_slots = ProtocolSlotUnlocks.ClampUnlockedSlots(data.unlocked_slots)
     end
     self.mini_alice_pages = data ~= nil and data.mini_alice_pages or 1
+    self.analysis_armor_upgrade_level = AnalysisArmorUpgrade.ClampLevel(
+        data ~= nil and data.analysis_armor_upgrade_level or 0
+    )
     if self.inst.components ~= nil and self.inst.components.kei_experience ~= nil then
         self.inst.components.kei_experience:RecalculateMax()
     end
@@ -1358,6 +1438,7 @@ function KeiProtocolSlots:OnLoad(data)
     self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()
     self:SyncMiniAlicePages()
+    self:SyncAnalysisArmorUpgrade()
     self:ApplyStatProgression()
     self.inst:DoTaskInTime(0, function()
         self:EnsureProtocolContainers()

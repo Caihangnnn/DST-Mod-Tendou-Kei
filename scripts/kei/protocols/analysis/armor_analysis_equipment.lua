@@ -1,4 +1,4 @@
-local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
+local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 
 local ArmorAnalysisEquipment = {}
 
@@ -9,19 +9,6 @@ end
 
 -- 根据当前已解锁协议槽进度计算护甲吸收缩放
 -- 额外槽位越接近满解锁，虚拟护甲的吸收比例越接近原始值
-local function GetAbsorbScale(unlocked_slots)
-    local base_slots = ProtocolSlotUnlocks.GetBaseInitialSlots()
-    local max_slots = ProtocolSlotUnlocks.GetMaxSlots()
-    local total_extra_slots = math.max(0, max_slots - base_slots)
-    if total_extra_slots <= 0 then
-        return 1
-    end
-
-    local unlocked_extra_slots = math.max(0, (unlocked_slots or ProtocolSlotUnlocks.GetInitialSlots()) - base_slots)
-    local progress = math.min(1, unlocked_extra_slots / total_extra_slots)
-    return 0.5 + 0.5 * progress
-end
-
 -- 将解析装备提供的护甲吸收率应用到虚拟护甲上
 -- 可使用协议数据中的 absorb 覆盖原护甲吸收，否则继承预制体自身的吸收率
 local function ApplyArmorAbsorb(virtual, data, absorb_scale)
@@ -50,6 +37,10 @@ local function CleanVirtualEquipment(item, equipslot)
     item:RemoveTag("repairable")
 
     if item.components.equippable ~= nil then
+        -- A virtual armor copy must not run arbitrary source-prefab equip
+        -- callbacks after its fueled/uses components have been removed.
+        item.components.equippable:SetOnEquip(nil)
+        item.components.equippable:SetOnUnequip(nil)
         item.components.equippable.restrictedtag = nil
         item.components.equippable.equipslot = equipslot
         item.components.equippable:SetPreventUnequipping(true)
@@ -137,7 +128,7 @@ function ArmorAnalysisEquipment.Apply(protocolslots, entry)
         and current.kei_source_prefab == data.source
         and inventory:GetEquippedItem(equipslot) == current
     then
-        ApplyArmorAbsorb(current, data, GetAbsorbScale(protocolslots.unlocked_slots))
+        ApplyArmorAbsorb(current, data, AnalysisArmorUpgrade.GetAbsorbScale(protocolslots.inst))
         return
     end
 
@@ -151,7 +142,7 @@ function ArmorAnalysisEquipment.Apply(protocolslots, entry)
 
     virtual.kei_source_prefab = data.source
     CleanVirtualEquipment(virtual, equipslot)
-    ApplyArmorAbsorb(virtual, data, GetAbsorbScale(protocolslots.unlocked_slots))
+    ApplyArmorAbsorb(virtual, data, AnalysisArmorUpgrade.GetAbsorbScale(protocolslots.inst))
 
     inventory:Equip(virtual, nil, true)
     if inventory:GetEquippedItem(equipslot) == virtual then

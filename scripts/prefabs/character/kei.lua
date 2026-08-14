@@ -71,6 +71,7 @@ local KEI_LIGHT_COLOUR = { 240 / 255, 187 / 255, 203 / 255 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
 local start_inv = {
+    "kei_task_book",
     "kei_battery",
     "kei_battery",
     "kei_battery",
@@ -147,6 +148,46 @@ local function EnsureMiniAliceItem(inst)
     inventory.ignoresound = false
     if not inserted then
         inventory:GiveItem(icon, nil, inst:GetPosition())
+    end
+end
+
+local function EnsureTaskBookItem(inst)
+    if not TheWorld.ismastersim
+        or inst == nil
+        or not inst:IsValid()
+        or inst.components == nil
+        or inst.components.inventory == nil
+    then
+        return
+    end
+
+    local inventory = inst.components.inventory
+    for slot = 1, inventory:GetNumSlots() do
+        local item = inventory:GetItemInSlot(slot)
+        if item ~= nil and item:HasTag("kei_task_book") then
+            return
+        end
+    end
+
+    local task_book = SpawnPrefab("kei_task_book")
+    if task_book ~= nil then
+        inventory:GiveItem(task_book, nil, inst:GetPosition())
+    end
+end
+
+local function RecordExistingTaskBookData(inst)
+    if inst == nil or inst.components == nil then
+        return
+    end
+
+    local taskbook = inst.components.kei_taskbook
+    local inventory = inst.components.inventory
+    if taskbook == nil or inventory == nil then
+        return
+    end
+
+    for _, item in ipairs(inventory:GetItemsWithTag("kei_protocol_cd")) do
+        taskbook:RecordProtocolItem(item)
     end
 end
 
@@ -535,12 +576,23 @@ local function common_postinit(inst)
     inst.CreateHealthBadge = CreateKeiIntegrityBadge
 
     inst._kei_unlocked_protocol_slots = net_smallbyte(inst.GUID, "kei.unlocked_protocol_slots", "kei_protocol_slots_dirty")
+    inst._kei_protocol_slot_visuals = {}
+    for slot = 1, 7 do
+        inst._kei_protocol_slot_visuals[slot] = net_string(
+            inst.GUID,
+            "kei.protocol_slot_visual_" .. tostring(slot),
+            "kei_protocol_slot_visuals_dirty"
+        )
+    end
     inst._kei_mini_alice_pages = net_smallbyte(inst.GUID, "kei.mini_alice_pages", "kei_mini_alice_pages_dirty")
+    inst._kei_analysis_armor_upgrade_level = net_smallbyte(inst.GUID, "kei.analysis_armor_upgrade_level", "kei_analysis_armor_upgrade_dirty")
     inst._kei_rotor_skill_mask = net_ushortint(inst.GUID, "kei.rotor_skill_mask", "kei_rotor_skills_dirty")
     inst._kei_rotor_upgrade_signal = net_smallbyte(inst.GUID, "kei.rotor_upgrade_signal", "kei_rotor_upgrades_dirty")
     inst._kei_rotor_upgrade_mobility = net_smallbyte(inst.GUID, "kei.rotor_upgrade_mobility", "kei_rotor_upgrades_dirty")
     inst._kei_rotor_upgrade_battery = net_smallbyte(inst.GUID, "kei.rotor_upgrade_battery", "kei_rotor_upgrades_dirty")
     inst._kei_rotor_upgrade_power_reduction = net_smallbyte(inst.GUID, "kei.rotor_upgrade_power_reduction", "kei_rotor_upgrades_dirty")
+    inst._kei_taskbook_records = net_string(inst.GUID, "kei.taskbook_records", "kei_taskbook_dirty")
+    inst._kei_taskbook_implanted = net_string(inst.GUID, "kei.taskbook_implanted", "kei_taskbook_dirty")
     inst._kei_experience_current = net_float(inst.GUID, "kei.experience_current", "kei_experience_dirty")
     inst._kei_experience_max = net_float(inst.GUID, "kei.experience_max", "kei_experience_dirty")
     inst._kei_experience_total = net_float(inst.GUID, "kei.experience_total", "kei_experience_dirty")
@@ -562,6 +614,9 @@ local function common_postinit(inst)
         inst:PushEvent("refreshcrafting")
     end)
     inst:ListenForEvent("kei_mini_alice_pages_dirty", function()
+        inst:PushEvent("refreshcrafting")
+    end)
+    inst:ListenForEvent("kei_analysis_armor_upgrade_dirty", function()
         inst:PushEvent("refreshcrafting")
     end)
     inst:ListenForEvent("kei_rotor_skills_dirty", function()
@@ -1097,6 +1152,9 @@ local function OnSave(inst, data)
     if inst.components.kei_rotor_upgrades ~= nil then
         data.kei_rotor_upgrades = inst.components.kei_rotor_upgrades:OnSave()
     end
+    if inst.components.kei_taskbook ~= nil then
+        data.kei_taskbook = inst.components.kei_taskbook:OnSave()
+    end
 end
 
 local function OnLoad(inst, data)
@@ -1112,8 +1170,26 @@ local function OnLoad(inst, data)
     if data ~= nil and data.kei_rotor_upgrades ~= nil and inst.components.kei_rotor_upgrades ~= nil then
         inst.components.kei_rotor_upgrades:OnLoad(data.kei_rotor_upgrades)
     end
+    if data ~= nil and data.kei_taskbook ~= nil and inst.components.kei_taskbook ~= nil then
+        inst.components.kei_taskbook:OnLoad(data.kei_taskbook)
+    end
+
+    inst:DoTaskInTime(.1, function()
+        local slots = inst.components.kei_protocolslots
+        local taskbook = inst.components.kei_taskbook
+        if slots ~= nil and taskbook ~= nil then
+            for protocol in pairs(slots.implanted_combat_protocols or {}) do
+                taskbook:MarkImplanted({ kind = "combat", protocol = protocol })
+            end
+            for _, protocol_data in ipairs(slots.implanted_basic_attributes or {}) do
+                taskbook:MarkImplanted({ kind = "basic_attribute", protocol = protocol_data.protocol })
+            end
+        end
+        RecordExistingTaskBookData(inst)
+    end)
 
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    inst:DoTaskInTime(0, EnsureTaskBookItem)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 end
 
@@ -1142,6 +1218,13 @@ local function master_postinit(inst)
     inst:AddComponent("kei_experience")
     inst:AddComponent("kei_rotor_skills")
     inst:AddComponent("kei_rotor_upgrades")
+    inst:AddComponent("kei_taskbook")
+
+    inst:ListenForEvent("itemget", function(_, data)
+        if data ~= nil and data.item ~= nil then
+            inst.components.kei_taskbook:RecordProtocolItem(data.item)
+        end
+    end)
 
     PatchKeiCurseImmunity(inst)
 
@@ -1160,7 +1243,9 @@ local function master_postinit(inst)
     inst:ListenForEvent("onremove", RemoveKeiPersonalLight)
 
     KeiBackupBody.ConfigurePlayer(inst)
+    inst:DoTaskInTime(.1, RecordExistingTaskBookData)
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    inst:DoTaskInTime(0, EnsureTaskBookItem)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。

@@ -150,6 +150,14 @@ STRINGS.RECIPE_DESC.KEI_ROTOR_SKILL_PENDING_4 = "消耗1000点经验值，永久
 STRINGS.RECIPE_DESC.KEI_ROTOR_SKILL_PENDING_5 = "消耗1000点经验值，永久解锁待定技能。"
 STRINGS.RECIPE_DESC.KEI_ROTOR_SKILL_PENDING_6 = "消耗1000点经验值，永久解锁待定技能。"
 
+STRINGS.RECIPE_DESC.KEI_LIFE_CD_DURABILITY_RESTORE = "寄居蟹好感度达到6后解锁，制作修补协议。"
+STRINGS.RECIPE_DESC.KEI_LIFE_CD_MAP_TELEPORT = "寄居蟹好感度达到10后解锁，制作传送协议。"
+
+STRINGS.CHARACTERS.KEI.ANNOUNCE_KEI_ANALYSIS_ARMOR_UPGRADE = "虚拟护甲强化完成。"
+STRINGS.CHARACTERS.KEI.ACTIONFAIL.BUILD.KEI_ANALYSIS_ARMOR_UPGRADE_MAX = "虚拟护甲强化已达到上限。"
+STRINGS.NAMES.KEI_ANALYSIS_ARMOR_UPGRADE = "虚拟护甲强化"
+STRINGS.RECIPE_DESC.KEI_ANALYSIS_ARMOR_UPGRADE = "消耗经验提升头部和身体数据化装备的护甲继承率。"
+
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
@@ -162,6 +170,9 @@ local function RegisterProtocolItemStrings(def, suffix)
     STRINGS.NAMES[key] = (def.display_name or def.protocol or def.prefab) .. suffix
     STRINGS.CHARACTERS.GENERIC.DESCRIBE[key] = def.description or "一张 Kei 协议 CD。"
 end
+
+STRINGS.NAMES.KEI_TASK_BOOK = "任务书"
+STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_TASK_BOOK = "记录任务与数据的终端。"
 
 for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
     RegisterProtocolItemStrings(def, "战斗协议 CD")
