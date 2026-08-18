@@ -78,6 +78,33 @@ local function AddDetailPanel(parent)
     right_corner:SetPosition(120, -190)
 end
 
+local StatusPage = Class(Widget, function(self, owner)
+    Widget._ctor(self, "KeiTaskBookStatusPage")
+    self.owner = owner
+
+    -- Keep the task page's content frame identical to the data page, while
+    -- reserving its center for future task content instead of protocol CDs.
+    self.gridroot = self:AddChild(Widget("task_root"))
+    self.gridroot:SetPosition(-180, -35)
+    self.details_root = self:AddChild(Widget("details_root"))
+    self.details_root:SetPosition(GRID_WIDTH / 2 + 30, 0)
+    AddDetailPanel(self.details_root)
+
+    local title = self:AddChild(Text(HEADERFONT, 18, "任务", UICOLOURS.BROWN_DARK))
+    title:SetHAlign(ANCHOR_RIGHT)
+    title:SetPosition(-310, 229)
+    local line = self:AddChild(Image(ATLAS, "quagmire_recipe_line_short.tex"))
+    line:SetScale(.5, .5)
+    line:SetPosition(-310, 216)
+
+    local top_border = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
+    top_border:SetScale(.75, .75)
+    top_border:SetPosition(-3, GRID_HEIGHT / 2 + 1)
+    local bottom_border = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
+    bottom_border:SetScale(.75, -.75)
+    bottom_border:SetPosition(-3, -GRID_HEIGHT / 2)
+end)
+
 local TaskPage = Class(Widget, function(self, owner)
     Widget._ctor(self, "KeiTaskBookTaskPage")
     self.owner = owner
@@ -193,13 +220,6 @@ function DataPage:CreateLayout()
     self.details_root:SetPosition(GRID_WIDTH / 2 + 30, 0)
     AddDetailPanel(self.details_root)
 
-    local border = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
-    border:SetScale(.75, .75)
-    border:SetPosition(-3, GRID_HEIGHT / 2 + 1)
-    border = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
-    border:SetScale(.75, -.75)
-    border:SetPosition(-3, -GRID_HEIGHT / 2)
-
     local title = self:AddChild(Text(HEADERFONT, 18, "已记录数据", UICOLOURS.BROWN_DARK))
     title:SetHAlign(ANCHOR_RIGHT)
     title:SetPosition(-310, 229)
@@ -211,7 +231,20 @@ function DataPage:CreateLayout()
     self.count_text:SetPosition(-310, 196)
 
     self.spinner_root = self.gridroot:AddChild(self:BuildSpinners())
-    self.spinner_root:SetPosition(0, GRID_HEIGHT / 2 + 5)
+end
+
+function DataPage:UpdateGridDecor()
+    if self.grid_border_top ~= nil then self.grid_border_top:Kill() end
+    if self.grid_border_bottom ~= nil then self.grid_border_bottom:Kill() end
+
+    local _, grid_height = self.grid:GetScrollRegionSize()
+    self.grid_border_top = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
+    self.grid_border_top:SetScale(.75, .75)
+    self.grid_border_top:SetPosition(-3, grid_height / 2 + 1)
+    self.grid_border_bottom = self.gridroot:AddChild(Image(ATLAS, "quagmire_recipe_line.tex"))
+    self.grid_border_bottom:SetScale(.75, -.75)
+    self.grid_border_bottom:SetPosition(-3, -grid_height / 2)
+    self.spinner_root:SetPosition(0, grid_height / 2 + 5)
 end
 
 function DataPage:BuildSpinners()
@@ -301,10 +334,7 @@ function DataPage:BuildGrid(entries)
         num_visible_rows = 5, num_columns = 5, item_ctor_fn = CellCtor, apply_fn = ApplyCell,
         scrollbar_offset = 20, scrollbar_height_offset = -60,
     }))
-    -- Keep the first row below the cookbook divider. The task page uses the
-    -- same cell geometry as cookbookpage_crockpot, but its data set is built
-    -- immediately rather than through the cookbook refresh pass.
-    self.grid:SetPosition(-15, -16)
+    self.grid:SetPosition(-15, 0)
     self.grid.up_button:SetTextures(ATLAS, "quagmire_recipe_scroll_arrow_hover.tex")
     self.grid.up_button:SetScale(.5)
     self.grid.down_button:SetTextures(ATLAS, "quagmire_recipe_scroll_arrow_hover.tex")
@@ -314,6 +344,7 @@ function DataPage:BuildGrid(entries)
     self.grid.position_marker:SetTextures(ATLAS, "quagmire_recipe_scroll_handle.tex")
     self.grid.position_marker.image:SetTexture(ATLAS, "quagmire_recipe_scroll_handle.tex")
     self.grid.position_marker:SetScale(.6)
+    self:UpdateGridDecor()
 end
 
 function DataPage:RefreshEntries()
@@ -375,7 +406,7 @@ function KeiTaskBookWidget:SelectTab(index)
     self.last_selected:MoveToFront()
     if self.panel ~= nil then self.panel:Kill() end
     if index == 1 then
-        self.panel = self.root:AddChild(Widget("status_page"))
+        self.panel = self.root:AddChild(StatusPage(self.owner))
     elseif index == 2 then
         self.panel = self.root:AddChild(TaskPage(self.owner))
     else

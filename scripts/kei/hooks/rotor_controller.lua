@@ -498,9 +498,11 @@ local function CloseControlWheel(inst)
     end
 end
 
--- USESPELLBOOK opens the wheel, while the custom spell action closes the control state.
--- Both are ordinary buffered actions, so the server state is authoritative and the
--- client only predicts it through server_states.
+-- USESPELLBOOK/CLOSESPELLBOOK are vanilla instant actions.  Keep them on the
+-- vanilla path so the client can open/close the HUD wheel without predicting a
+-- persistent rotor state that the server never enters.
+-- The custom rotor spell actions below still use the rotor states to execute a
+-- selected skill and synchronize the controller presentation.
 local function GetRotorActionState(inst, action, controller_state)
     local controller = GetActionItem(action)
     if controller_state == CONTROL_STOP and IsPilotState(inst) then
@@ -521,22 +523,6 @@ local function GetRotorActionState(inst, action, controller_state)
 
     return "doshortaction"
 end
-
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.USESPELLBOOK, function(inst, action)
-    return GetRotorActionState(inst, action, CONTROL_PRE)
-end))
-
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.USESPELLBOOK, function(inst, action)
-    return GetRotorActionState(inst, action, CONTROL_PRE)
-end))
-
-AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.CLOSESPELLBOOK, function(inst, action)
-    return GetRotorActionState(inst, action, CONTROL_STOP)
-end))
-
-AddStategraphActionHandler("wilson_client", ActionHandler(ACTIONS.CLOSESPELLBOOK, function(inst, action)
-    return GetRotorActionState(inst, action, CONTROL_STOP)
-end))
 
 AddStategraphActionHandler("wilson", ActionHandler(ACTIONS.KEI_ROTOR_CONTROL, function(inst, action)
     if IsPilotState(inst) and IsController(GetActionItem(action)) then

@@ -175,6 +175,22 @@ local function EnsureTaskBookItem(inst)
     end
 end
 
+local function RecordTaskBookItemTree(taskbook, item, visited)
+    if item == nil or visited[item] then
+        return
+    end
+
+    visited[item] = true
+    taskbook:RecordProtocolItem(item)
+
+    local container = item.components ~= nil and item.components.container or nil
+    if container ~= nil then
+        for slot = 1, container:GetNumSlots() do
+            RecordTaskBookItemTree(taskbook, container:GetItemInSlot(slot), visited)
+        end
+    end
+end
+
 local function RecordExistingTaskBookData(inst)
     if inst == nil or inst.components == nil then
         return
@@ -186,9 +202,25 @@ local function RecordExistingTaskBookData(inst)
         return
     end
 
-    for _, item in ipairs(inventory:GetItemsWithTag("kei_protocol_cd")) do
-        taskbook:RecordProtocolItem(item)
+    local visited = {}
+    for _, item in pairs(inventory.itemslots) do
+        RecordTaskBookItemTree(taskbook, item, visited)
     end
+    for _, item in pairs(inventory.equipslots) do
+        RecordTaskBookItemTree(taskbook, item, visited)
+    end
+    RecordTaskBookItemTree(taskbook, inventory:GetActiveItem(), visited)
+end
+
+local function ScheduleTaskBookRecordScan(inst)
+    if inst._kei_taskbook_record_task ~= nil then
+        return
+    end
+
+    inst._kei_taskbook_record_task = inst:DoTaskInTime(0, function(owner)
+        owner._kei_taskbook_record_task = nil
+        RecordExistingTaskBookData(owner)
+    end)
 end
 
 local function EnsureRotorSurveyController(inst)
@@ -1220,11 +1252,18 @@ local function master_postinit(inst)
     inst:AddComponent("kei_rotor_upgrades")
     inst:AddComponent("kei_taskbook")
 
-    inst:ListenForEvent("itemget", function(_, data)
+    local function OnTaskBookItemChanged(_, data)
         if data ~= nil and data.item ~= nil then
             inst.components.kei_taskbook:RecordProtocolItem(data.item)
         end
-    end)
+        ScheduleTaskBookRecordScan(inst)
+    end
+
+    -- 容器在角色持有时会将收物事件转发为 gotnewitem；itemget 仅能覆盖角色本体背包。
+    inst:ListenForEvent("itemget", OnTaskBookItemChanged)
+    inst:ListenForEvent("gotnewitem", OnTaskBookItemChanged)
+    inst:ListenForEvent("newactiveitem", OnTaskBookItemChanged)
+    inst:ListenForEvent("equip", OnTaskBookItemChanged)
 
     PatchKeiCurseImmunity(inst)
 
