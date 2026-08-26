@@ -23,7 +23,7 @@ AddRecipeFilter({
     image = ROTOR_ICON,
     image_size = 64,
 })
-STRINGS.UI.CRAFTING_FILTERS[KEI_ROTOR_FILTER] = "旋翼调查仪"
+STRINGS.UI.CRAFTING_FILTERS[KEI_ROTOR_FILTER] = "无人机"
 
 local function image(tex)
     -- AddRecipe2 需要 atlas + image 成对传入。
@@ -200,21 +200,21 @@ AddRecipe2(
     rotor_filters
 )
 
--- 旋翼调查仪技能解锁：每项技能独立消耗 1000 点当前经验，制作后永久解锁。
+-- 无人机技能解锁：每项技能独立消耗 1000 点当前经验，制作后永久解锁。
 local rotor_skill_recipes = {
-    { name = "kei_rotor_skill_pilot", label = "驾驶" },
-    { name = "kei_rotor_skill_resurrection", label = "苏生光束" },
-    { name = "kei_rotor_skill_heal", label = "治愈光束" },
-    { name = "kei_rotor_skill_strengthen", label = "强化光束" },
-    { name = "kei_rotor_skill_confinement", label = "禁锢光束" },
-    { name = "kei_rotor_skill_dead", label = "死亡光束" },
-    { name = "kei_rotor_skill_survey", label = "调查光束" },
-    { name = "kei_rotor_skill_follow", label = "跟随" },
-    { name = "kei_rotor_skill_teleport", label = "传送光束" },
-    { name = "kei_rotor_skill_collect", label = "收集光束" },
-    { name = "kei_rotor_skill_fishing", label = "捕捞光束" },
-    { name = "kei_rotor_skill_nature", label = "自然光束" },
-    { name = "kei_rotor_skill_friendly", label = "友善光束" },
+    { name = "kei_rotor_skill_pilot", label = "无人机技能  驾驶" },
+    { name = "kei_rotor_skill_resurrection", label = "无人机技能  苏生光束" },
+    { name = "kei_rotor_skill_heal", label = "无人机技能  治愈光束" },
+    { name = "kei_rotor_skill_strengthen", label = "无人机技能  强化光束" },
+    { name = "kei_rotor_skill_confinement", label = "无人机技能  禁锢光束" },
+    { name = "kei_rotor_skill_dead", label = "无人机技能  死亡光束" },
+    { name = "kei_rotor_skill_survey", label = "无人机技能  调查光束" },
+    { name = "kei_rotor_skill_follow", label = "无人机技能  跟随" },
+    { name = "kei_rotor_skill_teleport", label = "无人机技能  传送光束" },
+    { name = "kei_rotor_skill_collect", label = "无人机技能  收集光束" },
+    { name = "kei_rotor_skill_fishing", label = "无人机技能  捕捞光束" },
+    { name = "kei_rotor_skill_nature", label = "无人机技能  自然光束" },
+    { name = "kei_rotor_skill_friendly", label = "无人机技能  友善光束" },
 }
 
 for _, data in ipairs(rotor_skill_recipes) do

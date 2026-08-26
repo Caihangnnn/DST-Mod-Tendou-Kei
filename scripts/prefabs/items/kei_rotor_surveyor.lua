@@ -17,6 +17,12 @@ local prefabs =
     "kei_rotor_surveyor_revealableicon",
 }
 
+-- Keep the decision cadence aligned with vanilla pet brains. Movement remains
+-- frame-based only while the flying drone actually has ground to make up.
+local FOLLOW_DECISION_PERIOD = .25
+local FOLLOW_MOVE_PERIOD = FRAMES
+local FOLLOW_DISTANCE = 3
+
 local function CreateDecal(skin_build)
     local inst = CreateEntity()
 
@@ -432,8 +438,66 @@ local function OnDroneRemoved(inst)
     RotorSurveyRegistry.Unregister(inst)
 end
 
+local function StopFollowMovement(inst)
+    if inst._kei_rotor_follow_move_task ~= nil then
+        inst._kei_rotor_follow_move_task:Cancel()
+        inst._kei_rotor_follow_move_task = nil
+    end
+
+    inst:StopRotorMovement()
+end
+
+local function GetFollowOwner(inst)
+    local follower = inst.components.follower
+    return follower ~= nil and follower:GetLeader() or nil
+end
+
+local function UpdateFollowMotion(inst)
+    local owner = GetFollowOwner(inst)
+    if owner == nil or not owner:IsValid() or owner:HasTag("playerghost") then
+        StopFollowMovement(inst)
+        return
+    end
+
+    if inst._kei_drone_pilot ~= nil then
+        StopFollowMovement(inst)
+        return
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local ox, _, oz = owner.Transform:GetWorldPosition()
+    local dx, dz = ox - x, oz - z
+    local distance = math.sqrt(dx * dx + dz * dz)
+
+    if distance <= FOLLOW_DISTANCE then
+        StopFollowMovement(inst)
+        return
+    end
+
+    local speed = RotorUpgrades.GetDroneSpeed(owner)
+    local step = math.min(distance - FOLLOW_DISTANCE, speed * FOLLOW_MOVE_PERIOD)
+    local next_x = x + dx / distance * step
+    local next_z = z + dz / distance * step
+
+    -- Flying drones intentionally move in world space: unlike ground pets,
+    -- they do not need locomotor pathfinding or obstacle avoidance.
+    inst.Transform:SetRotation(math.atan2(-dz, dx) / DEGREES)
+    inst.Transform:SetPosition(next_x, y, next_z)
+    if inst.Physics ~= nil then
+        local _, vy, _ = inst.Physics:GetMotorVel()
+        inst.Physics:SetMotorVel(0, vy, 0)
+    end
+end
+
+local function StartFollowMovement(inst)
+    if inst._kei_rotor_follow_move_task == nil then
+        inst._kei_rotor_follow_move_task = inst:DoPeriodicTask(FOLLOW_MOVE_PERIOD, UpdateFollowMotion)
+    end
+    UpdateFollowMotion(inst)
+end
+
 local function UpdateFollow(inst)
-    local owner = inst._kei_rotor_follow_owner
+    local owner = GetFollowOwner(inst)
     if owner == nil or not owner:IsValid() or owner:HasTag("playerghost") then
         local controller = inst._kei_drone_controller
         if controller ~= nil
@@ -448,7 +512,7 @@ local function UpdateFollow(inst)
     end
 
     if inst._kei_drone_pilot ~= nil then
-        inst:StopRotorMovement()
+        StopFollowMovement(inst)
         return
     end
 
@@ -456,26 +520,12 @@ local function UpdateFollow(inst)
     local ox, _, oz = owner.Transform:GetWorldPosition()
     local dx, dz = ox - x, oz - z
     local distance = math.sqrt(dx * dx + dz * dz)
-    local follow_distance = 3
-
-    if distance <= follow_distance then
-        inst:StopRotorMovement()
+    if distance <= FOLLOW_DISTANCE then
+        StopFollowMovement(inst)
         return
     end
 
-    local speed = RotorUpgrades.GetDroneSpeed(owner)
-    local step = math.min(distance - follow_distance, speed * FRAMES)
-    local next_x = x + dx / distance * step
-    local next_z = z + dz / distance * step
-
-    -- Keep the visual heading consistent with the vanilla scout drone while
-    -- moving the entity in world space instead of using local motor velocity.
-    inst.Transform:SetRotation(math.atan2(-dz, dx) / DEGREES)
-    inst.Transform:SetPosition(next_x, y, next_z)
-    if inst.Physics ~= nil then
-        local _, vy, _ = inst.Physics:GetMotorVel()
-        inst.Physics:SetMotorVel(0, vy, 0)
-    end
+    StartFollowMovement(inst)
 end
 
 local function StartFollowing(inst, owner)
@@ -487,15 +537,13 @@ local function StartFollowing(inst, owner)
         return false
     end
 
-    if inst._kei_rotor_follow_task ~= nil then
-        inst._kei_rotor_follow_task:Cancel()
-        inst._kei_rotor_follow_task = nil
-    end
-
     inst._kei_rotor_follow_owner = owner
-    inst._kei_rotor_follow_task = inst:DoPeriodicTask(FRAMES, function(drone)
-        UpdateFollow(drone)
-    end)
+    if inst.components.follower ~= nil then
+        inst.components.follower:SetLeader(owner)
+    end
+    if inst._kei_rotor_follow_task == nil then
+        inst._kei_rotor_follow_task = inst:DoPeriodicTask(FOLLOW_DECISION_PERIOD, UpdateFollow)
+    end
     UpdateFollow(inst)
     return true
 end
@@ -511,16 +559,14 @@ local function StopFollowing(inst)
         inst._kei_rotor_follow_task:Cancel()
         inst._kei_rotor_follow_task = nil
     end
+    StopFollowMovement(inst)
     inst._kei_rotor_follow_owner = nil
+    if inst.components.follower ~= nil then
+        inst.components.follower:SetLeader(nil)
+    end
     inst.entity:SetParent(nil)
     inst.Transform:SetPosition(x, y, z)
 
-    if inst.StopRotorMovement ~= nil then
-        inst:StopRotorMovement()
-    elseif inst.Physics ~= nil then
-        local _, vy, _ = inst.Physics:GetMotorVel()
-        inst.Physics:SetMotorVel(0, vy, 0)
-    end
 end
 
 local function OnPilotLocomote(inst, data)
@@ -654,6 +700,11 @@ local function fn()
 
     inst:AddComponent("maprevealer")
     inst.components.maprevealer:SetPrivateOwner(inst)
+
+    -- Use vanilla follower ownership and cleanup, but disable its ground-pet
+    -- leashing behaviour because this drone deliberately flies in straight lines.
+    inst:AddComponent("follower")
+    inst.components.follower:DisableLeashing()
 
     inst:SetStateGraph("SGwx78_drone_scout")
 

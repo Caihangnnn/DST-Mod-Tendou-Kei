@@ -1,5 +1,6 @@
 require("prefabutil")
 local CombatProtocolDefs = require("kei/protocols/combat")
+local TaskSummon = require("kei/task_summon")
 
 local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
@@ -240,6 +241,7 @@ end
 
 local function ClearChallengeTasks(target, reset_erosion)
     if target ~= nil then
+        TaskSummon.CleanupSpecialTarget(target)
         if target.kei_recorder_land_task ~= nil then
             target.kei_recorder_land_task:Cancel()
             target.kei_recorder_land_task = nil
@@ -340,109 +342,11 @@ StartRecorderDissolve = function(target)
     end)
 end
 
-local function PrepareMooseChallenge(target)
-    -- 记录器召唤的麋鹿鹅不受季节限制。
-    if target.StopAllWatchingWorldStates ~= nil then
-        target:StopAllWatchingWorldStates()
-    end
-    target.shouldGoAway = false
-end
-
-local function PrepareMalbatrossChallenge(target)
-    -- 记录器召唤的邪天翁忽略原版五秒陆地离场检查。
-    if target.components.locomotor ~= nil then
-        target.components.locomotor.pathcaps = {
-            allowocean = true,
-            ignoreLand = true,
-        }
-    end
-    target.landtimer = math.huge
-    target.kei_recorder_land_task = target:DoPeriodicTask(0.25, function(inst)
-        if inst:IsValid() then
-            inst.landtimer = math.huge
-        end
-    end)
-end
-
-local function PrepareAntlionChallenge(target, doer)
-    -- 蚁狮只有在 persists 为 true 时才会初始化战斗组件。
-    target.persists = true
-    if target.StartCombat ~= nil then
-        target:StartCombat(doer, "kei_recorder")
-    end
-    target.persists = false
-end
-
-local function PrepareDaywalker2Challenge(inst, target)
-    -- 拾荒疯猪的攻击逻辑依赖绑定的垃圾堆。
-    local junk = SpawnPrefab("junk_pile_big")
-    if junk == nil then
-        return
-    end
-
-    local x, y, z = target.Transform:GetWorldPosition()
-    junk.persists = false
-    junk.daywalker_side = 1
-    junk.Transform:SetPosition(x, y, z)
-
-    if junk.CanBuryDaywalker ~= nil
-        and junk:CanBuryDaywalker(target)
-        and junk.TryBuryDaywalker ~= nil
-    then
-        junk:TryBuryDaywalker(target)
-        if junk.TryReleaseDaywalker ~= nil then
-            junk:TryReleaseDaywalker(target)
-        end
-    end
-
-    inst.kei_target_support_entities = { junk }
-end
-
-local function PrepareStalkerAtriumChallenge(target)
-    -- 织影者没有远古竞技场时，覆盖实例级离场检查，避免离场死亡。
-    target.IsNearAtrium = function()
-        return true
-    end
-    target.OnLostAtrium = function() end
-    target.IsAtriumDecay = function()
-        return false
-    end
-    target.OnEntitySleep = function(inst)
-        if inst.sleeptask ~= nil then
-            inst.sleeptask:Cancel()
-            inst.sleeptask = nil
-        end
-    end
-    if target.sleeptask ~= nil then
-        target.sleeptask:Cancel()
-        target.sleeptask = nil
-    end
-end
-
-local function PrepareAlterguardianChallenge(target)
-    -- 直接召唤第三阶段仍要进入原版生成状态。
-    if target.sg ~= nil then
-        target.sg:GoToState("spawn")
-    end
-end
-
 local function PrepareRecorderChallenge(inst, target, doer)
     target.kei_recorder_spawned = true
     target.kei_recorder_source = inst
 
-    if target.prefab == "moose" then
-        PrepareMooseChallenge(target)
-    elseif target.prefab == "malbatross" then
-        PrepareMalbatrossChallenge(target)
-    elseif target.prefab == "antlion" then
-        PrepareAntlionChallenge(target, doer)
-    elseif target.prefab == "daywalker2" then
-        PrepareDaywalker2Challenge(inst, target)
-    elseif target.prefab == "stalker_atrium" then
-        PrepareStalkerAtriumChallenge(target)
-    elseif target.prefab == "alterguardian_phase3" then
-        PrepareAlterguardianChallenge(target)
-    end
+    TaskSummon.PrepareSpecialTarget(target, doer, inst)
 
     StartRecorderTransmission(target)
 

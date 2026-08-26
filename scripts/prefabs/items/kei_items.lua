@@ -667,6 +667,77 @@ local function MakeBasicAttributeProtocolCDs()
     return prefabs
 end
 
+local function GetProtocolPrefabs(definitions, predicate)
+    local prefabs = {}
+    for _, def in ipairs(definitions or {}) do
+        if def.prefab ~= nil and (predicate == nil or predicate(def)) then
+            table.insert(prefabs, def.prefab)
+        end
+    end
+    return prefabs
+end
+
+local function MakeRandomCDGift(name, display_name, visual_key, image, reward_prefabs)
+    local visual = ITEM_VISUALS[visual_key]
+    local assets = {
+        Asset("ANIM", "anim/" .. visual.build .. ".zip"),
+        Asset("ATLAS", visual.atlas),
+        Asset("IMAGE", AssetImagePath(visual)),
+    }
+
+    local function fn()
+        local inst = CreateEntity()
+
+        inst.entity:AddTransform()
+        inst.entity:AddAnimState()
+        inst.entity:AddNetwork()
+
+        MakeInventoryPhysics(inst)
+        SetWorldScale(inst, visual.scale)
+        inst.AnimState:SetBank(visual.bank)
+        inst.AnimState:SetBuild(visual.build)
+        inst.AnimState:PlayAnimation(visual.anim)
+        -- The action picker needs this tag on clients before components replicate.
+        inst:AddTag("unwrappable")
+
+        MakeInventoryFloatable(inst, "small", nil, .8)
+
+        inst.entity:SetPristine()
+
+        if not TheWorld.ismastersim then
+            return inst
+        end
+
+        inst:AddComponent("inspectable")
+        inst.components.inspectable.descriptionfn = function()
+            return "右键拆开，获得一个随机协议 CD。"
+        end
+        inst:AddComponent("named")
+        inst.components.named:SetName(display_name)
+        inst:AddComponent("inventoryitem")
+        inst.components.inventoryitem.atlasname = visual.atlas
+        inst.components.inventoryitem:ChangeImageName(image)
+
+        inst:AddComponent("unwrappable")
+        if #reward_prefabs > 0 then
+            -- Wrap a generated CD record so both the CD type and any randomized
+            -- basic-attribute value are fixed when the gift is awarded.
+            inst.components.unwrappable:WrapItems({ reward_prefabs[math.random(#reward_prefabs)] })
+        else
+            inst.components.unwrappable.canbeunwrapped = false
+        end
+        inst.components.unwrappable:SetOnUnwrappedFn(function(gift)
+            gift:Remove()
+        end)
+
+        MakeHauntableLaunch(inst)
+
+        return inst
+    end
+
+    return Prefab(name, fn, assets, reward_prefabs)
+end
+
 local function SetAnalysisData(inst, data)
     -- 解析 CD 保存装备解析结果，字段由 kei_actions.lua 的 AnalyzeEquipment 生成。
     data = data or {}
@@ -784,6 +855,26 @@ local prefabs = {
     ),
     MakeBlankCD(),
     MakeAnalysisCD(),
+    MakeRandomCDGift(
+        "kei_blank_cd_random", "白色CD礼盒", "blank_cd", "kei_blank_cd_random",
+        GetProtocolPrefabs(BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOL_LIST)
+    ),
+    MakeRandomCDGift(
+        "kei_combat_cd_blue_random", "蓝色CD礼盒", "combat_cd", "kei_combat_cd_blue_random",
+        GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def) return def.category == "biome" end)
+    ),
+    MakeRandomCDGift(
+        "kei_combat_cd_golden_random", "金色CD礼盒", "combat_cd", "kei_combat_cd_golden_random",
+        GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def)
+            return def.category == "beast" and def.tier == "basic"
+        end)
+    ),
+    MakeRandomCDGift(
+        "kei_combat_cd_purple_random", "紫色CD礼盒", "combat_cd", "kei_combat_cd_purple_random",
+        GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def)
+            return def.category == "beast" and def.tier ~= "basic"
+        end)
+    ),
 }
 
 

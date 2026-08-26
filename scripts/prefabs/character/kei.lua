@@ -9,6 +9,7 @@ local IntegrityStat = require("kei/stats/integrity")
 local KeiBackupBody = require("kei/growth/backup_body")
 local RotorSurveySkills = require("kei/rotor_survey_skills")
 local RotorSurveyRegistry = require("kei/rotor_survey_registry")
+local ClientSettings = require("kei/client_settings")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
@@ -71,7 +72,6 @@ local KEI_LIGHT_COLOUR = { 240 / 255, 187 / 255, 203 / 255 }
 
 -- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
 local start_inv = {
-    "kei_task_book",
     "kei_battery",
     "kei_battery",
     "kei_battery",
@@ -148,30 +148,6 @@ local function EnsureMiniAliceItem(inst)
     inventory.ignoresound = false
     if not inserted then
         inventory:GiveItem(icon, nil, inst:GetPosition())
-    end
-end
-
-local function EnsureTaskBookItem(inst)
-    if not TheWorld.ismastersim
-        or inst == nil
-        or not inst:IsValid()
-        or inst.components == nil
-        or inst.components.inventory == nil
-    then
-        return
-    end
-
-    local inventory = inst.components.inventory
-    for slot = 1, inventory:GetNumSlots() do
-        local item = inventory:GetItemInSlot(slot)
-        if item ~= nil and item:HasTag("kei_task_book") then
-            return
-        end
-    end
-
-    local task_book = SpawnPrefab("kei_task_book")
-    if task_book ~= nil then
-        inventory:GiveItem(task_book, nil, inst:GetPosition())
     end
 end
 
@@ -354,6 +330,9 @@ local function CanUseRookGuard(inst)
         and not inst:HasTag("playerghost")
         and (inst.replica.inventory == nil or inst.replica.inventory:GetActiveItem() == nil)
 end
+
+local GetRightClickDashPoint
+
 local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
     -- 地图打开时才提供原版 MAPSCOUTSELECT_MAP；有效目标与所有权由动作回调校验。
     if inst.checkingmapactions
@@ -379,34 +358,27 @@ local function GetPointSpecialActions(inst, pos, useitem, right, usereticulepos)
         return right and { ACTIONS.KEI_DAYWALKER_CANCEL_AIM } or {}
     end
 
-    if right and useitem == nil and CanUseRookGuard(inst) then
-        return { ACTIONS.KEI_ROOK_GUARD }, pos or inst:GetPosition()
-    end
-    if right
-        and useitem == nil
-        and ACTIONS.KEI_DAYWALKER_AIM ~= nil
-        and DaywalkerLeap.HasProtocol(inst)
-        and DaywalkerLeap.IsReady(inst)
-        and not inst:HasTag("playerghost")
-    then
-        ConfigureDaywalkerReticule(inst)
-        local targetpos = usereticulepos and DaywalkerLeap.ReticuleTargetFn(inst) or DaywalkerLeap.GetTargetPoint(inst, pos)
-        if targetpos ~= nil then
-            return { ACTIONS.KEI_DAYWALKER_AIM }, targetpos
-        end
-    end
-
-    if right
-        and useitem == nil
-        and ACTIONS.KEI_EYEOFTERROR_DASH ~= nil
-        and EyeOfTerrorDash.HasProtocol(inst)
-        and EyeOfTerrorDash.IsReady(inst)
-        and not inst:HasTag("playerghost")
-    then
-        ConfigureEyeOfTerrorReticule(inst)
-        local targetpos = usereticulepos and EyeOfTerrorDash.ReticuleTargetFn(inst) or EyeOfTerrorDash.GetTargetPoint(inst, pos)
-        if targetpos ~= nil then
-            return { ACTIONS.KEI_EYEOFTERROR_DASH }, targetpos
+    if right and useitem == nil then
+        for _, action in ipairs(ClientSettings:GetRightClickPriority()) do
+            if action == "guard" and CanUseRookGuard(inst) then
+                return { ACTIONS.KEI_ROOK_GUARD }, pos or inst:GetPosition()
+            elseif action == "leap"
+                and ACTIONS.KEI_DAYWALKER_AIM ~= nil
+                and DaywalkerLeap.HasProtocol(inst)
+                and DaywalkerLeap.IsReady(inst)
+                and not inst:HasTag("playerghost")
+            then
+                ConfigureDaywalkerReticule(inst)
+                local targetpos = usereticulepos and DaywalkerLeap.ReticuleTargetFn(inst) or DaywalkerLeap.GetTargetPoint(inst, pos)
+                if targetpos ~= nil then
+                    return { ACTIONS.KEI_DAYWALKER_AIM }, targetpos
+                end
+            elseif action == "dash" then
+                local targetpos = GetRightClickDashPoint(inst, nil, pos, true)
+                if targetpos ~= nil then
+                    return { ACTIONS.KEI_EYEOFTERROR_DASH }, targetpos
+                end
+            end
         end
     end
     return {}
@@ -429,12 +401,12 @@ local function DaywalkerAimLeftClickPicker(inst, target, position)
     return nil, true
 end
 
-local function GetRightClickDashPoint(inst, target, position)
+GetRightClickDashPoint = function(inst, target, position, allow_point)
     if ACTIONS.KEI_EYEOFTERROR_DASH == nil
         or not EyeOfTerrorDash.HasProtocol(inst)
         or not EyeOfTerrorDash.IsReady(inst)
         or inst:HasTag("playerghost")
-        or target == nil
+        or (target == nil and not allow_point)
         or target == inst
         or (inst.replica.inventory ~= nil and inst.replica.inventory:GetActiveItem() ~= nil)
     then
@@ -461,12 +433,28 @@ local function DaywalkerAimRightClickPicker(inst, target, position)
     then
         return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_CANCEL_AIM }, position or inst:GetPosition())
     end
-    if CanUseRookGuard(inst) then
-        return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_ROOK_GUARD }, position or inst:GetPosition())
-    end
-    local dashpos = GetRightClickDashPoint(inst, target, position)
-    if dashpos ~= nil then
-        return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_EYEOFTERROR_DASH }, dashpos)
+    local useitem = inst.replica.inventory ~= nil and inst.replica.inventory:GetActiveItem() or nil
+    if useitem == nil then
+        for _, action in ipairs(ClientSettings:GetRightClickPriority()) do
+            if action == "guard" and CanUseRookGuard(inst) then
+                return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_ROOK_GUARD }, position or inst:GetPosition())
+            elseif action == "leap"
+                and ACTIONS.KEI_DAYWALKER_AIM ~= nil
+                and DaywalkerLeap.HasProtocol(inst)
+                and DaywalkerLeap.IsReady(inst)
+                and not inst:HasTag("playerghost")
+            then
+                local targetpos = DaywalkerLeap.GetTargetPoint(inst, position)
+                if targetpos ~= nil then
+                    return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_DAYWALKER_AIM }, targetpos)
+                end
+            elseif action == "dash" then
+                local dashpos = GetRightClickDashPoint(inst, target, position)
+                if dashpos ~= nil then
+                    return inst.components.playeractionpicker:SortActionList({ ACTIONS.KEI_EYEOFTERROR_DASH }, dashpos)
+                end
+            end
+        end
     end
     if inst._kei_old_rightclickoverride ~= nil then
         return inst._kei_old_rightclickoverride(inst, target, position)
@@ -625,9 +613,15 @@ local function common_postinit(inst)
     inst._kei_rotor_upgrade_power_reduction = net_smallbyte(inst.GUID, "kei.rotor_upgrade_power_reduction", "kei_rotor_upgrades_dirty")
     inst._kei_taskbook_records = net_string(inst.GUID, "kei.taskbook_records", "kei_taskbook_dirty")
     inst._kei_taskbook_implanted = net_string(inst.GUID, "kei.taskbook_implanted", "kei_taskbook_dirty")
+    inst._kei_taskbook_tasks = net_string(inst.GUID, "kei.taskbook_tasks", "kei_taskbook_dirty")
+    inst._kei_taskbook_completed_count = net_ushortint(inst.GUID, "kei.taskbook_completed_count", "kei_taskbook_dirty")
     inst._kei_experience_current = net_float(inst.GUID, "kei.experience_current", "kei_experience_dirty")
     inst._kei_experience_max = net_float(inst.GUID, "kei.experience_max", "kei_experience_dirty")
     inst._kei_experience_total = net_float(inst.GUID, "kei.experience_total", "kei_experience_dirty")
+    inst._kei_status_attack = net_float(inst.GUID, "kei.status_attack", "kei_status_combat_dirty")
+    inst._kei_status_defense = net_float(inst.GUID, "kei.status_defense", "kei_status_combat_dirty")
+    inst._kei_status_attack_detail = net_string(inst.GUID, "kei.status_attack_detail", "kei_status_combat_dirty")
+    inst._kei_status_defense_detail = net_string(inst.GUID, "kei.status_defense_detail", "kei_status_combat_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
@@ -1221,7 +1215,6 @@ local function OnLoad(inst, data)
     end)
 
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
-    inst:DoTaskInTime(0, EnsureTaskBookItem)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 end
 
@@ -1251,6 +1244,19 @@ local function master_postinit(inst)
     inst:AddComponent("kei_rotor_skills")
     inst:AddComponent("kei_rotor_upgrades")
     inst:AddComponent("kei_taskbook")
+
+    -- The cycles world state increments exactly when a new day begins. The
+    -- component records that value, so reconnects cannot create another batch.
+    inst:WatchWorldState("cycles", function()
+        if inst.components.kei_taskbook ~= nil then
+            inst.components.kei_taskbook:RefreshDailyTasks()
+        end
+    end)
+    inst:DoTaskInTime(0, function()
+        if inst.components.kei_taskbook ~= nil then
+            inst.components.kei_taskbook:RefreshDailyTasks()
+        end
+    end)
 
     local function OnTaskBookItemChanged(_, data)
         if data ~= nil and data.item ~= nil then
@@ -1284,7 +1290,6 @@ local function master_postinit(inst)
     KeiBackupBody.ConfigurePlayer(inst)
     inst:DoTaskInTime(.1, RecordExistingTaskBookData)
     inst:DoTaskInTime(0, EnsureMiniAliceItem)
-    inst:DoTaskInTime(0, EnsureTaskBookItem)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。

@@ -45,6 +45,51 @@ local COMBAT_PROTOCOL_DAMAGE_MODIFIER = "kei_combat_protocol_damage"
 local BASIC_SPEED_MODIFIER = "kei_basic_attribute_speed"
 local BASIC_ABSORB_MODIFIER = "kei_basic_attribute_absorb"
 
+local function FormatStatusNumber(value)
+    value = tonumber(value) or 0
+    if math.abs(value - math.floor(value + .5)) < .001 then
+        return tostring(math.floor(value + .5))
+    end
+    return string.format("%.1f", value)
+end
+
+local function GetWeaponBaseDamage(inst, combat)
+    local weapon = combat ~= nil and combat.GetWeapon ~= nil and combat:GetWeapon() or nil
+    local weapon_component = weapon ~= nil and weapon.components ~= nil and weapon.components.weapon or nil
+    if weapon_component ~= nil then
+        if weapon_component.GetDamage ~= nil then
+            local ok, damage = pcall(weapon_component.GetDamage, weapon_component, inst, nil)
+            if ok and type(damage) == "number" then
+                return damage
+            end
+        end
+        if type(weapon_component.damage) == "number" then
+            return weapon_component.damage
+        end
+    end
+    return combat ~= nil and combat.defaultdamage or 0
+end
+
+local function GetArmorAbsorption(inst)
+    local inventory = inst ~= nil and inst.components ~= nil and inst.components.inventory or nil
+    local absorption = 0
+    if inventory ~= nil then
+        for _, item in pairs(inventory.equipslots or {}) do
+            local armor = item ~= nil and item.components ~= nil and item.components.armor or nil
+            if armor ~= nil then
+                local value = nil
+                if armor.GetAbsorption ~= nil then
+                    local ok, result = pcall(armor.GetAbsorption, armor, nil, nil)
+                    if ok then value = result end
+                end
+                value = value ~= nil and value or armor.absorb_percent
+                absorption = math.max(absorption, tonumber(value) or 0)
+            end
+        end
+    end
+    return math.min(math.max(absorption, 0), 1)
+end
+
 ----------------------------------------------------------------
 -- 辅助函数
 ----------------------------------------------------------------
@@ -393,11 +438,22 @@ local KeiProtocolSlots = Class(function(self, inst)
         self:OnAttacked(data)
     end)
 
+    local function ScheduleCombatStatusSync()
+        if self._combat_status_sync_task ~= nil then
+            return
+        end
+        self._combat_status_sync_task = inst:DoTaskInTime(0, function()
+            self._combat_status_sync_task = nil
+            self:SyncCombatStatusValues()
+        end)
+    end
+
     inst:ListenForEvent("equip", function(_, data)
         if data ~= nil and data.eslot == EQUIPSLOTS.HANDS then
             self._protocol_state_dirty = true
             self:Refresh()
         end
+        ScheduleCombatStatusSync()
     end)
 
     inst:ListenForEvent("unequip", function(_, data)
@@ -405,6 +461,7 @@ local KeiProtocolSlots = Class(function(self, inst)
             self._protocol_state_dirty = true
             self:Refresh()
         end
+        ScheduleCombatStatusSync()
     end)
 
     inst:ListenForEvent("healthdelta", function()
@@ -588,6 +645,7 @@ function KeiProtocolSlots:ApplyBasicAttributes(modifiers)
     if health ~= nil then
         health.externalabsorbmodifiers:RemoveModifier(self.inst, BASIC_ABSORB_MODIFIER)
     end
+    self:SyncCombatStatusValues()
 end
 
 -- 获取进入原版 CalcDamage 基础伤害段的额外伤害。
@@ -624,6 +682,7 @@ function KeiProtocolSlots:SetCombatDamageMultiplier(source, multiplier)
         self._combat_damage_multipliers[source] = tonumber(multiplier) or 1
     end
     RefreshCombatDamageMultiplier(self)
+    self:SyncCombatStatusValues()
 end
 
 -- 设置一个战斗协议的攻击减伤来源。该列表只在 Combat:GetAttacked 的扣血路径中使用。
@@ -636,6 +695,7 @@ function KeiProtocolSlots:SetCombatDamageReduction(source, value)
     else
         self._combat_damage_reductions[source] = math.max(0, tonumber(value) or 0)
     end
+    self:SyncCombatStatusValues()
 end
 
 -- 战斗协议之间采用加算，最终限制在配置的最大减伤以内。
@@ -649,6 +709,66 @@ function KeiProtocolSlots:GetCombatDamageReduction()
         math.max(0, tonumber(TUNING.KEI_COMBAT_PROTOCOL_MAX_DAMAGE_REDUCTION) or 90)
     )
     return math.min(math.max(reduction, 0), maximum_percent / 100)
+end
+
+-- The task book is a client widget, while these components only exist on the
+-- server. Send the settled generic combat values and their calculation steps.
+function KeiProtocolSlots:SyncCombatStatusValues()
+    local combat = self.inst.components ~= nil and self.inst.components.combat or nil
+    local health = self.inst.components ~= nil and self.inst.components.health or nil
+    local modifiers = self.basic_attribute_modifiers or {}
+
+    local base_damage = GetWeaponBaseDamage(self.inst, combat)
+    local base_bonus = self:GetBaseDamageBonus()
+    local combat_multiplier = combat ~= nil and combat.damagemultiplier or 1
+    local external_multiplier = combat ~= nil and combat.externaldamagemultipliers ~= nil
+        and combat.externaldamagemultipliers:Get() or 1
+    local fixed_bonus = modifiers.fixed_damage_bonus or 0
+    local attack = (base_damage + base_bonus) * combat_multiplier * external_multiplier + fixed_bonus
+    local attack_detail = string.format(
+        "(%s + %s) x %s x %s + %s = %s",
+        FormatStatusNumber(base_damage),
+        FormatStatusNumber(base_bonus),
+        FormatStatusNumber(combat_multiplier),
+        FormatStatusNumber(external_multiplier),
+        FormatStatusNumber(fixed_bonus),
+        FormatStatusNumber(attack)
+    )
+
+    local armor_absorb = GetArmorAbsorption(self.inst)
+    local external_absorb = health ~= nil and health.externalabsorbmodifiers ~= nil
+        and health.externalabsorbmodifiers:Get() or 0
+    local combat_reduction = self:GetCombatDamageReduction()
+    local basic_reduction = math.min(
+        TUNING.KEI_BASIC_ATTRIBUTE_MAX_DAMAGE_REDUCTION or 90,
+        math.max(0, modifiers.percent_damage_reduction or 0)
+    ) / 100
+    local remaining_damage = math.max(0, 1 - armor_absorb)
+        * math.max(0, 1 - external_absorb)
+        * math.max(0, 1 - combat_reduction)
+        * math.max(0, 1 - basic_reduction)
+    local defense = (1 - remaining_damage) * 100
+    local defense_detail = string.format(
+        "1 - %s%% x %s%% x %s%% x %s%% = %s%%",
+        FormatStatusNumber((1 - armor_absorb) * 100),
+        FormatStatusNumber((1 - external_absorb) * 100),
+        FormatStatusNumber((1 - combat_reduction) * 100),
+        FormatStatusNumber((1 - basic_reduction) * 100),
+        FormatStatusNumber(defense)
+    )
+
+    if self.inst._kei_status_attack ~= nil then
+        self.inst._kei_status_attack:set(attack)
+    end
+    if self.inst._kei_status_defense ~= nil then
+        self.inst._kei_status_defense:set(defense)
+    end
+    if self.inst._kei_status_attack_detail ~= nil then
+        self.inst._kei_status_attack_detail:set(attack_detail)
+    end
+    if self.inst._kei_status_defense_detail ~= nil then
+        self.inst._kei_status_defense_detail:set(defense_detail)
+    end
 end
 
 function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
@@ -1330,6 +1450,7 @@ function KeiProtocolSlots:Refresh()
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
     end
     HandAnalysisInheritance.Apply(self, hand_stats)
+    self:SyncCombatStatusValues()
 end
 
 function KeiProtocolSlots:DrainProtocols()

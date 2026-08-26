@@ -3,6 +3,9 @@
 local Widget = require("widgets/widget")
 local UIAnim = require("widgets/uianim")
 local Text = require("widgets/text")
+local ImageButton = require("widgets/imagebutton")
+
+local EXPERIENCE_ICON_HITBOX_SIZE = 64
 
 local KeiExperienceBadge = Class(Widget, function(self, owner)
     Widget._ctor(self, "KeiExperienceBadge")
@@ -27,6 +30,16 @@ local KeiExperienceBadge = Class(Widget, function(self, owner)
         return false
     end
     self.icon.OnMouseButton = announce_on_mouse_button
+
+    -- UIAnim hit testing follows the visible line art. Overlay a transparent
+    -- square so the full icon bounds are consistently clickable.
+    self.icon_hitbox = self:AddChild(ImageButton("images/global.xml", "square.tex"))
+    self.icon_hitbox:SetNormalScale(1)
+    self.icon_hitbox:SetFocusScale(1)
+    self.icon_hitbox.scale_on_focus = false
+    self.icon_hitbox:ForceImageSize(EXPERIENCE_ICON_HITBOX_SIZE, EXPERIENCE_ICON_HITBOX_SIZE)
+    self.icon_hitbox.image:SetTint(1, 1, 1, 0)
+    self.icon_hitbox:SetOnClick(function() self:AnnounceExperience() end)
 
     self.total_value = self:AddChild(Text(NUMBERFONT, 18))
     self.total_value:SetHAlign(ANCHOR_MIDDLE)

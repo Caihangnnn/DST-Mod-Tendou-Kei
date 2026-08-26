@@ -10,6 +10,10 @@ if not TheNet:IsDedicated() then
 
         local anim = tile.spoilage:GetAnimState()
         percent = math.max(0, math.min(1, tonumber(percent) or 0))
+        -- The controller reuses the food spoilage meter, so remove the
+        -- vanilla green/yellow symbol overrides before applying its power
+        -- colours.
+        anim:ClearAllOverrideSymbols()
         if percent > 0.5 then
             -- 原版食物进度条默认是绿色，这里叠加浅蓝色作为高电量状态。
             anim:SetMultColour(0.55, 0.85, 1, 1)
@@ -61,6 +65,20 @@ if not TheNet:IsDedicated() then
         else
             -- 客户端刚创建物品时可能还未收到电量数值，先显示满电颜色。
             SetRotorPowerColour(self, 1)
+        end
+
+        local old_set_percent = self.SetPercent
+        self.SetPercent = function(tile, percent, ...)
+            local result = old_set_percent(tile, percent, ...)
+            SetRotorPowerColour(tile, percent)
+            return result
+        end
+
+        local old_set_perish_percent = self.SetPerishPercent
+        self.SetPerishPercent = function(tile, percent, ...)
+            local result = old_set_perish_percent(tile, percent, ...)
+            SetRotorPowerColour(tile, percent)
+            return result
         end
     end)
 end
