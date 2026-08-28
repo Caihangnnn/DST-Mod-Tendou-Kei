@@ -29,7 +29,7 @@ local LIFE_PROTOCOL_LIST = {
     {
         protocol = "trade_boost",
         prefab = "kei_life_cd_trade_boost",
-        display_name = "交易增强",
+        display_name = "伶牙俐齿",
         description = "与猪王/蚁狮交易时提升金子/石头价值；与鱼人王/寄居蟹奶奶/大霜鲨交易时鱼视为大鱼。",
         source = "wanderingtrader",
         stackable = false,

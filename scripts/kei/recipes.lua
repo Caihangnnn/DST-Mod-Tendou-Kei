@@ -1,4 +1,3 @@
-local KEI_FILTER = "KEI_PROTOCOLS"
 local KEI_ROTOR_FILTER = "KEI_ROTOR"
 local GrowthRecipes = require("kei/growth_recipes")
 local ROTOR_ICON = "wx78_drone_zap_remote.tex"
@@ -8,15 +7,6 @@ if ROTOR_ATLAS == nil then
     ROTOR_ATLAS = GetInventoryItemAtlas(ROTOR_ICON) or "images/inventoryimages1.xml"
 end
 
--- 独立配方筛选栏，方便把 Kei 的协议/工具类物品集中展示。
-AddRecipeFilter({
-    name = KEI_FILTER,
-    atlas = GetInventoryItemAtlas("goldnugget.tex") or "images/inventoryimages1.xml",
-    image = "goldnugget.tex",
-    image_size = 64,
-})
-
-STRINGS.UI.CRAFTING_FILTERS[KEI_FILTER] = "Kei"
 AddRecipeFilter({
     name = KEI_ROTOR_FILTER,
     atlas = ROTOR_ATLAS,
@@ -86,9 +76,9 @@ local function fixed_experience_ingredient(amount)
     return ingredient
 end
 
--- 同时挂到角色专属栏和 Kei 自己的协议栏。
-local filters = { "CHARACTER", KEI_FILTER }
-local rotor_filters = { "CHARACTER", KEI_ROTOR_FILTER }
+-- 普通 Kei 配方归入冒险家（角色）栏；无人机配方只归入无人机栏。
+local filters = { "CHARACTER" }
+local rotor_filters = { KEI_ROTOR_FILTER }
 
 -- 空白 CD：保留用于其他数据复制测试，不再参与数据记录器流程。
 AddRecipe2(
@@ -190,7 +180,7 @@ AddRecipe2(
 -- Rotor surveyor controller recipe.
 AddRecipe2(
     "kei_rotor_surveyor",
-    { Ingredient("goldnugget", 10) },
+    { fixed_experience_ingredient(100) },
     TECH.NONE,
     kei_config({
         atlas = ROTOR_ATLAS,
@@ -430,7 +420,7 @@ for _, data in ipairs(winona_recipes) do
         data.ingredients,
         data.tech,
         kei_config(data.config),
-        { KEI_FILTER }
+        filters
     )
 end
 

@@ -4,6 +4,7 @@ local CATEGORY_MANIFESTS = {
     "character",
     "items",
     "fx",
+    "bosses",
     "structures",
 }
 

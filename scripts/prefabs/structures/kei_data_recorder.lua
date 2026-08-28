@@ -1,6 +1,10 @@
 require("prefabutil")
 local CombatProtocolDefs = require("kei/protocols/combat")
 local TaskSummon = require("kei/task_summon")
+local RecorderBoss = require("kei/recorder_boss")
+local RecorderDragonfly = require("kei/recorder_dragonfly")
+local RecorderEyeOfTerror = require("kei/recorder_eyeofterror")
+local RecorderBearger = require("kei/recorder_bearger")
 
 local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
@@ -24,6 +28,7 @@ local RECORDER_ANIM_DEACTIVATE = "closed"
 local RECORDER_WORLD_SCALE = 1
 local RECORDER_SHADER_CUTOFF_HEIGHT = -0.125
 local RECORDER_DISSOLVE_DURATION = 1.0
+local RECORDER_NO_PLAYERS_CHECK_PERIOD = TUNING.KEI_RECORDER_NO_PLAYERS_CHECK_PERIOD or 3
 
 local RECORDER_KIT_BANK = "kei_item"
 local RECORDER_KIT_BUILD = "kei_items"
@@ -50,6 +55,7 @@ local RECORDER_STATE = {
 local RECORD_DRONE_COUNT = 3
 local RECORD_DRONE_BASE_RADIUS = 3
 local RECORD_DRONE_ROTATE_SPEED = 0.45
+local CancelNoPlayersCheck
 
 local function Say(doer, key)
     -- 记录仪动作的反馈仍由操作者 Kei 说出。
@@ -146,6 +152,9 @@ local function SetRecorderState(inst, state)
     end
     inst:RemoveTag("kei_recording")
     inst:RemoveTag("kei_record_complete")
+    if state ~= "recording" then
+        CancelNoPlayersCheck(inst)
+    end
     if state == "recording" then
         inst:AddTag("kei_recording")
         inst.AnimState:PlayAnimation(RECORDER_ANIM_ACTIVATE)
@@ -167,6 +176,13 @@ local function CancelSummonTask(inst)
     if inst.kei_summon_task ~= nil then
         inst.kei_summon_task:Cancel()
         inst.kei_summon_task = nil
+    end
+end
+
+CancelNoPlayersCheck = function(inst)
+    if inst.kei_no_players_check_task ~= nil then
+        inst.kei_no_players_check_task:Cancel()
+        inst.kei_no_players_check_task = nil
     end
 end
 
@@ -241,6 +257,10 @@ end
 
 local function ClearChallengeTasks(target, reset_erosion)
     if target ~= nil then
+        RecorderDragonfly.Remove(target)
+        RecorderEyeOfTerror.Remove(target)
+        RecorderBearger.Remove(target)
+        RecorderBoss.Remove(target)
         TaskSummon.CleanupSpecialTarget(target)
         if target.kei_recorder_land_task ~= nil then
             target.kei_recorder_land_task:Cancel()
@@ -346,6 +366,14 @@ local function PrepareRecorderChallenge(inst, target, doer)
     target.kei_recorder_spawned = true
     target.kei_recorder_source = inst
 
+    RecorderBoss.Apply(target, inst)
+    if target.prefab == "kei_recorder_dragonfly" then
+        RecorderDragonfly.Apply(target)
+    elseif target.prefab == "kei_recorder_eyeofterror" then
+        RecorderEyeOfTerror.Apply(target)
+    elseif target.prefab == "kei_recorder_bearger" then
+        RecorderBearger.Apply(target)
+    end
     TaskSummon.PrepareSpecialTarget(target, doer, inst)
 
     StartRecorderTransmission(target)
@@ -418,7 +446,16 @@ local function SpawnRecorderChallenge(inst, doer)
         return false
     end
 
-    local target = SpawnPrefab(challenge.summon_prefab)
+    local summon_prefab = challenge.summon_prefab == "dragonfly"
+        and "kei_recorder_dragonfly"
+        or challenge.summon_prefab == "deerclops"
+        and "kei_recorder_deerclops"
+        or challenge.summon_prefab == "eyeofterror"
+        and "kei_recorder_eyeofterror"
+        or challenge.summon_prefab == "bearger"
+        and "kei_recorder_bearger"
+        or challenge.summon_prefab
+    local target = SpawnPrefab(summon_prefab)
     if target == nil then
         ClearOwnerListener(inst)
         GiveProtocolCD(inst, doer, challenge.basic_protocol)
@@ -477,6 +514,20 @@ local function StartKeiRecording(inst, cd, doer)
     inst.kei_target_prefab = nil
     inst.kei_completed_protocol = nil
     SetRecorderState(inst, "recording")
+    CancelNoPlayersCheck(inst)
+    inst.kei_no_players_check_task = inst:DoPeriodicTask(
+        RECORDER_NO_PLAYERS_CHECK_PERIOD,
+        function(recorder)
+            if recorder.kei_state ~= "recording" then
+                CancelNoPlayersCheck(recorder)
+                return
+            end
+
+            if #RecorderBoss.GetArenaPlayers(recorder) == 0 then
+                recorder:StopKeiRecording(recorder.kei_recording_owner)
+            end
+        end
+    )
     inst.kei_summon_task = inst:DoTaskInTime(RECORDER_SUMMON_DELAY, function()
         inst.kei_summon_task = nil
         SpawnRecorderChallenge(inst, doer)
@@ -491,6 +542,7 @@ local function StopKeiRecording(inst, doer)
         return false
     end
 
+    CancelNoPlayersCheck(inst)
     CancelSummonTask(inst)
     local protocol = inst.kei_recording_protocol
     RemoveSummonedTarget(inst)
@@ -664,6 +716,7 @@ local function recorder_fn()
     inst:ListenForEvent("onbuilt", OnBuilt)
     inst:ListenForEvent("onremove", ClearRecordDrones)
     inst:ListenForEvent("onremove", CancelSummonTask)
+    inst:ListenForEvent("onremove", CancelNoPlayersCheck)
     inst:ListenForEvent("onremove", RemoveSummonedTarget)
 
     inst.OnSave = OnSave

@@ -19,7 +19,8 @@ local GrowthRecipes = {
 function GrowthRecipes.IsExperienceIngredient(ingredient)
     return ingredient ~= nil
         and (ingredient.kei_growth_recipe ~= nil
-            or ingredient.kei_experience_cost ~= nil)
+            or ingredient.kei_experience_cost ~= nil
+            or ingredient.kei_experience_cost_fn ~= nil)
 end
 
 function GrowthRecipes.HasExperienceIngredient(inst)
@@ -67,6 +68,13 @@ end
 function GrowthRecipes.GetExperienceIngredientAmount(ingredient, builder)
     if not GrowthRecipes.IsExperienceIngredient(ingredient) then
         return 0
+    end
+
+    if ingredient.kei_experience_cost_fn ~= nil then
+        return math.max(
+            0,
+            tonumber(ingredient.kei_experience_cost_fn(ingredient, builder)) or 0
+        )
     end
 
     if ingredient.kei_experience_cost ~= nil then

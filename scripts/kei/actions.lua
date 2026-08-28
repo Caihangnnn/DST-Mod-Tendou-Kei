@@ -1116,8 +1116,7 @@ AddStategraphState("wilson_client", State{
     end,
 })
 
-local EYEOFTERROR_DASH_PRE_ANIM_SPEED = 3
-local EYEOFTERROR_DASH_POST_ANIM_SPEED = 4
+local EYEOFTERROR_DASH_POST_ANIM_SPEED = 1
 
 -- 克眼战斗数据：右键点地选择方向；初级只冲刺，高级冲刺会造成路径伤害。
 local eyeofterror_dash_action = AddAction("KEI_EYEOFTERROR_DASH", "冲锋", function(act)
@@ -1141,16 +1140,19 @@ AddStategraphState("wilson", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
-        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_PRE_ANIM_SPEED)
-        inst.AnimState:PlayAnimation("lunge_pre")
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_POST_ANIM_SPEED)
+        if inst:PerformBufferedAction() then
+            inst.AnimState:PlayAnimation("lunge_pst")
+            if inst.components.bloomer ~= nil then
+                inst.components.bloomer:PushBloom("kei_eyeofterror_dash", "shaders/anim.ksh", -2)
+            end
+            if inst.components.colouradder ~= nil then
+                inst.components.colouradder:PushColour("kei_eyeofterror_dash", 1, 0.2, 0.2, 0)
+            end
+        else
+            inst.sg:GoToState("idle")
+        end
     end,
-
-    timeline =
-    {
-        TimeEvent(4 * FRAMES, function(inst)
-            inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
-        end),
-    },
 
     events =
     {
@@ -1158,22 +1160,7 @@ AddStategraphState("wilson", State{
             if not inst.AnimState:AnimDone() then
                 return
             end
-            if inst.AnimState:IsCurrentAnimation("lunge_pre") then
-                if inst:PerformBufferedAction() then
-                    inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_POST_ANIM_SPEED)
-                    inst.AnimState:PlayAnimation("lunge_pst")
-                    if inst.components.bloomer ~= nil then
-                        inst.components.bloomer:PushBloom("kei_eyeofterror_dash", "shaders/anim.ksh", -2)
-                    end
-                    if inst.components.colouradder ~= nil then
-                        inst.components.colouradder:PushColour("kei_eyeofterror_dash", 1, 0.2, 0.2, 0)
-                    end
-                else
-                    inst.sg:GoToState("idle")
-                end
-            else
-                inst.sg:GoToState("idle")
-            end
+            inst.sg:GoToState("idle")
         end),
     },
 
@@ -1195,27 +1182,15 @@ AddStategraphState("wilson_client", State{
 
     onenter = function(inst)
         inst.components.locomotor:Stop()
-        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_PRE_ANIM_SPEED)
-        inst.AnimState:PlayAnimation("lunge_pre")
-        inst.AnimState:PushAnimation("lunge_lag", false)
+        inst.AnimState:SetDeltaTimeMultiplier(EYEOFTERROR_DASH_POST_ANIM_SPEED)
+        inst.AnimState:PlayAnimation("lunge_pst")
         inst:PerformPreviewBufferedAction()
         inst.sg:SetTimeout(2)
     end,
 
-    timeline =
-    {
-        TimeEvent(4 * FRAMES, function(inst)
-            inst.sg.statemem.twirled = true
-            inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
-        end),
-    },
-
     onupdate = function(inst)
         if inst.sg:ServerStateMatches() then
             if inst.entity:FlattenMovementPrediction() then
-                if not inst.sg.statemem.twirled then
-                    inst.SoundEmitter:PlaySound("dontstarve/common/twirl", nil, nil, true)
-                end
                 inst.sg:GoToState("idle", "noanim")
             end
         elseif inst.bufferedaction == nil then
