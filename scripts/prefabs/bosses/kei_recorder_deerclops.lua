@@ -34,6 +34,7 @@ local function fn(sim)
     inst:SetPrefabName("kei_recorder_deerclops")
     inst:SetPrefabNameOverride("deerclops")
     inst:AddTag("kei_recorder_deerclops")
+    inst.persists = false
 
     if TheWorld.ismastersim then
         if inst.components.timer == nil then

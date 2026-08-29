@@ -95,6 +95,21 @@ function RecorderDragonfly.Remove(target)
         target.kei_recorder_ignite_task = nil
     end
     target.kei_recorder_ignite_remaining = nil
+
+    local rampingspawner = target.components ~= nil and target.components.rampingspawner or nil
+    if rampingspawner ~= nil then
+        rampingspawner:Stop()
+        local spawns = {}
+        for lavae in pairs(rampingspawner.spawns or {}) do
+            table.insert(spawns, lavae)
+        end
+        for _, lavae in ipairs(spawns) do
+            if lavae ~= nil and lavae:IsValid() then
+                lavae:Remove()
+            end
+        end
+        rampingspawner:Reset()
+    end
 end
 
 return RecorderDragonfly

@@ -6,4 +6,11 @@ return {
     "scripts/prefabs/bosses/kei_recorder_eyeofterror.lua",
     "scripts/prefabs/bosses/kei_recorder_bearger.lua",
     "scripts/prefabs/bosses/kei_recorder_bee.lua",
+    "scripts/prefabs/bosses/kei_recorder_beequeen.lua",
+    "scripts/prefabs/bosses/kei_recorder_beeguard.lua",
+    "scripts/prefabs/bosses/kei_recorder_green_honey_trail.lua",
+    "scripts/prefabs/bosses/kei_recorder_daywalker2.lua",
+    "scripts/prefabs/bosses/kei_recorder_daywalker.lua",
+    "scripts/prefabs/bosses/kei_recorder_junk_pile_big.lua",
+    "scripts/prefabs/bosses/kei_recorder_pigelitefighter.lua",
 }

@@ -36,6 +36,7 @@ local function fn(sim)
     inst:SetPrefabName("kei_recorder_bearger")
     inst:SetPrefabNameOverride("bearger")
     inst:AddTag("kei_recorder_bearger")
+    inst.persists = false
 
     if TheWorld.ismastersim then
         inst:SetBrain(brain)

@@ -5,6 +5,10 @@ local RecorderBoss = require("kei/recorder_boss")
 local RecorderDragonfly = require("kei/recorder_dragonfly")
 local RecorderEyeOfTerror = require("kei/recorder_eyeofterror")
 local RecorderBearger = require("kei/recorder_bearger")
+local RecorderBeeQueen = require("kei/recorder_beequeen")
+local RecorderDeerclops = require("kei/recorder_deerclops")
+local RecorderDaywalker = require("kei/recorder_daywalker")
+local RecorderDaywalker2 = require("kei/recorder_daywalker2")
 
 local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
@@ -260,6 +264,10 @@ local function ClearChallengeTasks(target, reset_erosion)
         RecorderDragonfly.Remove(target)
         RecorderEyeOfTerror.Remove(target)
         RecorderBearger.Remove(target)
+        RecorderBeeQueen.Remove(target)
+        RecorderDeerclops.Remove(target)
+        RecorderDaywalker.Remove(target)
+        RecorderDaywalker2.Remove(target)
         RecorderBoss.Remove(target)
         TaskSummon.CleanupSpecialTarget(target)
         if target.kei_recorder_land_task ~= nil then
@@ -270,6 +278,46 @@ local function ClearChallengeTasks(target, reset_erosion)
             StopRecorderTransmission(target)
         end
     end
+end
+
+local function ClearStaleRecorderDaywalkerEntities(inst)
+    if inst == nil or not inst:IsValid() then
+        return
+    end
+
+    local x, y, z = inst.Transform:GetWorldPosition()
+    local stale_tags = {
+        "kei_recorder_daywalker",
+        "kei_recorder_daywalker2",
+        "kei_recorder_junk_pile_big",
+        "kei_recorder_pigelitefighter",
+        "junkmob",
+    }
+    local stale_entities = TheSim:FindEntities(
+        x,
+        y,
+        z,
+        (TUNING.KEI_RECORDER_RANGE or 35) * 2,
+        nil,
+        { "INLIMBO" },
+        stale_tags
+    )
+
+    for _, entity in ipairs(stale_entities) do
+        if entity.kei_recorder_source == inst then
+            if entity:HasTag("kei_recorder_daywalker")
+                or entity:HasTag("kei_recorder_daywalker2")
+            then
+                ClearChallengeTasks(entity, false)
+            end
+            if entity:IsValid() then
+                entity:Remove()
+            end
+        end
+    end
+
+    -- Also discard support references left by a previous interrupted spawn.
+    ClearChallengeSupport(inst)
 end
 
 local function RemoveSummonedTarget(inst)
@@ -373,6 +421,8 @@ local function PrepareRecorderChallenge(inst, target, doer)
         RecorderEyeOfTerror.Apply(target)
     elseif target.prefab == "kei_recorder_bearger" then
         RecorderBearger.Apply(target)
+    elseif target.prefab == "kei_recorder_daywalker" then
+        RecorderDaywalker.Apply(target)
     end
     TaskSummon.PrepareSpecialTarget(target, doer, inst)
 
@@ -446,6 +496,8 @@ local function SpawnRecorderChallenge(inst, doer)
         return false
     end
 
+    ClearStaleRecorderDaywalkerEntities(inst)
+
     local summon_prefab = challenge.summon_prefab == "dragonfly"
         and "kei_recorder_dragonfly"
         or challenge.summon_prefab == "deerclops"
@@ -454,6 +506,12 @@ local function SpawnRecorderChallenge(inst, doer)
         and "kei_recorder_eyeofterror"
         or challenge.summon_prefab == "bearger"
         and "kei_recorder_bearger"
+        or challenge.summon_prefab == "beequeen"
+        and "kei_recorder_beequeen"
+        or challenge.summon_prefab == "daywalker"
+        and "kei_recorder_daywalker"
+        or challenge.summon_prefab == "daywalker2"
+        and "kei_recorder_daywalker2"
         or challenge.summon_prefab
     local target = SpawnPrefab(summon_prefab)
     if target == nil then
@@ -483,7 +541,10 @@ local function SpawnRecorderChallenge(inst, doer)
         end
     end
     inst:ListenForEvent("death", inst.kei_target_death_fn, target)
-    if target.prefab == "daywalker" or target.prefab == "daywalker2" then
+    if target.prefab == "daywalker" or target.prefab == "daywalker2"
+        or target.prefab == "kei_recorder_daywalker"
+        or target.prefab == "kei_recorder_daywalker2"
+    then
         inst.kei_target_minhealth_fn = function(target_inst)
             if CompleteRecording(inst, target_inst) then
                 Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
@@ -848,6 +909,14 @@ local prefab_deps = {
     "wagpunk_cagewall",
     "wagpunk_arena_collision",
     "junk_pile_big",
+    "kei_recorder_daywalker",
+    "kei_recorder_daywalker2",
+    "kei_recorder_junk_pile_big",
+    "kei_recorder_pigelitefighter1",
+    "kei_recorder_pigelitefighter2",
+    "kei_recorder_pigelitefighter3",
+    "kei_recorder_pigelitefighter4",
+    "propsign",
 }
 for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
     table.insert(prefab_deps, def.prefab)

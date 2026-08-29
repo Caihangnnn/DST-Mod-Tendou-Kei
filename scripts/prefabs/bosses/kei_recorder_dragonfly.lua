@@ -32,6 +32,7 @@ local function fn(sim)
         inst:SetPrefabName("kei_recorder_dragonfly")
         inst:SetPrefabNameOverride("dragonfly")
         inst:AddTag("kei_recorder_dragonfly")
+        inst.persists = false
         if inst.components ~= nil and inst.components.rampingspawner ~= nil then
             inst.components.rampingspawner.spawn_prefab = "kei_recorder_lavae"
         end

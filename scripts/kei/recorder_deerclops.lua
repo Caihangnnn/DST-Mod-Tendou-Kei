@@ -2,6 +2,7 @@ local ICE_SPAWN_TIME = 0.25
 local ICE_SPIKE_RADIUS = 1
 local AOE_RANGE_PADDING = 3
 local MAX_ICE_SPIKE_SFX = 6
+local RecorderDeerclops = {}
 
 local FREEZE_CANT_TAGS = {
     "INLIMBO",
@@ -25,6 +26,9 @@ local AREA_EXCLUDE_TAGS = {
 }
 
 local function DoIceSpikeAOE(inst, target, x, z, data)
+    if inst.kei_recorder_dissolving then
+        return
+    end
     inst.components.combat.ignorehitrange = true
     local ents = TheSim:FindEntities(
         x,
@@ -71,6 +75,7 @@ local function SpawnPersistentIceSpike(inst, target, rot, info, data, hitdelay, 
         spike.Transform:SetRotation(rot)
         spike:SetVariation(info.big, info.variation)
         spike.owner = inst
+        spike.kei_recorder_source = inst.kei_recorder_source
 
         for i = #spikes, 1, -1 do
             local old_spike = spikes[i]
@@ -100,6 +105,22 @@ local function SpawnPersistentIceSpike(inst, target, rot, info, data, hitdelay, 
     else
         inst:DoTaskInTime(hitdelay, DoIceSpikeAOE, target, info.x, info.z, data)
     end
+end
+
+local function QueuePersistentIceSpike(inst, delay, target, rot, info, data, hitdelay, shouldsfx)
+    inst.kei_recorder_deerclops_pending_spike_tasks = inst.kei_recorder_deerclops_pending_spike_tasks or {}
+    local pending_tasks = inst.kei_recorder_deerclops_pending_spike_tasks
+    local task
+    task = inst:DoTaskInTime(delay, function(deerclops)
+        for i = #pending_tasks, 1, -1 do
+            if pending_tasks[i] == task then
+                table.remove(pending_tasks, i)
+                break
+            end
+        end
+        SpawnPersistentIceSpike(deerclops, target, rot, info, data, hitdelay, shouldsfx)
+    end)
+    table.insert(pending_tasks, task)
 end
 
 local function FreezeTarget(inst, target)
@@ -246,9 +267,9 @@ local function SpawnPersistentIceSpikes(inst, target)
             info.variation = next_big
             next_big = next_big + 1
         end
-        inst:DoTaskInTime(
+        QueuePersistentIceSpike(
+            inst,
             delay,
-            SpawnPersistentIceSpike,
             target,
             angle,
             info,
@@ -259,7 +280,30 @@ local function SpawnPersistentIceSpikes(inst, target)
     end
 end
 
+function RecorderDeerclops.Remove(inst)
+    if inst == nil then
+        return
+    end
+
+    if inst.kei_recorder_deerclops_pending_spike_tasks ~= nil then
+        for _, task in ipairs(inst.kei_recorder_deerclops_pending_spike_tasks) do
+            task:Cancel()
+        end
+        inst.kei_recorder_deerclops_pending_spike_tasks = nil
+    end
+
+    if inst.kei_recorder_deerclops_icespikes ~= nil then
+        for _, spike in ipairs(inst.kei_recorder_deerclops_icespikes) do
+            if spike ~= nil and spike:IsValid() then
+                spike:Remove()
+            end
+        end
+        inst.kei_recorder_deerclops_icespikes = nil
+    end
+end
+
 return {
     FreezeRoar = FreezeRoar,
     SpawnPersistentIceSpikes = SpawnPersistentIceSpikes,
+    Remove = RecorderDeerclops.Remove,
 }

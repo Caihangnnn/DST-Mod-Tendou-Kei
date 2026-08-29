@@ -1,4 +1,5 @@
 local TaskSummon = {}
+local RecorderDaywalker2 = require("kei/recorder_daywalker2")
 
 -- These bosses normally assume a world-spawned encounter. Keep their
 -- instance-specific setup in one place so task and recorder summons agree.
@@ -32,8 +33,10 @@ function TaskSummon.PrepareSpecialTarget(target, doer, support_owner)
             target:StartCombat(doer, "kei_task")
         end
         target.persists = false
+    elseif target.prefab == "kei_recorder_daywalker2" then
+        RecorderDaywalker2.Apply(target, support_owner)
     elseif target.prefab == "daywalker2" then
-        -- Daywalker's attack logic needs a bound junk pile.
+        -- Vanilla/task summons keep using the vanilla junk pile.
         local junk = SpawnPrefab("junk_pile_big")
         if junk ~= nil then
             local x, y, z = target.Transform:GetWorldPosition()

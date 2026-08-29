@@ -29,6 +29,7 @@ local function fn(sim)
         inst:SetPrefabName("kei_recorder_eyeofterror")
         inst:SetPrefabNameOverride("eyeofterror")
         inst:AddTag("kei_recorder_eyeofterror")
+        inst.persists = false
     end
     return inst
 end

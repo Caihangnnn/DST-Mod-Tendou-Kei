@@ -46,6 +46,7 @@ local function fn(sim)
     inst:SetPrefabNameOverride("lavae")
     inst:AddTag("kei_recorder_lavae")
     inst:AddTag("noattack")
+    inst.persists = false
 
     if not TheWorld.ismastersim then
         return inst
