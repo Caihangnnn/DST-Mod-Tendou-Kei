@@ -8,12 +8,12 @@ function TaskSummon.PrepareSpecialTarget(target, doer, support_owner)
         return
     end
 
-    if target.prefab == "moose" then
+    if target.prefab == "moose" or target.prefab == "kei_recorder_moose" then
         if target.StopAllWatchingWorldStates ~= nil then
             target:StopAllWatchingWorldStates()
         end
         target.shouldGoAway = false
-    elseif target.prefab == "malbatross" then
+    elseif target.prefab == "malbatross" or target.prefab == "kei_recorder_malbatross" then
         if target.components.locomotor ~= nil then
             target.components.locomotor.pathcaps = {
                 allowocean = true,
@@ -69,7 +69,10 @@ function TaskSummon.PrepareSpecialTarget(target, doer, support_owner)
             target.sleeptask:Cancel()
             target.sleeptask = nil
         end
-    elseif target.prefab == "alterguardian_phase3" and target.sg ~= nil then
+    elseif (target.prefab == "alterguardian_phase3"
+        or target.prefab == "kei_recorder_alterguardian")
+        and target.sg ~= nil
+    then
         target.sg:GoToState("spawn")
     end
 end

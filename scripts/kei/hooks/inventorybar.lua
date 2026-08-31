@@ -44,3 +44,38 @@ AddClassPostConstruct("widgets/inventorybar", function(self)
         return old_update(self, dt, ...)
     end
 end)
+
+-- During reconnects or seamless player swaps, the player controller can be
+-- activated before the inventory replica has been attached to the player.
+-- Vanilla RefreshReticule assumes that replica is already available.
+AddClassPostConstruct("components/playercontroller", function(self)
+    local old_refresh_reticule = self.RefreshReticule
+
+    local function ScheduleReticuleRefresh(controller)
+        if controller.ismastersim
+            or controller.inst == nil
+            or controller._kei_reticule_refresh_task ~= nil
+        then
+            return
+        end
+
+        controller._kei_reticule_refresh_task = controller.inst:DoTaskInTime(.1, function()
+            controller._kei_reticule_refresh_task = nil
+            if controller.handler ~= nil then
+                controller:RefreshReticule()
+            end
+        end)
+    end
+
+    self.RefreshReticule = function(controller, item, ...)
+        if item == nil
+            and (controller.inst == nil
+                or controller.inst.replica == nil
+                or controller.inst.replica.inventory == nil)
+        then
+            ScheduleReticuleRefresh(controller)
+            return
+        end
+        return old_refresh_reticule(controller, item, ...)
+    end
+end)

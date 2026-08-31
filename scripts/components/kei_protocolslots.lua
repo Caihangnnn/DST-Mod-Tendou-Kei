@@ -110,6 +110,29 @@ local function ProtocolNeedsStability(data)
     return data.kind == "combat"
 end
 
+-- 深度植入后再次插入同类协议时，基础属性按数值叠加；战斗协议只有
+-- 明确声明 stackable=true 时才允许保留槽内来源，默认不可叠加。
+local function IsProtocolStackable(data)
+    if data == nil then
+        return false
+    end
+    if data.stackable ~= nil then
+        return data.stackable == true
+    end
+    if data.kind == "basic_attribute" then
+        return true
+    end
+    if data.kind == "combat" then
+        local definition = CombatProtocolDefs.COMBAT_PROTOCOLS[data.protocol]
+        return definition ~= nil and definition.stackable == true
+    end
+    if data.kind == "life" then
+        local definition = LIFE_PROTOCOLS[data.protocol]
+        return definition ~= nil and definition.stackable == true
+    end
+    return false
+end
+
 local function GetProtocolDrainSettings()
     return {
         analysis_amount = TUNING.KEI_PROTOCOL_DRAIN_AMOUNT or 1,
@@ -170,7 +193,10 @@ local KeiProtocolSlots = Class(function(self, inst)
     self._kei_tool_action_old_tags = {}
     self._kei_mutateddeerclops_slowed = {}
     self._protocol_state_dirty = true
+    self._implanted_effects_dirty = true
     self._prev_active_combat = {}
+    self._protocol_slot_snapshot = {}
+    self._protocols_disabled = false
     self.basic_attribute_modifiers = {}
     self._combat_damage_multipliers = {}
     self._combat_damage_reductions = {}
@@ -411,9 +437,12 @@ local KeiProtocolSlots = Class(function(self, inst)
         self:Refresh()
     end)
 
-    self._refresh_task = inst:DoPeriodicTask(1, function()
-        self:EnsureProtocolContainers()
-        self:Refresh()
+    -- Protocol changes are event-driven. Keep only a low-frequency watchdog
+    -- for unusual inventory/container mutations that bypass normal events.
+    self._refresh_task = inst:DoPeriodicTask(5, function()
+        if self:HasProtocolSlotContentsChanged() then
+            self:ScheduleRefresh()
+        end
     end)
 
     self._drain_task = inst:DoPeriodicTask(TUNING.KEI_PROTOCOL_DRAIN_PERIOD, function()
@@ -464,9 +493,49 @@ local KeiProtocolSlots = Class(function(self, inst)
         ScheduleCombatStatusSync()
     end)
 
-    inst:ListenForEvent("healthdelta", function()
+    inst:ListenForEvent("healthdelta", function(_, data)
         if self:IsDisabledByHealth() then
             self:DisableAllProtocols()
+            return
+        end
+
+        local old_percent = data ~= nil and tonumber(data.oldpercent) or nil
+        local new_percent = data ~= nil and tonumber(data.newpercent) or nil
+        if old_percent ~= nil and new_percent ~= nil
+            and old_percent <= 0 and new_percent > 0
+        then
+            self:ScheduleRefresh()
+        end
+    end)
+
+    -- Combat protocols are filtered out while stability is zero. Rescan the
+    -- slot contents when crossing the zero boundary so they can return after
+    -- stability recovery instead of remaining absent from self.active.
+    inst:ListenForEvent("sanitydelta", function(_, data)
+        local old_percent = data ~= nil and tonumber(data.oldpercent) or nil
+        local new_percent = data ~= nil and tonumber(data.newpercent) or nil
+        if old_percent == nil or new_percent == nil then
+            return
+        end
+
+        local reached_zero = old_percent > 0 and new_percent <= 0
+        local recovered = old_percent <= 0 and new_percent > 0
+        if reached_zero or recovered then
+            self:ScheduleRefresh()
+        end
+    end)
+
+    inst:ListenForEvent("hungerdelta", function(_, data)
+        local old_percent = data ~= nil and tonumber(data.oldpercent) or nil
+        local new_percent = data ~= nil and tonumber(data.newpercent) or nil
+        if old_percent == nil or new_percent == nil then
+            return
+        end
+
+        local reached_zero = old_percent > 0 and new_percent <= 0
+        local recovered = old_percent <= 0 and new_percent > 0
+        if reached_zero or recovered then
+            self:ScheduleRefresh()
         end
     end)
 
@@ -475,13 +544,27 @@ local KeiProtocolSlots = Class(function(self, inst)
     end)
 
 
-    inst:ListenForEvent("itemget", function() self._protocol_state_dirty = true end)
-    inst:ListenForEvent("itemlose", function() self._protocol_state_dirty = true end)    inst:ListenForEvent("respawnfromghost", function()
-        self._protocol_state_dirty = true
-        inst:DoTaskInTime(0, function()
-            self:Refresh()
-        end)
+    local function OnProtocolInventoryEvent(_, data)
+        local item = data ~= nil and (data.item or data.object) or nil
+        if item == nil or IsProtocol(item) or IsProtocolContainer(item) then
+            self:ScheduleRefresh()
+        end
+    end
+    inst:ListenForEvent("itemget", OnProtocolInventoryEvent)
+    inst:ListenForEvent("itemlose", OnProtocolInventoryEvent)
+    inst:ListenForEvent("respawnfromghost", function()
+        self:ScheduleRefresh()
     end)
+
+    -- The server-side join event fires after reconnect/resume has restored the
+    -- player. Queue one final scan so load order cannot leave stale effects.
+    self._player_joined_refresh_fn = function(_, player)
+        if player ~= inst then
+            return
+        end
+        self:ScheduleRefresh()
+    end
+    inst:ListenForEvent("ms_playerjoined", self._player_joined_refresh_fn, TheWorld)
 end)
 
 ----------------------------------------------------------------
@@ -561,6 +644,66 @@ function KeiProtocolSlots:SyncMiniAlicePages()
     if self.inst._kei_mini_alice_pages ~= nil then
         self.inst._kei_mini_alice_pages:set(self.mini_alice_pages)
     end
+end
+
+function KeiProtocolSlots:ScheduleRefresh()
+    self._protocol_state_dirty = true
+    if self._scheduled_refresh_task ~= nil then
+        return
+    end
+
+    self._scheduled_refresh_task = self.inst:DoTaskInTime(0, function()
+        self._scheduled_refresh_task = nil
+        self:EnsureProtocolContainers()
+        self:Refresh()
+    end)
+end
+
+function KeiProtocolSlots:UpdateProtocolSlotSnapshot()
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    if inventory == nil then
+        self._protocol_slot_snapshot = {}
+        return
+    end
+
+    local snapshot = {}
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
+        local container = inventory:GetItemInSlot(slot)
+        local contents = IsProtocolContainer(container)
+            and container.components ~= nil
+            and container.components.container
+            or nil
+        snapshot[slot] = {
+            container = container,
+            item = contents ~= nil and contents:GetItemInSlot(1) or nil,
+        }
+    end
+    self._protocol_slot_snapshot = snapshot
+end
+
+function KeiProtocolSlots:HasProtocolSlotContentsChanged()
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    if inventory == nil then
+        return false
+    end
+
+    local snapshot = self._protocol_slot_snapshot or {}
+    for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
+        local container = inventory:GetItemInSlot(slot)
+        local contents = IsProtocolContainer(container)
+            and container.components ~= nil
+            and container.components.container
+            or nil
+        local item = contents ~= nil and contents:GetItemInSlot(1) or nil
+        local previous = snapshot[slot]
+        if previous == nil
+            or previous.container ~= container
+            or previous.item ~= item
+        then
+            return true
+        end
+    end
+    return false
 end
 
 function KeiProtocolSlots:GetStatBonus()
@@ -779,6 +922,7 @@ function KeiProtocolSlots:ConfigureProtocolContainer(container, slot)
         container._kei_protocol_slot_contents_fn = function()
             self._protocol_state_dirty = true
             self:SyncProtocolSlotVisuals()
+            self:ScheduleRefresh()
         end
         container:ListenForEvent("itemget", container._kei_protocol_slot_contents_fn)
         container:ListenForEvent("itemlose", container._kei_protocol_slot_contents_fn)
@@ -856,9 +1000,46 @@ function KeiProtocolSlots:EnsureProtocolContainers()
     end
 
     self:SyncProtocolSlotVisuals()
+    self:UpdateProtocolSlotSnapshot()
 end
 
 function KeiProtocolSlots:OnRemoveFromEntity()
+    local tasks = {
+        self._refresh_task,
+        self._drain_task,
+        self._life_growth_task,
+        self._life_durability_task,
+        self._scheduled_refresh_task,
+        self._combat_status_sync_task,
+    }
+    for _, task in ipairs(tasks) do
+        if task ~= nil then
+            task:Cancel()
+        end
+    end
+    self._refresh_task = nil
+    self._drain_task = nil
+    self._life_growth_task = nil
+    self._life_durability_task = nil
+    self._scheduled_refresh_task = nil
+    self._combat_status_sync_task = nil
+
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    if inventory ~= nil then
+        for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
+            local container = inventory:GetItemInSlot(slot)
+            if IsProtocolContainer(container) and container._kei_protocol_slot_contents_fn ~= nil then
+                container:RemoveEventCallback("itemget", container._kei_protocol_slot_contents_fn)
+                container:RemoveEventCallback("itemlose", container._kei_protocol_slot_contents_fn)
+                container._kei_protocol_slot_contents_fn = nil
+            end
+        end
+    end
+
+    if self._player_joined_refresh_fn ~= nil then
+        self.inst:RemoveEventCallback("ms_playerjoined", self._player_joined_refresh_fn, TheWorld)
+        self._player_joined_refresh_fn = nil
+    end
     self:ClearModifiers()
 
     local combat = self.inst.components ~= nil and self.inst.components.combat or nil
@@ -986,6 +1167,7 @@ function KeiProtocolSlots:DeepImplantFirst()
     end
     removed:Remove()
     self._protocol_state_dirty = true
+    self._implanted_effects_dirty = true
     self:Refresh()
     return true
 end
@@ -1024,6 +1206,11 @@ function KeiProtocolSlots:HasProtocolInUnlockedSlots(protocol)
         end
     end
     return false
+end
+
+-- 深度植入是独立于协议槽 CD 的永久来源。
+function KeiProtocolSlots:IsDeeplyImplanted(protocol)
+    return protocol ~= nil and self.implanted_combat_protocols[protocol] == true
 end
 
 function KeiProtocolSlots:StalkerProtocolOverridesStability()
@@ -1088,11 +1275,20 @@ function KeiProtocolSlots:GetProtocolSlotItems()
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil then
             local item = container.components.container:GetItemInSlot(1)
-            if IsProtocol(item) and slot <= self.unlocked_slots and self:CanRun(item.kei_protocol_data) then
+            local data = IsProtocol(item) and item.kei_protocol_data or nil
+            local duplicate_implant = data ~= nil
+                and data.kind == "combat"
+                and self:IsDeeplyImplanted(data.protocol)
+                and not IsProtocolStackable(data)
+            if data ~= nil
+                and slot <= self.unlocked_slots
+                and not duplicate_implant
+                and self:CanRun(data)
+            then
                 table.insert(items, {
                     item = item,
                     slot = slot,
-                    data = item.kei_protocol_data,
+                    data = data,
                 })
             end
         end
@@ -1213,10 +1409,21 @@ function KeiProtocolSlots:ClearModifiers()
 end
 
 function KeiProtocolSlots:DisableAllProtocols()
+    if self._protocols_disabled then
+        return
+    end
+    self._protocols_disabled = true
     self.active = {}
     self.active_combat = {}
     self.active_life = {}
     self.active_basic_attributes = {}
+    -- ClearModifiers removes effect-owned tags/modifiers. The next functional
+    -- refresh must rebuild from slots and run Enable again for every protocol.
+    -- This is especially important for vault_pillar_guard, whose effect is
+    -- represented by tags consumed by the combat hooks.
+    self._prev_active_combat = {}
+    self._protocol_state_dirty = true
+    self._implanted_effects_dirty = true
     self:SyncCombatProtocolFlags()
     self:SyncLifeProtocolFlags()
     self:SetProtocolContainersPowered(false)
@@ -1344,9 +1551,10 @@ function KeiProtocolSlots:RefreshLifeEffects()
     end
 end
 
-function KeiProtocolSlots:RefreshEffects()
+function KeiProtocolSlots:RefreshEffects(force_enable)
     self:RefreshLifeEffects()
     local prev = self._prev_active_combat or {}
+    local implanted_effects_dirty = self._implanted_effects_dirty == true
     self._prev_active_combat = {}
 
 
@@ -1355,7 +1563,12 @@ function KeiProtocolSlots:RefreshEffects()
         self._prev_active_combat[protocol] = is_active
         local was_active = prev[protocol] == true
 
-        if is_active and not was_active then
+        -- 状态脏刷新时重新执行 Enable，校准读档、槽位变化或统一清理后
+        -- 的实际标签/修饰器；深度植入也始终不依赖普通 CD 的资源状态。
+        if is_active and (not was_active
+            or force_enable == true
+            or (implanted_effects_dirty and self:IsDeeplyImplanted(protocol)))
+        then
             if handler.Enable then
                 handler.Enable(self, self.inst)
             end
@@ -1365,6 +1578,7 @@ function KeiProtocolSlots:RefreshEffects()
             end
         end
     end
+    self._implanted_effects_dirty = nil
 end
 
 ----------------------------------------------------------------
@@ -1376,13 +1590,16 @@ function KeiProtocolSlots:Refresh()
         self:DisableAllProtocols()
         return
     end
+    self._protocols_disabled = false
     self:SetProtocolContainersPowered(true)
 
-    if not self._protocol_state_dirty and next(self.active_combat or {}) == nil and next(self.active_life or {}) == nil then
+    local state_dirty = self._protocol_state_dirty == true
+    local implanted_effects_dirty = self._implanted_effects_dirty == true
+    if not state_dirty and not implanted_effects_dirty then
         return
     end
 
-    local items = self._protocol_state_dirty and self:GetProtocolSlotItems() or self.active
+    local items = state_dirty and self:GetProtocolSlotItems() or self.active
     self._protocol_state_dirty = nil
     local combat = {}
     local life = {}
@@ -1431,8 +1648,12 @@ function KeiProtocolSlots:Refresh()
     if not wants_hand_virtual then
         self:RemoveHandVirtualEquip()
     end
-    for protocol in pairs(self.implanted_combat_protocols) do
-        combat[protocol] = true
+    -- 深度植入协议不进入 GetProtocolSlotItems，因此不会经过 CanRun 的
+    -- 电量/稳定性检查，也不会出现在 DrainProtocols 的普通 CD 消耗列表中。
+    for protocol, implanted in pairs(self.implanted_combat_protocols) do
+        if implanted == true then
+            combat[protocol] = true
+        end
     end
     for _, data in ipairs(self.implanted_basic_attributes) do
         AddBasicAttributeValue(basic_attributes, data)
@@ -1442,7 +1663,7 @@ function KeiProtocolSlots:Refresh()
     self.active_life = life
     self.active_basic_attributes = basic_attributes
     self:ApplyBasicAttributes(basic_attributes)
-    self:RefreshEffects()
+    self:RefreshEffects(state_dirty)
     self:SyncLifeProtocolFlags()
     self:SyncCombatProtocolFlags()
 
@@ -1556,15 +1777,29 @@ function KeiProtocolSlots:OnLoad(data)
     end
     self.implanted_combat_protocols = data ~= nil and data.implanted_combat_protocols or {}
     self.implanted_basic_attributes = data ~= nil and data.implanted_basic_attributes or {}
+    self._implanted_effects_dirty = true
     self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()
     self:SyncMiniAlicePages()
     self:SyncAnalysisArmorUpgrade()
     self:ApplyStatProgression()
-    self.inst:DoTaskInTime(0, function()
-        self:EnsureProtocolContainers()
-        self:Refresh()
-    end)
+
+    -- OnLoad can run after the constructor's first refresh. Mark the complete
+    -- state dirty so inserted CDs and implanted protocols are rebuilt together.
+    self:ScheduleRefresh()
+end
+
+function KeiProtocolSlots:LoadPostPass()
+    -- Inventory/container contents are guaranteed to exist by LoadPostPass.
+    -- Re-scan here as well because component OnLoad order is not deterministic.
+    self._prev_active_combat = {}
+    self._protocol_state_dirty = true
+    self._implanted_effects_dirty = true
+    self:EnsureProtocolContainers()
+    self:Refresh()
+    -- Some protocol container entities finish restoring their contents after
+    -- this component's post-pass. Queue one final scan after the load stack.
+    self:ScheduleRefresh()
 end
 
 return KeiProtocolSlots

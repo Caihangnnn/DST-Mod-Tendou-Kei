@@ -2,6 +2,7 @@
 
 local RookEffect = {}
 local KnightEffect = require("kei/protocols/combat/effects/biome/knight")
+local Daywalker2Common = require("kei/protocols/combat/effects/beast/_daywalker2_common")
 
 local ROOK_PROTOCOL = "rook"
 local KNIGHT_PROTOCOL = "knight"
@@ -148,8 +149,12 @@ function RookEffect.BeginGuard(inst)
     inst.kei_rook_guarding = true
     inst.kei_rook_guard_blocked = nil
     inst.kei_rook_guard_success = nil
-    inst:AddTag("kei_stagger_immune")
-    inst:AddTag("kei_control_immune")
+    if slots ~= nil then
+        Daywalker2Common.EnableSharedImmunity(slots, inst, "rook")
+    else
+        inst:AddTag("kei_stagger_immune")
+        inst:AddTag("kei_control_immune")
+    end
     WrapInventoryApplyDamage(slots, inst)
     return true
 end
@@ -178,8 +183,12 @@ function RookEffect.CancelGuard(inst, keep_cooldown)
     inst.kei_rook_guarding = nil
     inst.kei_rook_guard_blocked = nil
     inst.kei_rook_guard_success = nil
-    inst:RemoveTag("kei_stagger_immune")
-    inst:RemoveTag("kei_control_immune")
+    if slots ~= nil then
+        Daywalker2Common.DisableSharedImmunity(slots, inst, "rook")
+    else
+        inst:RemoveTag("kei_stagger_immune")
+        inst:RemoveTag("kei_control_immune")
+    end
     if keep_cooldown ~= true then
         ClearCooldown(inst)
     end

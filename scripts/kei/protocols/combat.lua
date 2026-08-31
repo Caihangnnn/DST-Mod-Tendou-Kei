@@ -68,7 +68,7 @@ AddRows({
     { "minotaur_basic", "远古守卫者初级", "攻击有概率对目标触发暗影囚笼。", { source_protocol = "minotaur" , implemented = true } },
     { "vault_pillar_guard_basic", "远古戍卫塔初级", "使用攻击距离为 1 的武器时，普通攻击变为旋转攻击。", { source_protocol = "vault_pillar_guard" , implemented = true } },
     { "dragonfly_basic", "龙蝇初级", "免疫燃烧和过热。", { source_protocol = "dragonfly" , implemented = true } },
-    { "malbatross_basic", "邪天翁初级", "在水面上每秒增加 1 点潮湿度，并免疫潮湿。", { source_protocol = "malbatross", implemented = true } },
+    { "malbatross_basic", "邪天翁初级", "每 2 秒增加 1 点潮湿度；在水面上改为每 2 秒增加 2 点潮湿度。", { source_protocol = "malbatross", implemented = true } },
     { "klaus_basic", "克劳斯初级", "攻击有概率从目标身上抽落灵魂，治疗友方单位。", { source_protocol = "klaus" , implemented = true } },
     { "toadstool_basic", "蟾蜍初级", "免疫催眠。", { source_protocol = "toadstool" , implemented = true } },
     { "beequeen_basic", "蜂后初级", "受到攻击时恐惧攻击者 5 秒。", { source_protocol = "beequeen" , implemented = true } },
@@ -83,15 +83,15 @@ AddRows({
     { "bearger", "熊獾高级", "攻击造成无衰减群体伤害。", { short_name = "熊獾", planned_update = true } },
     { "mutatedbearger", "装甲熊獾", "独立乘区攻击速度提高 30%。", { tier = "special", implemented = true } },
     { "dragonfly", "龙蝇高级", "攻击会点燃目标，每秒造成最大生命值 0.1% 的伤害，并免疫过热与火焰伤害。", { short_name = "龙蝇", implemented = true } },
-    { "moose", "麋鹿鹅高级", "免疫潮湿；攻击有 20% 概率附带旋风。", { short_name = "麋鹿鹅" } },
+    { "moose", "麋鹿鹅高级", "免疫潮湿；获得漩涡技能，按潮湿度降低竞技场内玩家移速。", { short_name = "麋鹿鹅", implemented = true } },
     { "eyeofterror", "克眼高级", "获得右键冲刺能力，冲刺会伤害路径上的敌方单位。", { short_name = "克眼" } },
     { "daywalker", "梦魇疯猪高级", "右键跳劈到鼠标指定位置；造成 150 点加目标最大生命值 4% 的范围伤害，生成持续 3 秒的陷坑，并使目标 3 秒内移速降至 10%。", { short_name = "梦魇疯猪" } },
     { "daywalker2", "拾荒疯猪高级", "获得霸体，并获得 25% 免伤。", { short_name = "拾荒疯猪", implemented = true } },
-    { "lordfruitfly", "果蝇王高级", "战斗协议和解析协议不再额外消耗电量与数据稳定性。", { short_name = "果蝇王", implemented = true } },
+    { "lordfruitfly", "果蝇王高级", "移除普通攻击；获得技能“杂草的力量”，每 10 秒在自身位置种植一株随机且立即成熟的杂草。必忘我每 5 秒召唤 3 只杀人蜂；犁地草每 10 秒在随机玩家脚下种植巨大作物，将其顶飞并造成 20 点伤害后腐烂；刺针旋花在果蝇王受到玩家攻击时召唤尖刺。果蝇王召唤的小果蝇也会每 10 秒种植一株成熟杂草。", { short_name = "果蝇王", implemented = true } },
     { "minotaur", "远古守卫者高级", "攻击有概率触发暗影囚笼与暗影触手。", { short_name = "远古守卫者", implemented = true } },
     { "vault_pillar_guard", "远古戍卫塔高级", "独立乘区攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击。", { short_name = "远古戍卫塔", implemented = true } },
     { "wagboss_robot", "战争瓦器人", "攻击时对目标触发月能轨道打击，冷却 20 秒。", { tier = "special", implemented = true } },
-    { "malbatross", "邪天翁高级", "在水面上每秒增加 1 点潮湿度，伤害增加 50%，移动速度增加 50%。", { short_name = "邪天翁", implemented = true } },
+    { "malbatross", "邪天翁高级", "每 2 秒增加 1 点潮湿度；在水面上改为每 2 秒增加 2 点潮湿度，且伤害和移动速度增加 50%。", { short_name = "邪天翁", implemented = true } },
     { "klaus", "克劳斯高级", "攻击有概率抽落灵魂治疗友方，并追加目标最大生命值 1% 真实伤害；目标生命低于 5% 时斩杀，抽魂冷却 0.5 秒。", { short_name = "克劳斯", implemented = true } },
     { "toadstool", "蟾蜍高级", "攻击有概率向目标脚下投掷睡袋，并免疫催眠。", { short_name = "蟾蜍", implemented = true } },
     { "antlion", "蚁狮高级", "免疫沙尘暴、月亮风暴；攻击有概率在目标脚下生成中心大沙刺和三枚小沙刺。", { short_name = "蚁狮" } },
@@ -100,6 +100,14 @@ AddRows({
     { "alterguardian", "天体英雄高级", "电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。", { short_name = "天体英雄", implemented = true } },
     { "alterguardian_phase4_lunarrift", "天体后裔", "天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 50% 的额外伤害。", { tier = "special", implemented = true } },
 }, { category = "beast", tier = "advanced", implemented = true })
+
+for _, row in ipairs(COMBAT_PROTOCOL_LIST) do
+    if row.protocol == "antlion" then
+        row.description = "在场时使竞技场内玩家处于沙尘暴状态；在周围 12 个单位处生成 6 个 200 点生命的沙堡，沙堡存在时自身不可侵犯并会击退攻击者；体型扩大为 2 倍，沙刺同时攻击所有竞技场玩家。"
+        row.description = row.description .. " 沙墙位置固定，冷却 30 秒；已有位置存在沙墙时跳过生成，沙墙不会自然摧毁。"
+        row.implemented = true
+    end
+end
 
 local COMBAT_PROTOCOLS = {}
 local COMBAT_PROTOCOL_PREFABS = {}
@@ -115,10 +123,23 @@ local function GetProtocolPrefab(protocol)
 end
 
 local RECORDER_SUMMON_PREFABS = {
-    -- 远古戍卫塔协议对应原版远古守卫者实体。
-    vault_pillar_guard = "vault_pillar_guard",
-    -- 天体英雄协议挑战直接召唤第三阶段实体。
-    alterguardian = "alterguardian_phase3",
+    -- 麋鹿鹅挑战使用独立实体，避免原版麋鹿鹅受到记录器技能影响。
+    moose = "kei_recorder_moose",
+    -- 邪天翁挑战使用独立实体，附加记录器专属海浪技能。
+    malbatross = "kei_recorder_malbatross",
+    antlion = "kei_recorder_antlion",
+    -- 远古戍卫塔协议使用独立的记录器分裂实体，原版实体不受影响。
+    vault_pillar_guard = "kei_recorder_vault_pillar_guard",
+    -- 天体英雄协议挑战使用独立的记录器第三阶段实体。
+    alterguardian = "kei_recorder_alterguardian",
+    -- 克劳斯挑战使用第二阶段的独立记录器实体。
+    klaus = "kei_recorder_klaus",
+    -- 远古守卫者挑战使用专用冲撞状态图，不修改原版 minotaur。
+    minotaur = "kei_recorder_minotaur",
+    -- 蟾蜍挑战使用专用催眠技能、孢子树和孢子云实体。
+    toadstool = "kei_recorder_toadstool",
+    -- 果蝇王挑战使用专用无普通攻击实体和杂草技能。
+    lordfruitfly = "kei_recorder_lordfruitfly",
 }
 
 local function GetRecorderChallenge(protocol)

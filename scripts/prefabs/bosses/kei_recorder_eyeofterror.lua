@@ -16,6 +16,7 @@ local prefabs = {
     "milkywhites",
     "slide_puff",
     "eyeofterrorcorpse",
+    "ghostlyelixir_player_shadow_fx",
 }
 
 local function fn(sim)

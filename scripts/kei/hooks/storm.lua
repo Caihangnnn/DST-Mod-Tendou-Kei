@@ -9,6 +9,17 @@ local function HasKeiAntlionStormImmunity(inst)
     return false
 end
 
+local function HasForcedRecorderAntlionStorm(inst)
+    local sources = inst ~= nil and inst._kei_recorder_antlion_sandstorm_sources or nil
+    if sources == nil then
+        return false
+    end
+    for _ in pairs(sources) do
+        return true
+    end
+    return false
+end
+
 local function ClearKeiStormSlow(inst)
     if inst.components ~= nil and inst.components.locomotor ~= nil then
         inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "sandstorm")
@@ -28,6 +39,17 @@ AddComponentPostInit("stormwatcher", function(self)
             self.stormlevel = 0
             ClearKeiStormSlow(self.inst)
             PushKeiStormImmunityEvents(self.inst)
+            self.laststorm = self.currentstorm
+            return
+        end
+        if HasForcedRecorderAntlionStorm(self.inst) then
+            self.currentstorm = STORM_TYPES.SANDSTORM
+            self.stormlevel = 1
+            if self.inst.components.sandstormwatcher ~= nil then
+                self.inst.components.sandstormwatcher:UpdateSandstormLevel()
+            else
+                self.inst:PushEvent("sandstormlevel", { level = 1 })
+            end
             self.laststorm = self.currentstorm
             return
         end

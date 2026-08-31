@@ -5,10 +5,17 @@ local RecorderBoss = require("kei/recorder_boss")
 local RecorderDragonfly = require("kei/recorder_dragonfly")
 local RecorderEyeOfTerror = require("kei/recorder_eyeofterror")
 local RecorderBearger = require("kei/recorder_bearger")
+local RecorderMoose = require("kei/recorder_moose")
+local RecorderMalbatross = require("kei/recorder_malbatross")
+local RecorderAntlion = require("kei/recorder_antlion")
 local RecorderBeeQueen = require("kei/recorder_beequeen")
 local RecorderDeerclops = require("kei/recorder_deerclops")
 local RecorderDaywalker = require("kei/recorder_daywalker")
 local RecorderDaywalker2 = require("kei/recorder_daywalker2")
+local RecorderAlterguardian = require("kei/recorder_alterguardian")
+local RecorderKlaus = require("kei/recorder_klaus")
+local RecorderVaultPillarGuard = require("kei/recorder_vault_pillar_guard")
+local RecorderLordfruitfly = require("kei/recorder_lordfruitfly")
 
 local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
@@ -216,6 +223,7 @@ local function ClearTargetListener(inst)
     inst.kei_target = nil
     inst.kei_target_death_fn = nil
     inst.kei_target_minhealth_fn = nil
+    inst.kei_target_complete_fn = nil
 end
 
 local function ClearOwnerListener(inst)
@@ -237,6 +245,9 @@ local function ClearChallengeSupport(inst)
     if inst.kei_target_support_entities ~= nil then
         for _, support in ipairs(inst.kei_target_support_entities) do
             if support ~= nil and support:IsValid() then
+                -- Recorder-only supports can suppress their normal death
+                -- callbacks while the challenge is being cleaned up.
+                support.kei_recorder_cleanup = true
                 support:Remove()
             end
         end
@@ -264,10 +275,17 @@ local function ClearChallengeTasks(target, reset_erosion)
         RecorderDragonfly.Remove(target)
         RecorderEyeOfTerror.Remove(target)
         RecorderBearger.Remove(target)
+        RecorderMoose.Remove(target)
+        RecorderMalbatross.Remove(target)
+        RecorderAntlion.Remove(target)
         RecorderBeeQueen.Remove(target)
         RecorderDeerclops.Remove(target)
         RecorderDaywalker.Remove(target)
         RecorderDaywalker2.Remove(target)
+        RecorderAlterguardian.Remove(target)
+        RecorderKlaus.Remove(target)
+        RecorderVaultPillarGuard.Remove(target)
+        RecorderLordfruitfly.Remove(target)
         RecorderBoss.Remove(target)
         TaskSummon.CleanupSpecialTarget(target)
         if target.kei_recorder_land_task ~= nil then
@@ -421,8 +439,22 @@ local function PrepareRecorderChallenge(inst, target, doer)
         RecorderEyeOfTerror.Apply(target)
     elseif target.prefab == "kei_recorder_bearger" then
         RecorderBearger.Apply(target)
+    elseif target.prefab == "kei_recorder_moose" then
+        RecorderMoose.Apply(target)
+    elseif target.prefab == "kei_recorder_malbatross" then
+        RecorderMalbatross.Apply(target)
+    elseif target.prefab == "kei_recorder_antlion" then
+        RecorderAntlion.Apply(target)
     elseif target.prefab == "kei_recorder_daywalker" then
         RecorderDaywalker.Apply(target)
+    elseif target.prefab == "kei_recorder_alterguardian" then
+        RecorderAlterguardian.Apply(target)
+    elseif target.prefab == "kei_recorder_klaus" then
+        RecorderKlaus.Apply(target)
+    elseif target.prefab == "kei_recorder_vault_pillar_guard" then
+        RecorderVaultPillarGuard.Apply(target, inst)
+    elseif target.prefab == "kei_recorder_lordfruitfly" then
+        RecorderLordfruitfly.Apply(target)
     end
     TaskSummon.PrepareSpecialTarget(target, doer, inst)
 
@@ -506,12 +538,24 @@ local function SpawnRecorderChallenge(inst, doer)
         and "kei_recorder_eyeofterror"
         or challenge.summon_prefab == "bearger"
         and "kei_recorder_bearger"
+        or challenge.summon_prefab == "moose"
+        and "kei_recorder_moose"
+        or challenge.summon_prefab == "malbatross"
+        and "kei_recorder_malbatross"
+        or challenge.summon_prefab == "antlion"
+        and "kei_recorder_antlion"
         or challenge.summon_prefab == "beequeen"
         and "kei_recorder_beequeen"
         or challenge.summon_prefab == "daywalker"
         and "kei_recorder_daywalker"
         or challenge.summon_prefab == "daywalker2"
         and "kei_recorder_daywalker2"
+        or challenge.summon_prefab == "alterguardian_phase3"
+        and "kei_recorder_alterguardian"
+        or challenge.summon_prefab == "klaus"
+        and "kei_recorder_klaus"
+        or challenge.summon_prefab == "lordfruitfly"
+        and "kei_recorder_lordfruitfly"
         or challenge.summon_prefab
     local target = SpawnPrefab(summon_prefab)
     if target == nil then
@@ -538,6 +582,13 @@ local function SpawnRecorderChallenge(inst, doer)
     inst.kei_target_death_fn = function(target_inst)
         if CompleteRecording(inst, target_inst) then
             Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
+        end
+    end
+    if target.prefab == "kei_recorder_vault_pillar_guard" then
+        inst.kei_target_complete_fn = function()
+            if CompleteRecording(inst, target) then
+                Say(doer, "ANNOUNCE_KEI_RECORD_DONE")
+            end
         end
     end
     inst:ListenForEvent("death", inst.kei_target_death_fn, target)

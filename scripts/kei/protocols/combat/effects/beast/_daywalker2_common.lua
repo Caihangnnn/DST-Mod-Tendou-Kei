@@ -5,6 +5,10 @@ local DAYWALKER2_SHIELD_FOLLOW_PERIOD = FRAMES
 
 local Daywalker2Common = {}
 
+local function HasSharedImmunitySource(slots)
+    return BeastCommon.HasAnySource(slots._kei_shared_immunity_sources)
+end
+
 local function PositionShieldFx(slots)
     local fx = slots._kei_daywalker2_shield_fx
     if fx ~= nil and fx:IsValid() then
@@ -47,20 +51,45 @@ function Daywalker2Common.HasAdvanced(slots)
     return BeastCommon.HasProtocol(slots, "daywalker2")
 end
 
-function Daywalker2Common.EnableImmunity(slots, inst, source)
-    source = source or "daywalker2"
-    slots._kei_daywalker2_sources = slots._kei_daywalker2_sources or {}
-    if slots._kei_daywalker2_sources[source] then
+-- 霸体标签可能同时由拾荒疯猪和发条战车提供，按来源维护，避免互相误删。
+function Daywalker2Common.EnableSharedImmunity(slots, inst, source)
+    if slots == nil or inst == nil or source == nil then
         return
     end
 
-    if not BeastCommon.HasAnySource(slots._kei_daywalker2_sources) then
-        inst:AddTag("kei_stagger_immune")
-        inst:AddTag("kei_control_immune")
-        EnableShieldFx(slots, inst)
+    slots._kei_shared_immunity_sources = slots._kei_shared_immunity_sources or {}
+    slots._kei_shared_immunity_sources[source] = true
+    inst:AddTag("kei_stagger_immune")
+    inst:AddTag("kei_control_immune")
+end
+
+function Daywalker2Common.DisableSharedImmunity(slots, inst, source)
+    if slots == nil or inst == nil or source == nil then
+        return
     end
 
+    local sources = slots._kei_shared_immunity_sources
+    if sources ~= nil then
+        sources[source] = nil
+    end
+    if HasSharedImmunitySource(slots) then
+        return
+    end
+
+    inst:RemoveTag("kei_stagger_immune")
+    inst:RemoveTag("kei_control_immune")
+    slots._kei_shared_immunity_sources = nil
+end
+
+function Daywalker2Common.EnableImmunity(slots, inst, source)
+    source = source or "daywalker2"
+    slots._kei_daywalker2_sources = slots._kei_daywalker2_sources or {}
     slots._kei_daywalker2_sources[source] = true
+
+    -- 读档或其他效果清理可能只移除了标签，保留了来源记录；
+    -- 每次启用都校准实际霸体状态和护盾。
+    Daywalker2Common.EnableSharedImmunity(slots, inst, source)
+    EnableShieldFx(slots, inst)
 end
 
 function Daywalker2Common.DisableImmunity(slots, inst, source)
@@ -70,15 +99,12 @@ function Daywalker2Common.DisableImmunity(slots, inst, source)
         sources[source] = nil
     end
 
-    if BeastCommon.HasAnySource(sources) then
-        return
+    if not BeastCommon.HasAnySource(sources) then
+        DisableShieldFx(slots)
+        slots._kei_daywalker2_sources = nil
     end
 
-    inst:RemoveTag("kei_stagger_immune")
-    inst:RemoveTag("kei_control_immune")
-    DisableShieldFx(slots)
-
-    slots._kei_daywalker2_sources = nil
+    Daywalker2Common.DisableSharedImmunity(slots, inst, source)
 end
 
 function Daywalker2Common.SetAbsorb(slots, inst, amount)

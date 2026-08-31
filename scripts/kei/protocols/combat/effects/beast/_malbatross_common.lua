@@ -1,4 +1,4 @@
--- 邪天翁协议公共实现：水面涨潮湿度，高级水面增伤/加速。
+-- 邪天翁协议公共实现：持续增加潮湿度，水面翻倍，高级协议水面增伤/加速。
 
 local BeastCommon = require("kei/protocols/combat/effects/beast/_beast_common")
 local MalbatrossCommon = {}
@@ -30,7 +30,7 @@ local function IsOnOcean(inst)
     return map:IsOceanAtPoint(x, y, z)
 end
 
-local function AddOceanMoisture(inst)
+local function AddMoisture(inst, on_ocean)
     local moisture = inst.components.moisture
     if moisture == nil then
         return
@@ -40,7 +40,10 @@ local function AddOceanMoisture(inst)
         return
     end
 
-    local amount = TUNING.KEI_MALBATROSS_OCEAN_MOISTURE_PER_SECOND or 1
+    local amount = TUNING.KEI_MALBATROSS_OCEAN_MOISTURE_PER_INTERVAL or 1
+    if on_ocean then
+        amount = amount * (TUNING.KEI_MALBATROSS_OCEAN_MOISTURE_MULT or 2)
+    end
     moisture:DoDelta(amount)
 end
 
@@ -78,12 +81,10 @@ function MalbatrossCommon.Update(slots, inst)
     local on_ocean = IsOnOcean(inst)
     ApplyWaterBonuses(slots, inst, on_ocean and HasAdvancedSource(slots))
 
-    if on_ocean then
-        local now = GetTime()
-        if slots._kei_malbatross_next_moisture_time == nil or now >= slots._kei_malbatross_next_moisture_time then
-            AddOceanMoisture(inst)
-            slots._kei_malbatross_next_moisture_time = now + (TUNING.KEI_MALBATROSS_OCEAN_MOISTURE_INTERVAL or 1)
-        end
+    local now = GetTime()
+    if slots._kei_malbatross_next_moisture_time == nil or now >= slots._kei_malbatross_next_moisture_time then
+        AddMoisture(inst, on_ocean)
+        slots._kei_malbatross_next_moisture_time = now + (TUNING.KEI_MALBATROSS_OCEAN_MOISTURE_INTERVAL or 2)
     end
 end
 

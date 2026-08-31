@@ -4,12 +4,12 @@ local DaywalkerCommon = require("kei/protocols/combat/effects/beast/_daywalker_c
 local DaywalkerBasic = {}
 
 -- 启用协议效果，并注册该协议提供的持续能力。
-function DaywalkerBasic.Enable(inst, slots)
+function DaywalkerBasic.Enable(slots, inst)
     return DaywalkerCommon.HasLeap(slots)
 end
 
 -- 关闭协议效果，并清理启用时注册的持续能力。
-function DaywalkerBasic.Disable(inst, slots)
+function DaywalkerBasic.Disable(slots, inst)
 end
 
 return DaywalkerBasic
