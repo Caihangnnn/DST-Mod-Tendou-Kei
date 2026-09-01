@@ -1,5 +1,5 @@
-local Image = require "widgets/image"
 local ImageButton = require "widgets/imagebutton"
+local Image = require "widgets/image"
 local Widget = require "widgets/widget"
 local Text = require "widgets/text"
 local TextButton = require "widgets/textbutton"
@@ -14,6 +14,51 @@ local ATLAS = "images/quagmire_recipebook.xml"
 local GRID_WIDTH = 390
 local GRID_HEIGHT = 390
 local PROTOCOL_DETAIL_TEXT_COLOUR = { .95, .95, .95, 1 }
+
+local KEI_SKIN_OPTIONS = {
+    { skin = "kei_none", name = "新生" },
+    { skin = "kei_skin_decagrammaton", name = "十字神名" },
+}
+local KEI_SKIN_INDEX = {
+    kei_none = 1,
+    kei_skin_decagrammaton = 2,
+}
+local KEI_PORTRAIT_FACINGS = {
+    FACING_DOWN,
+    FACING_RIGHT,
+    FACING_UP,
+}
+
+local function GetOwnerSkinName(owner)
+    if owner == nil or owner.userid == nil or TheNet == nil then
+        return "kei_none"
+    end
+
+    local client_data = TheNet:GetClientTableForUser(owner.userid)
+    local skin_name = client_data ~= nil and client_data.base_skin or nil
+    return type(skin_name) == "string" and skin_name ~= "" and skin_name or "kei_none"
+end
+
+local function CreatePortraitArrow(parent, x, y, is_left, scale)
+    local button = parent:AddChild(ImageButton(
+        "images/ui.xml",
+        is_left and "crafting_inventory_arrow_l_idle.tex" or "crafting_inventory_arrow_r_idle.tex",
+        is_left and "crafting_inventory_arrow_l_hl.tex" or "crafting_inventory_arrow_r_hl.tex",
+        is_left and "arrow_left_disabled.tex" or "arrow_right_disabled.tex",
+        is_left and "crafting_inventory_arrow_l_hl.tex" or "crafting_inventory_arrow_r_hl.tex"
+    ))
+    button.scale_on_focus = false
+    button:SetScale(scale or 1)
+    button:SetPosition(x, y)
+    return button
+end
+
+local function CreateAtlasBackground(parent, atlas, texture, width, height)
+    local background = parent:AddChild(Image(atlas, texture))
+    background:ScaleToSize(width, height)
+    background:MoveToBack()
+    return background
+end
 
 -- AnimState cannot enumerate an animation bank. Try the common idle variants
 -- in a random order and retain the first one with a valid visual boundary.
@@ -630,7 +675,7 @@ local TaskPage = Class(Widget, function(self, owner)
 
     AddKeyBinding("冰火", "flame", 145)
     AddKeyBinding("无人机控制器", "rotor", 88)
-    AddKeyBinding("任务书", "task_book", 31)
+    AddKeyBinding("冒险手记", "task_book", 31)
     AddUnassignedKeyBinding(145)
     AddUnassignedKeyBinding(88)
     AddUnassignedKeyBinding(31)
@@ -684,7 +729,7 @@ local TaskPage = Class(Widget, function(self, owner)
     self.defense_status_value = AddStatusValue("防御", 190)
 
     self.protocol_ring = self.details_root:AddChild(Widget("protocol_ring"))
-    self.protocol_ring:SetPosition(0, -22)
+    self.protocol_ring:SetPosition(0, -8)
     self:CreatePlayerPortrait()
     self:RefreshProtocolRing(true)
     self:RefreshCombatStatusValues()
@@ -725,11 +770,90 @@ function TaskPage:CreatePlayerPortrait()
     local owner = self.owner
     local client_data = owner ~= nil and owner.userid ~= nil and TheNet:GetClientTableForUser(owner.userid) or nil
     local prefab = owner ~= nil and owner.prefab or "kei"
+    local base_skin, clothing
     if client_data ~= nil then
-        local base_skin, clothing = GetSkinsDataFromClientTableData(client_data)
-        self.portrait:SetSkins(prefab, base_skin, clothing)
+        base_skin, clothing = GetSkinsDataFromClientTableData(client_data)
     else
-        self.portrait:SetSkins(prefab, prefab .. "_none", {})
+        base_skin, clothing = prefab .. "_none", {}
+    end
+    self.equipped_skin = base_skin ~= nil and base_skin ~= "" and base_skin or "kei_none"
+    self.preview_skin_index = KEI_SKIN_INDEX[self.equipped_skin] or 1
+    self.view_index = 1
+    self.dressup_cooldown = 0
+    self.portrait:SetSkins(prefab, KEI_SKIN_OPTIONS[self.preview_skin_index].skin, clothing or {})
+    self.portrait.puppet.anim:SetFacing(KEI_PORTRAIT_FACINGS[self.view_index])
+
+    self.portrait_view_left = CreatePortraitArrow(self.protocol_ring, -84, 0, true, .55)
+    self.portrait_view_right = CreatePortraitArrow(self.protocol_ring, 84, 0, false, .55)
+    self.portrait_view_left:SetOnClick(function()
+        self.view_index = (self.view_index - 2) % #KEI_PORTRAIT_FACINGS + 1
+        self.portrait.puppet.anim:SetFacing(KEI_PORTRAIT_FACINGS[self.view_index])
+    end)
+    self.portrait_view_right:SetOnClick(function()
+        self.view_index = self.view_index % #KEI_PORTRAIT_FACINGS + 1
+        self.portrait.puppet.anim:SetFacing(KEI_PORTRAIT_FACINGS[self.view_index])
+    end)
+
+    self.skin_selector = self.details_root:AddChild(Widget("skin_selector"))
+    self.skin_selector:SetPosition(0, -194)
+    self.skin_name_background = CreateAtlasBackground(
+        self.skin_selector, ATLAS, "quagmire_recipe_menu_block.tex", 148, 32
+    )
+    self.skin_left = CreatePortraitArrow(self.skin_selector, -100, 0, true, .5)
+    self.skin_right = CreatePortraitArrow(self.skin_selector, 100, 0, false, .5)
+    self.skin_name = self.skin_selector:AddChild(Text(HEADERFONT, 21, "", UICOLOURS.BROWN_DARK))
+    self.skin_name:SetRegionSize(150, 30)
+    self.skin_name:SetHAlign(ANCHOR_MIDDLE)
+    self.skin_name:SetPosition(0, 0)
+
+    self.dressup_button = self.details_root:AddChild(TextButton())
+    self.dressup_button:SetText("换装")
+    self.dressup_button:SetTextSize(20)
+    self.dressup_button:SetTextColour(UICOLOURS.GOLD)
+    self.dressup_button:SetTextFocusColour(UICOLOURS.GOLD)
+    self.dressup_button.image:SetTexture(ATLAS, "quagmire_recipe_tab_inactive.tex")
+    self.dressup_button.image:ScaleToSize(100, 32)
+    self.dressup_button.image:MoveToBack()
+    self.dressup_button:SetPosition(0, -231)
+
+    local function SelectSkin(index)
+        self.preview_skin_index = (index - 1) % #KEI_SKIN_OPTIONS + 1
+        local selected = KEI_SKIN_OPTIONS[self.preview_skin_index]
+        self.portrait:SetSkins(prefab, selected.skin, clothing or {})
+        self.portrait.puppet.anim:SetFacing(KEI_PORTRAIT_FACINGS[self.view_index])
+        self.skin_name:SetString(selected.name)
+    end
+
+    self.skin_left:SetOnClick(function()
+        SelectSkin(self.preview_skin_index - 1)
+    end)
+    self.skin_right:SetOnClick(function()
+        SelectSkin(self.preview_skin_index + 1)
+    end)
+    self.dressup_button:SetOnClick(function()
+        if self.dressup_cooldown > 0 then
+            return
+        end
+
+        local selected = KEI_SKIN_OPTIONS[self.preview_skin_index]
+        if selected.skin ~= self.equipped_skin
+            and MOD_RPC ~= nil
+            and MOD_RPC.TendouKei ~= nil
+            and MOD_RPC.TendouKei.SetKeiTaskBookSkin ~= nil
+        then
+            SendModRPCToServer(MOD_RPC.TendouKei.SetKeiTaskBookSkin, selected.skin)
+        end
+        self.dressup_cooldown = .5
+        self.dressup_button:Disable()
+    end)
+
+    self.skin_name:SetString(KEI_SKIN_OPTIONS[self.preview_skin_index].name)
+end
+
+function TaskPage:RefreshEquippedSkin()
+    local equipped_skin = GetOwnerSkinName(self.owner)
+    if equipped_skin ~= self.equipped_skin then
+        self.equipped_skin = equipped_skin
     end
 end
 
@@ -791,6 +915,13 @@ end
 function TaskPage:OnUpdate(dt)
     if self.portrait ~= nil then
         self.portrait:EmoteUpdate(dt)
+    end
+    self:RefreshEquippedSkin()
+    if self.dressup_cooldown > 0 then
+        self.dressup_cooldown = math.max(0, self.dressup_cooldown - dt)
+        if self.dressup_cooldown <= 0 and self.dressup_button ~= nil then
+            self.dressup_button:Enable()
+        end
     end
     self.refresh_elapsed = self.refresh_elapsed + dt
     if self.refresh_elapsed >= .25 then

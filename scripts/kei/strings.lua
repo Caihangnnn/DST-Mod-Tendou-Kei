@@ -181,7 +181,7 @@ local function RegisterProtocolItemStrings(def, suffix)
     STRINGS.CHARACTERS.GENERIC.DESCRIBE[key] = def.description or "一张 Kei 协议 CD。"
 end
 
-STRINGS.NAMES.KEI_TASK_BOOK = "任务书"
+STRINGS.NAMES.KEI_TASK_BOOK = "冒险手记"
 STRINGS.CHARACTERS.GENERIC.DESCRIBE.KEI_TASK_BOOK = "记录任务与数据的终端。"
 
 for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do

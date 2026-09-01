@@ -16,6 +16,7 @@ local RecorderAlterguardian = require("kei/recorder_alterguardian")
 local RecorderKlaus = require("kei/recorder_klaus")
 local RecorderVaultPillarGuard = require("kei/recorder_vault_pillar_guard")
 local RecorderLordfruitfly = require("kei/recorder_lordfruitfly")
+local RecorderStalker = require("kei/recorder_stalker")
 
 local assets = {
     Asset("ANIM", "anim/kei_data_recorder.zip"),
@@ -284,6 +285,7 @@ local function ClearChallengeTasks(target, reset_erosion)
         RecorderDaywalker2.Remove(target)
         RecorderAlterguardian.Remove(target)
         RecorderKlaus.Remove(target)
+        RecorderStalker.Remove(target)
         RecorderVaultPillarGuard.Remove(target)
         RecorderLordfruitfly.Remove(target)
         RecorderBoss.Remove(target)
@@ -307,6 +309,7 @@ local function ClearStaleRecorderDaywalkerEntities(inst)
     local stale_tags = {
         "kei_recorder_daywalker",
         "kei_recorder_daywalker2",
+        "kei_recorder_stalker",
         "kei_recorder_junk_pile_big",
         "kei_recorder_pigelitefighter",
         "junkmob",
@@ -325,6 +328,7 @@ local function ClearStaleRecorderDaywalkerEntities(inst)
         if entity.kei_recorder_source == inst then
             if entity:HasTag("kei_recorder_daywalker")
                 or entity:HasTag("kei_recorder_daywalker2")
+                or entity:HasTag("kei_recorder_stalker")
             then
                 ClearChallengeTasks(entity, false)
             end
@@ -451,6 +455,8 @@ local function PrepareRecorderChallenge(inst, target, doer)
         RecorderAlterguardian.Apply(target)
     elseif target.prefab == "kei_recorder_klaus" then
         RecorderKlaus.Apply(target)
+    elseif target.prefab == "kei_recorder_stalker" then
+        RecorderStalker.Apply(target)
     elseif target.prefab == "kei_recorder_vault_pillar_guard" then
         RecorderVaultPillarGuard.Apply(target, inst)
     elseif target.prefab == "kei_recorder_lordfruitfly" then
@@ -556,6 +562,8 @@ local function SpawnRecorderChallenge(inst, doer)
         and "kei_recorder_klaus"
         or challenge.summon_prefab == "lordfruitfly"
         and "kei_recorder_lordfruitfly"
+        or challenge.summon_prefab == "stalker_atrium"
+        and "kei_recorder_stalker"
         or challenge.summon_prefab
     local target = SpawnPrefab(summon_prefab)
     if target == nil then
@@ -962,6 +970,7 @@ local prefab_deps = {
     "junk_pile_big",
     "kei_recorder_daywalker",
     "kei_recorder_daywalker2",
+    "kei_recorder_stalker",
     "kei_recorder_junk_pile_big",
     "kei_recorder_pigelitefighter1",
     "kei_recorder_pigelitefighter2",

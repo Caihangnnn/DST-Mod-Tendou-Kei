@@ -55,7 +55,7 @@ function TaskSummon.PrepareSpecialTarget(target, doer, support_owner)
             support_owner = support_owner or target
             support_owner.kei_target_support_entities = { junk }
         end
-    elseif target.prefab == "stalker_atrium" then
+    elseif target.prefab == "stalker_atrium" or target.prefab == "kei_recorder_stalker" then
         target.IsNearAtrium = function() return true end
         target.OnLostAtrium = function() end
         target.IsAtriumDecay = function() return false end

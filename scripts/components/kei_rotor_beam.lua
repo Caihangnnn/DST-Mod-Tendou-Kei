@@ -923,23 +923,17 @@ function KeiRotorBeam:_UpdateFriendly(dt)
     end
 end
 
-local function IsShadowCreature(target)
-    if target:HasTag("shadowcreature")
-        or target:HasTag("shadow")
-        or target:HasTag("stalker")
-        or target:HasTag("stalker_minion")
-    then
-        return true
-    end
-
-    return target.prefab == "nightmarebeak"
-        or target.prefab == "crawlinghorror"
-        or target.prefab == "terrorbeak"
-        or target.prefab == "stalker"
-        or target.prefab == "stalker_minion"
-        or target.prefab == "shadowthrall_horns"
-        or target.prefab == "shadowthrall_wings"
-        or target.prefab == "shadowthrall_hand"
+local function IsDeadBeamTarget(target)
+    return target ~= nil
+        and (target.prefab == "crawlingnightmare"
+            or target.prefab == "nightmarebeak"
+            or target.prefab == "ruinsnightmare"
+            or target.prefab == "crawlinghorror"
+            or target.prefab == "terrorbeak"
+            or target.prefab == "ruins_shadeling"
+            or target.prefab == "oceanhorror"
+            or target.prefab == "shadowchanneler"
+            or target.prefab == "shadow_leech")
 end
 
 function KeiRotorBeam:_ClearPlayer(target)
@@ -1180,23 +1174,15 @@ function KeiRotorBeam:_UpdateEnemies()
     local radius = TUNING.KEI_ROTOR_BEAM_RADIUS or 8
     local found = {}
     for _, target in ipairs(FindEntitiesInRange(self.drone, radius, { "_combat" }, ENEMY_CANT_TAGS)) do
-        if IsInRange(self.drone, target, radius) and IsEnemyForOwner(self.owner, target) then
+        if IsInRange(self.drone, target, radius)
+            and IsEnemyForOwner(self.owner, target)
+            and (self.beam_name ~= "dead" or IsDeadBeamTarget(target))
+        then
             found[target] = true
             if self.beam_name == "confinement" then
                 ApplyConfinement(self.inst, target)
             elseif self.beam_name == "dead" then
-                if IsShadowCreature(target) then
-                    target.components.health:Kill()
-                else
-                    target.components.health:DoDelta(
-                        -1,
-                        true,
-                        "kei_rotor_dead",
-                        true,
-                        self.owner,
-                        true
-                    )
-                end
+                target.components.health:Kill()
             end
         end
     end

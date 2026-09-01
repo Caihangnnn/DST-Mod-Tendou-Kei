@@ -96,7 +96,7 @@ AddRows({
     { "toadstool", "蟾蜍高级", "攻击有概率向目标脚下投掷睡袋，并免疫催眠。", { short_name = "蟾蜍", implemented = true } },
     { "antlion", "蚁狮高级", "免疫沙尘暴、月亮风暴；攻击有概率在目标脚下生成中心大沙刺和三枚小沙刺。", { short_name = "蚁狮" } },
     { "beequeen", "蜂后高级", "获得被动技能威压，受到攻击时释放恐惧光环。", { short_name = "蜂后", implemented = true } },
-    { "stalker_atrium", "织影者高级", "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50% 的额外伤害。", { short_name = "织影者", implemented = true } },
+    { "stalker_atrium", "织影者高级", "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50% 的额外伤害；获得技能“梦魇”，施法动作是嘶吼，冷却 30 秒，扣除竞技场内所有玩家全部 SAN，每扣除最大 SAN 的 20% 为一档并召唤一只暗影生物攻击对应玩家（爬行暗影 50%、尖嘴暗影 30%、鲨鱼暗影 20%）；玩家身上播放暗影仆从死亡特效，暗影生物生成时播放暗影传送出现特效。", { short_name = "织影者", implemented = true } },
     { "alterguardian", "天体英雄高级", "电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。", { short_name = "天体英雄", implemented = true } },
     { "alterguardian_phase4_lunarrift", "天体后裔", "天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 50% 的额外伤害。", { tier = "special", implemented = true } },
 }, { category = "beast", tier = "advanced", implemented = true })
@@ -134,6 +134,8 @@ local RECORDER_SUMMON_PREFABS = {
     alterguardian = "kei_recorder_alterguardian",
     -- 克劳斯挑战使用第二阶段的独立记录器实体。
     klaus = "kei_recorder_klaus",
+    -- 织影者挑战使用独立实体，追加梦魇技能。
+    stalker_atrium = "kei_recorder_stalker",
     -- 远古守卫者挑战使用专用冲撞状态图，不修改原版 minotaur。
     minotaur = "kei_recorder_minotaur",
     -- 蟾蜍挑战使用专用催眠技能、孢子树和孢子云实体。

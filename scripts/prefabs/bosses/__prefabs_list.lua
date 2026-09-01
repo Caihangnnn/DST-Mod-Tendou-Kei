@@ -25,6 +25,7 @@ return {
     "scripts/prefabs/bosses/kei_recorder_klaus.lua",
     "scripts/prefabs/bosses/kei_recorder_klaus_soul.lua",
     "scripts/prefabs/bosses/kei_recorder_klaus_minion.lua",
+    "scripts/prefabs/bosses/kei_recorder_stalker.lua",
     "scripts/prefabs/bosses/kei_recorder_minotaur.lua",
     "scripts/prefabs/bosses/kei_recorder_vault_pillar_guard.lua",
     "scripts/prefabs/bosses/kei_recorder_toadstool.lua",

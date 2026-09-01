@@ -26,6 +26,29 @@ AddModRPCHandler("TendouKei", "RefuseTask", function(player, task_id)
     end
 end)
 
+-- The task book only exposes the two Kei base skins. Keep the allow-list on
+-- the server so the client cannot request an arbitrary skin name.
+local KEI_TASK_BOOK_SKINS = {
+    kei_none = true,
+    kei_skin_decagrammaton = true,
+}
+
+AddModRPCHandler("TendouKei", "SetKeiTaskBookSkin", function(player, skin_name)
+    if player == nil
+        or player.prefab ~= "kei"
+        or player:HasTag("playerghost")
+        or type(skin_name) ~= "string"
+        or not KEI_TASK_BOOK_SKINS[skin_name]
+        or player.components.skinner == nil
+    then
+        return
+    end
+
+    if player.components.skinner.skin_name ~= skin_name then
+        player.components.skinner:SetSkinName(skin_name)
+    end
+end)
+
 POPUPS.KEI_TASK_BOOK.fn = function(inst, show)
     if inst.HUD == nil then return end
     if not show then

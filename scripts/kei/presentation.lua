@@ -15,13 +15,16 @@ local function AddKeiExperienceDisplay(self)
     self.kei_experience:SetPosition(self.column1-50, 35, 0)
 
     -- The task book is a character UI tool rather than an inventory item.
-    self.kei_taskbook_button = self:AddChild(ImageButton("images/inventoryimages1.xml", "cookbook.tex"))
+    self.kei_taskbook_button = self:AddChild(ImageButton(
+        "images/inventoryimages/kei_items.xml",
+        "kei_task_book.tex"
+    ))
     self.kei_taskbook_button:SetNormalScale(1)
     self.kei_taskbook_button:SetFocusScale(1)
     self.kei_taskbook_button.scale_on_focus = false
     self.kei_taskbook_button:ForceImageSize(46, 46)
     self.kei_taskbook_button:SetPosition(self.column1-50, -76, 0)
-    self.kei_taskbook_button:SetHoverText("任务书")
+    self.kei_taskbook_button:SetHoverText("冒险手记")
     self.kei_taskbook_button:SetOnClick(function()
         if self.owner ~= nil and self.owner:IsValid() and POPUPS.KEI_TASK_BOOK ~= nil then
             -- HUD callbacks run on the client, where player:ShowPopUp is not
