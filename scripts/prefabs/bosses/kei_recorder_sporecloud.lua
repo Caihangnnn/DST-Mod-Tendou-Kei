@@ -8,7 +8,7 @@ local prefabs = {
     "kei_recorder_sporecloud_fx",
 }
 
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 local CLOUD_RADIUS = 3.5
 local DROWSY_INTERVAL = 1
 local DROWSY_VALUE = 1

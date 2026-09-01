@@ -2,7 +2,7 @@
 local KeiTimeScale = require("kei/time_scale")
 local MiniAlice = require("kei/mini_alice")
 local LifeProtocolDefs = require("kei/protocols/life")
-local RotorSurveyTargets = require("kei/rotor_survey_targets")
+local RotorSurveyTargets = require("kei/drone/targets")
 
 local KeiRotorBeam = Class(function(self, inst)
     self.inst = inst
@@ -412,7 +412,7 @@ function KeiRotorBeam:_UpdateSurvey(dt)
     local radius = TUNING.KEI_ROTOR_BEAM_RADIUS or 8
     local skills = self.owner ~= nil
         and self.owner.components ~= nil
-        and self.owner.components.kei_rotor_skills
+        and self.owner.components["drone/skills"]
         or nil
     local found = {}
 
@@ -1223,7 +1223,7 @@ function KeiRotorBeam:_UpdateResurrection(dt)
         return
     end
 
-    local power = self.inst.components ~= nil and self.inst.components.kei_rotor_power or nil
+    local power = self.inst.components ~= nil and self.inst.components["drone/power"] or nil
     local cost = TUNING.KEI_ROTOR_RESURRECTION_POWER_COST or 120
     local source = self.drone
     if power ~= nil and power:Consume(cost) then
@@ -1288,7 +1288,7 @@ function KeiRotorBeam:Start(beam_name, drone, owner)
     self.owner = owner
     drone._kei_rotor_beam_controller = self.inst
 
-    local power = self.inst.components ~= nil and self.inst.components.kei_rotor_power or nil
+    local power = self.inst.components ~= nil and self.inst.components["drone/power"] or nil
     local drain = (beam_name == "heal"
         or beam_name == "strengthen"
         or beam_name == "confinement"
@@ -1334,7 +1334,7 @@ function KeiRotorBeam:Stop()
         end
     end
 
-    local power = self.inst.components ~= nil and self.inst.components.kei_rotor_power or nil
+    local power = self.inst.components ~= nil and self.inst.components["drone/power"] or nil
     if power ~= nil then
         power:SetSkillDrain(0)
     end

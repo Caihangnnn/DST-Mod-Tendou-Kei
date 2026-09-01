@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 local WortoxSoulCommon = require("prefabs/wortox_soul_common")
 
 local RecorderKlaus = {}

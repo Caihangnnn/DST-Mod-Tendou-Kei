@@ -1,4 +1,4 @@
-local RecorderVaultPillarGuard = require("kei/recorder_vault_pillar_guard")
+local RecorderVaultPillarGuard = require("kei/recorder/bosses/recorder_vault_pillar_guard")
 
 local assets = {
     Asset("ANIM", "anim/vault_pillar_guard.zip"),

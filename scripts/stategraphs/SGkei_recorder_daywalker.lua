@@ -1,4 +1,4 @@
-local RecorderDaywalker = require("kei/recorder_daywalker")
+local RecorderDaywalker = require("kei/recorder/bosses/recorder_daywalker")
 local original = require("stategraphs/SGdaywalker")
 
 local IMPRISON_TIMER = "kei_recorder_imprison_cd"

@@ -35,8 +35,8 @@ local function GetNetMask(inst)
 end
 
 function RotorSurveySkills.GetMask(inst)
-    if inst ~= nil and inst.components ~= nil and inst.components.kei_rotor_skills ~= nil then
-        return inst.components.kei_rotor_skills.mask
+    if inst ~= nil and inst.components ~= nil and inst.components["drone/skills"] ~= nil then
+        return inst.components["drone/skills"].mask
     end
     return GetNetMask(inst)
 end

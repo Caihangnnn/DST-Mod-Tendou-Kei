@@ -1,4 +1,4 @@
-local brain = require("brains/kei_recorder_klaus_minionbrain")
+local brain = require("brains/recorder/kei_recorder_klaus_minionbrain")
 
 local assets = {
     Asset("ANIM", "anim/waxwell_shadow_mod.zip"),

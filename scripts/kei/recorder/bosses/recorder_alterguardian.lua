@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local CHECK_PERIOD = 0.5
 local ATTACK_SANITY_AMOUNT = TUNING.KEI_RECORDER_ALTERGUARDIAN_ATTACK_SANITY_AMOUNT or 50

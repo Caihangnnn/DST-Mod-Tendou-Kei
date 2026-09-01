@@ -1,5 +1,5 @@
-local RecorderBoss = require("kei/recorder_boss")
-local brain = require("brains/kei_recorder_pigelitefighterbrain")
+local RecorderBoss = require("kei/recorder/boss")
+local brain = require("brains/recorder/kei_recorder_pigelitefighterbrain")
 
 local assets = {
     Asset("ANIM", "anim/ds_pig_basic.zip"),

@@ -1,8 +1,8 @@
 -- 旋翼调查仪控制器状态图：按 cookbook 的持续阅读状态管理操控动作。
 
 local CONTROLLER_TAG = "kei_rotor_survey_controller"
-local RotorSurveyRegistry = require("kei/rotor_survey_registry")
-local RotorUpgrades = require("kei/rotor_upgrades")
+local RotorSurveyRegistry = require("kei/drone/registry")
+local RotorUpgrades = require("kei/drone/upgrades")
 local CONTROL_PRE = "kei_rotor_control_pre"
 local CONTROL_LOOP = "kei_rotor_control_loop"
 local CONTROL_STOP = "kei_rotor_control_stop"

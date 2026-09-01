@@ -1,6 +1,6 @@
 -- 旋翼调查仪控制器的电量组件。
 
-local RotorUpgrades = require("kei/rotor_upgrades")
+local RotorUpgrades = require("kei/drone/upgrades")
 
 local KeiRotorPower = Class(function(self, inst)
     self.inst = inst
@@ -138,9 +138,9 @@ function KeiRotorPower:Update(dt)
 
     if self.power <= 0 then
         if self.inst.components ~= nil
-            and self.inst.components.kei_rotor_beam ~= nil
+            and self.inst.components["drone/beam"] ~= nil
         then
-            self.inst.components.kei_rotor_beam:Stop()
+            self.inst.components["drone/beam"]:Stop()
         end
 
         local owner = GetOwner(self.inst)

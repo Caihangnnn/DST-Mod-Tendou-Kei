@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local SPEED_KEY = "kei_recorder_moose_moisture"
 local COOLDOWN = TUNING.KEI_RECORDER_MOOSE_VORTEX_COOLDOWN or 60

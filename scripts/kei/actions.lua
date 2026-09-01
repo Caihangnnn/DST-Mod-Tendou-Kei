@@ -730,12 +730,12 @@ local rotor_recharge_action = AddAction("KEI_RECHARGE_ROTOR", "充电", function
         or controller == nil
         or not controller:HasTag("kei_rotor_survey_controller")
         or controller.components == nil
-        or controller.components.kei_rotor_power == nil
+        or controller.components["drone/power"] == nil
     then
         return false
     end
 
-    controller.components.kei_rotor_power:Recharge(TUNING.KEI_BATTERY_POWER or 240)
+    controller.components["drone/power"]:Recharge(TUNING.KEI_BATTERY_POWER or 240)
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_CHARGED")
     return true

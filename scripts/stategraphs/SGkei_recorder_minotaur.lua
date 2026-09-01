@@ -1,6 +1,6 @@
 require("stategraphs/commonstates")
 
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 local original = require("stategraphs/SGminotaur")
 
 local states = {}

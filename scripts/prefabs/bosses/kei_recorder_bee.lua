@@ -1,4 +1,4 @@
-local brain = require("brains/kei_recorder_beebrain")
+local brain = require("brains/recorder/kei_recorder_beebrain")
 local beecommon = require("brains/beecommon")
 
 local assets = {

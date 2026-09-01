@@ -1,6 +1,6 @@
 require("stategraphs/commonstates")
 
-local RecorderAlterguardian = require("kei/recorder_alterguardian")
+local RecorderAlterguardian = require("kei/recorder/bosses/recorder_alterguardian")
 local original = require("stategraphs/SGalterguardian_phase3")
 
 local states = {}

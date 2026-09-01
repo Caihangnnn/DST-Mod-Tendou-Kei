@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local NIGHTMARE_TIMER = "kei_recorder_stalker_nightmare_cd"
 local NIGHTMARE_COOLDOWN = TUNING.KEI_RECORDER_STALKER_NIGHTMARE_COOLDOWN or 30

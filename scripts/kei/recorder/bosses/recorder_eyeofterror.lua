@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local GAZE_LOCK_KEY = "kei_recorder_eyeofterror_gaze"
 local GAZE_FX_PREFAB = "ghostlyelixir_player_shadow_fx"

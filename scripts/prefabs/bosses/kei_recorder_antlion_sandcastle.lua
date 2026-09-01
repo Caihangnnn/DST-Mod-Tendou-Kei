@@ -11,7 +11,7 @@ local prefabs = {
 local function OnDeath(inst)
     local owner = inst.kei_recorder_antlion_owner
     if owner ~= nil and owner:IsValid() and not inst.kei_recorder_cleanup then
-        local recorder_antlion = require("kei/recorder_antlion")
+        local recorder_antlion = require("kei/recorder/bosses/recorder_antlion")
         recorder_antlion.OnSandcastleDestroyed(owner, inst)
     end
 end

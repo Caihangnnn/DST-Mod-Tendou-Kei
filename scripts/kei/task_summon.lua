@@ -1,5 +1,5 @@
 local TaskSummon = {}
-local RecorderDaywalker2 = require("kei/recorder_daywalker2")
+local RecorderDaywalker2 = require("kei/recorder/bosses/recorder_daywalker2")
 
 -- These bosses normally assume a world-spawned encounter. Keep their
 -- instance-specific setup in one place so task and recorder summons agree.

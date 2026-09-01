@@ -49,8 +49,8 @@ function RotorUpgrades.GetLevel(inst, upgrade)
         return 0
     end
 
-    if inst.components ~= nil and inst.components.kei_rotor_upgrades ~= nil then
-        return inst.components.kei_rotor_upgrades:GetLevel(upgrade)
+    if inst.components ~= nil and inst.components["drone/upgrades"] ~= nil then
+        return inst.components["drone/upgrades"]:GetLevel(upgrade)
     end
 
     local netvar = inst["_kei_rotor_upgrade_" .. upgrade]

@@ -1,14 +1,13 @@
-local MakeKeiCharacterSkin = require("kei/skin_api")
+local RegisterKeiSkin = require("kei/skins/registry")
 
 local assets = {
     Asset("ANIM", "anim/kei.zip"),
     Asset("ANIM", "anim/ghost_kei_build.zip"),
 }
 
-return MakeKeiCharacterSkin("kei_none", {
-    name = "天童 柯伊",
-    description = "",
-    quote = "",
+local skin = CreatePrefabSkin("kei_none", {
+    base_prefab = "kei",
+    type = "base",
     skins = {
         normal_skin = "kei",
         ghost_skin = "ghost_kei_build",
@@ -20,3 +19,12 @@ return MakeKeiCharacterSkin("kei_none", {
     rarity = "Character",
 })
 
+STRINGS.SKIN_NAMES = STRINGS.SKIN_NAMES or {}
+STRINGS.SKIN_DESCRIPTIONS = STRINGS.SKIN_DESCRIPTIONS or {}
+STRINGS.SKIN_QUOTES = STRINGS.SKIN_QUOTES or {}
+STRINGS.SKIN_NAMES.kei_none = "天童 柯伊"
+STRINGS.SKIN_DESCRIPTIONS.kei_none = ""
+STRINGS.SKIN_QUOTES.kei_none = ""
+
+RegisterKeiSkin("kei_none")
+return skin

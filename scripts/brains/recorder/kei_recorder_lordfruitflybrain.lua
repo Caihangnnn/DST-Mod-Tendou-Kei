@@ -3,7 +3,7 @@ require "behaviours/wander"
 require "behaviours/findfarmplant"
 
 local BrainCommon = require("brains/braincommon")
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local MAX_WANDER_DIST = 15
 local GO_HOME_DIST = 30

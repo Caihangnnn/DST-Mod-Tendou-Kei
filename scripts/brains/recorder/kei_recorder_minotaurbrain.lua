@@ -4,7 +4,7 @@ require "behaviours/doaction"
 require "behaviours/chaseandattack"
 
 local BrainCommon = require("brains/braincommon")
-local RecorderChaseAndRam = require("behaviours/kei_recorder_chaseandram")
+local RecorderChaseAndRam = require("behaviours/recorder/kei_recorder_chaseandram")
 
 local START_FACE_DIST = 14
 local KEEP_FACE_DIST = 16

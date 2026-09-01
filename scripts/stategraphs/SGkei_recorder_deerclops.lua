@@ -1,4 +1,4 @@
-local RecorderDeerclops = require("kei/recorder_deerclops")
+local RecorderDeerclops = require("kei/recorder/bosses/recorder_deerclops")
 local original = require("stategraphs/SGdeerclops")
 
 local FREEZE_ROAR_TIMER = "kei_recorder_deerclops_freeze_roar_cd"

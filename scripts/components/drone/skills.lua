@@ -1,6 +1,6 @@
 -- 旋翼调查仪技能解锁状态。
 -- 解锁进度属于玩家，不属于控制器物品；更换控制器后仍然保留。
-local RotorSurveySkills = require("kei/rotor_survey_skills")
+local RotorSurveySkills = require("kei/drone/skills")
 
 local KeiRotorSkills = Class(function(self, inst)
     self.inst = inst

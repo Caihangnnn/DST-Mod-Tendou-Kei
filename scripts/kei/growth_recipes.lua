@@ -2,8 +2,8 @@
 
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 local MiniAlice = require("kei/mini_alice")
-local RotorSurveySkills = require("kei/rotor_survey_skills")
-local RotorUpgrades = require("kei/rotor_upgrades")
+local RotorSurveySkills = require("kei/drone/skills")
+local RotorUpgrades = require("kei/drone/upgrades")
 local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 
 local GrowthRecipes = {
@@ -398,7 +398,7 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
     local slots = inst.components ~= nil and inst.components.kei_protocolslots or nil
     local skill = RotorSurveySkills.GetSkillForRecipe(recname)
     if skill ~= nil then
-        local skills = inst.components ~= nil and inst.components.kei_rotor_skills or nil
+        local skills = inst.components ~= nil and inst.components["drone/skills"] or nil
         if skills == nil then
             return false, "KEI_ROTOR_SKILL_INVALID"
         end
@@ -422,7 +422,7 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
     end
     local upgrade = RotorUpgrades.GetUpgradeForRecipe(recname)
     if upgrade ~= nil then
-        local upgrades = inst.components ~= nil and inst.components.kei_rotor_upgrades or nil
+        local upgrades = inst.components ~= nil and inst.components["drone/upgrades"] or nil
         if upgrades == nil then
             return false, "KEI_ROTOR_UPGRADE_INVALID"
         end

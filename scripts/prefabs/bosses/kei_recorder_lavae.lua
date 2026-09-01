@@ -1,4 +1,4 @@
-local brain = require("brains/kei_recorder_lavaebrain")
+local brain = require("brains/recorder/kei_recorder_lavaebrain")
 
 local assets = {
     Asset("ANIM", "anim/lavae.zip"),

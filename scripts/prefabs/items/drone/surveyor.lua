@@ -1,8 +1,8 @@
 -- Kei 专属旋翼调查仪：旋翼测绘机的独立副本。
 
 local easing = require("easing")
-local RotorSurveyRegistry = require("kei/rotor_survey_registry")
-local RotorUpgrades = require("kei/rotor_upgrades")
+local RotorSurveyRegistry = require("kei/drone/registry")
+local RotorUpgrades = require("kei/drone/upgrades")
 
 local assets =
 {
@@ -425,9 +425,9 @@ local function OnDroneRemoved(inst)
     if beam_controller ~= nil
         and beam_controller:IsValid()
         and beam_controller.components ~= nil
-        and beam_controller.components.kei_rotor_beam ~= nil
+        and beam_controller.components["drone/beam"] ~= nil
     then
-        beam_controller.components.kei_rotor_beam:Stop()
+        beam_controller.components["drone/beam"]:Stop()
     end
     RemoveSkillBeam(inst)
     local pilot = inst._kei_drone_pilot

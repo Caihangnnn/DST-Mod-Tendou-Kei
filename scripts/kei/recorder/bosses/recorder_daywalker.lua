@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local IMPRISON_TIMER = "kei_recorder_imprison_cd"
 local CHECK_PERIOD = 0.25

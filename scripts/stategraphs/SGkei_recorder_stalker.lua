@@ -1,6 +1,6 @@
 require("stategraphs/commonstates")
 
-local RecorderStalker = require("kei/recorder_stalker")
+local RecorderStalker = require("kei/recorder/bosses/recorder_stalker")
 local original = require("stategraphs/SGstalker")
 
 local states = {}

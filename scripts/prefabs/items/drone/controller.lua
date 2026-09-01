@@ -1,6 +1,6 @@
 -- 旋翼调查仪控制器：手部装备，右键打开无人机控制轮盘。
-local RotorSurveyRegistry = require("kei/rotor_survey_registry")
-local RotorSurveySkills = require("kei/rotor_survey_skills")
+local RotorSurveyRegistry = require("kei/drone/registry")
+local RotorSurveySkills = require("kei/drone/skills")
 
 local DRONE_CONTROL_WHEEL_RADIUS = 100
 local StopDroneFollow
@@ -83,8 +83,8 @@ local function SetFollowActive(inst, active)
     if inst._kei_follow_active_net ~= nil then
         inst._kei_follow_active_net:set(active)
     end
-    if inst.components ~= nil and inst.components.kei_rotor_power ~= nil then
-        inst.components.kei_rotor_power:SetFollowDrain(
+    if inst.components ~= nil and inst.components["drone/power"] ~= nil then
+        inst.components["drone/power"]:SetFollowDrain(
             active and (TUNING.KEI_ROTOR_FOLLOW_DRAIN_RATE or 2) or 0
         )
     end
@@ -93,8 +93,8 @@ end
 local function SetBoundDrone(inst, drone, owner)
     local previous_drone = inst.linked_drone
     if previous_drone ~= nil and previous_drone ~= drone then
-        if inst.components ~= nil and inst.components.kei_rotor_beam ~= nil then
-            inst.components.kei_rotor_beam:Stop()
+        if inst.components ~= nil and inst.components["drone/beam"] ~= nil then
+            inst.components["drone/beam"]:Stop()
         end
         if previous_drone.StopFollowing ~= nil then
             previous_drone:StopFollowing()
@@ -206,8 +206,8 @@ local function SetControllerOwner(inst, owner)
         inst._kei_controller_owner_userid_net:set(userid or "")
     end
     RotorSurveyRegistry.RegisterController(inst, userid)
-    if inst.components ~= nil and inst.components.kei_rotor_power ~= nil then
-        inst.components.kei_rotor_power:RefreshMaxPower(owner)
+    if inst.components ~= nil and inst.components["drone/power"] ~= nil then
+        inst.components["drone/power"]:RefreshMaxPower(owner)
     end
 end
 
@@ -235,8 +235,8 @@ local function OnLoad(inst, data)
 end
 
 local function OnRemove(inst)
-    if inst.components ~= nil and inst.components.kei_rotor_beam ~= nil then
-        inst.components.kei_rotor_beam:Stop()
+    if inst.components ~= nil and inst.components["drone/beam"] ~= nil then
+        inst.components["drone/beam"]:Stop()
     end
     StopDroneFollow(inst, inst._kei_controller_owner)
     local drone = inst.linked_drone
@@ -514,12 +514,12 @@ local function ActivateRotorBeam(inst, doer, beam_name)
 
     if drone.GetSkillBeam ~= nil and drone:GetSkillBeam() == beam_name then
         drone:SetSkillBeam(nil)
-        if inst.components.kei_rotor_beam ~= nil then
-            inst.components.kei_rotor_beam:Stop()
+        if inst.components["drone/beam"] ~= nil then
+            inst.components["drone/beam"]:Stop()
         end
     else
-        if inst.components.kei_rotor_beam == nil
-            or not inst.components.kei_rotor_beam:Start(beam_name, drone, doer)
+        if inst.components["drone/beam"] == nil
+            or not inst.components["drone/beam"]:Start(beam_name, drone, doer)
         then
             return false
         end
@@ -740,8 +740,8 @@ local function fn()
     inst:AddComponent("perishable")
     inst.components.perishable:SetPerishTime(TUNING.KEI_ROTOR_CONTROLLER_MAX_POWER or 240)
 
-    inst:AddComponent("kei_rotor_power")
-    inst:AddComponent("kei_rotor_beam")
+    inst:AddComponent("drone/power")
+    inst:AddComponent("drone/beam")
 
     inst:AddComponent("equippable")
     inst.components.equippable.equipslot = EQUIPSLOTS.HANDS

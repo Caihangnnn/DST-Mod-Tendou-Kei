@@ -1,6 +1,6 @@
 require("stategraphs/commonstates")
 
-local RecorderDragonfly = require("kei/recorder_dragonfly")
+local RecorderDragonfly = require("kei/recorder/bosses/recorder_dragonfly")
 local original = require("stategraphs/SGdragonfly")
 
 local states = {}

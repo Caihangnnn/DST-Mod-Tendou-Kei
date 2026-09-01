@@ -1,7 +1,7 @@
 require "behaviours/doaction"
 
 local OriginalBrain = require("brains/beargerbrain")
-local RecorderBearger = require("kei/recorder_bearger")
+local RecorderBearger = require("kei/recorder/bosses/recorder_bearger")
 
 local function EatRecorderBeeAction(inst)
     if inst.sg:HasStateTag("busy") and not inst.sg:HasStateTag("wantstoeat") then

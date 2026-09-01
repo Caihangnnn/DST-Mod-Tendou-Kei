@@ -7,8 +7,8 @@ local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
 local KeiBackupBody = require("kei/growth/backup_body")
-local RotorSurveySkills = require("kei/rotor_survey_skills")
-local RotorSurveyRegistry = require("kei/rotor_survey_registry")
+local RotorSurveySkills = require("kei/drone/skills")
+local RotorSurveyRegistry = require("kei/drone/registry")
 local ClientSettings = require("kei/client_settings")
 
 local assets = {
@@ -1172,11 +1172,11 @@ local function OnSave(inst, data)
     if inst.components.kei_experience ~= nil then
         data.kei_experience = inst.components.kei_experience:OnSave()
     end
-    if inst.components.kei_rotor_skills ~= nil then
-        data.kei_rotor_skills = inst.components.kei_rotor_skills:OnSave()
+    if inst.components["drone/skills"] ~= nil then
+        data.kei_rotor_skills = inst.components["drone/skills"]:OnSave()
     end
-    if inst.components.kei_rotor_upgrades ~= nil then
-        data.kei_rotor_upgrades = inst.components.kei_rotor_upgrades:OnSave()
+    if inst.components["drone/upgrades"] ~= nil then
+        data.kei_rotor_upgrades = inst.components["drone/upgrades"]:OnSave()
     end
     if inst.components.kei_taskbook ~= nil then
         data.kei_taskbook = inst.components.kei_taskbook:OnSave()
@@ -1190,11 +1190,11 @@ local function OnLoad(inst, data)
     if data ~= nil and data.kei_experience ~= nil and inst.components.kei_experience ~= nil then
         inst.components.kei_experience:OnLoad(data.kei_experience)
     end
-    if data ~= nil and data.kei_rotor_skills ~= nil and inst.components.kei_rotor_skills ~= nil then
-        inst.components.kei_rotor_skills:OnLoad(data.kei_rotor_skills)
+    if data ~= nil and data.kei_rotor_skills ~= nil and inst.components["drone/skills"] ~= nil then
+        inst.components["drone/skills"]:OnLoad(data.kei_rotor_skills)
     end
-    if data ~= nil and data.kei_rotor_upgrades ~= nil and inst.components.kei_rotor_upgrades ~= nil then
-        inst.components.kei_rotor_upgrades:OnLoad(data.kei_rotor_upgrades)
+    if data ~= nil and data.kei_rotor_upgrades ~= nil and inst.components["drone/upgrades"] ~= nil then
+        inst.components["drone/upgrades"]:OnLoad(data.kei_rotor_upgrades)
     end
     if data ~= nil and data.kei_taskbook ~= nil and inst.components.kei_taskbook ~= nil then
         inst.components.kei_taskbook:OnLoad(data.kei_taskbook)
@@ -1241,8 +1241,8 @@ local function master_postinit(inst)
     -- 协议槽负责扫描背包前 1/3/5/7 格中的协议 CD 并施加效果。
     inst:AddComponent("kei_protocolslots")
     inst:AddComponent("kei_experience")
-    inst:AddComponent("kei_rotor_skills")
-    inst:AddComponent("kei_rotor_upgrades")
+    inst:AddComponent("drone/skills")
+    inst:AddComponent("drone/upgrades")
     inst:AddComponent("kei_taskbook")
 
     -- The cycles world state increments exactly when a new day begins. The

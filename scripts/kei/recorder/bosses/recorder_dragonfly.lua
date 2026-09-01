@@ -1,4 +1,4 @@
-local RecorderBoss = require("kei/recorder_boss")
+local RecorderBoss = require("kei/recorder/boss")
 
 local IGNITE_STATE = "kei_recorder_ignite"
 local IGNITE_COOLDOWN = 10

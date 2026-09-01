@@ -5,10 +5,6 @@ GLOBAL.setmetatable(env, {
     end,
 })
 
---- 模组唯一标识符，用于全局命名空间隔离。
----@type string
-local modid = 'tendou_kei'
-
 --- 角色 prefab 名称。
 ---@type string
 local char_prefab = 'kei'
@@ -19,7 +15,6 @@ GLOBAL.TENDOU_KEI_API = env
 PrefabFiles = { char_prefab .. "__all_prefabs" }
 
 Assets = {
-    Asset("ANIM", "anim/cookbook.zip"),
     Asset("ATLAS", "images/quagmire_recipebook.xml"),
     Asset("IMAGE", "images/quagmire_recipebook.tex"),
     Asset("ANIM", "anim/kei_exp.zip"),  -- Experience status animation

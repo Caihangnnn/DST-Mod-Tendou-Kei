@@ -1,6 +1,6 @@
 -- Persistent rotor surveyor upgrade levels owned by the Kei character.
 
-local RotorUpgrades = require("kei/rotor_upgrades")
+local RotorUpgrades = require("kei/drone/upgrades")
 
 local KeiRotorUpgrades = Class(function(self, inst)
     self.inst = inst

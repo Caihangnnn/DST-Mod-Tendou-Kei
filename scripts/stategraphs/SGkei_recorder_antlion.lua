@@ -1,6 +1,6 @@
 require("stategraphs/commonstates")
 
-local RecorderAntlion = require("kei/recorder_antlion")
+local RecorderAntlion = require("kei/recorder/bosses/recorder_antlion")
 
 --------------------------------------------------------------------------
 
