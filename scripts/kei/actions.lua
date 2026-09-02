@@ -681,6 +681,18 @@ local WORLD_ANIM_CANDIDATES = {
 
 local function GetTargetWorldAnim(target, slot)
     if target ~= nil and target.AnimState ~= nil then
+        -- Equipment from other mods may use a custom idle animation. Read the
+        -- actual current name before falling back to the common vanilla names.
+        if target.AnimState.GetCurrentAnimationName ~= nil then
+            local success, current = pcall(
+                target.AnimState.GetCurrentAnimationName,
+                target.AnimState
+            )
+            if success and type(current) == "string" and current ~= "" then
+                return current
+            end
+        end
+
         for _, anim in ipairs(WORLD_ANIM_CANDIDATES) do
             if target.AnimState:IsCurrentAnimation(anim) then
                 return anim

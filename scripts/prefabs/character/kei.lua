@@ -70,13 +70,12 @@ local KEI_LIGHT_FALLOFF = 0.6
 local KEI_LIGHT_INTENSITY = 0.35
 local KEI_LIGHT_COLOUR = { 240 / 255, 187 / 255, 203 / 255 }
 
--- 初始物品先给一组电池，保证角色刚进世界时可以测试电量循环。
+-- 初始物品提供少量电池和一个解析工具，方便角色刚进世界时开始使用核心流程。
 local start_inv = {
     "kei_battery",
     "kei_battery",
     "kei_battery",
-    "kei_battery",
-    "kei_battery",
+    "kei_analysis_tool",
 }
 
 local MINI_ALICE_SLOT = 8

@@ -27,6 +27,25 @@ local RotorSurveySkills = {
     DEFAULT_MASK = 1,
 }
 
+local SKILL_BY_RECIPE = {
+    kei_rotor_skill_pilot = "pilot",
+    kei_rotor_skill_resurrection = "resurrection",
+    kei_rotor_skill_heal = "heal",
+    kei_rotor_skill_strengthen = "strengthen",
+    kei_rotor_skill_confinement = "confinement",
+    kei_rotor_skill_dead = "dead",
+    kei_rotor_skill_survey = "survey",
+    kei_rotor_skill_follow = "follow",
+    kei_rotor_skill_teleport = "teleport",
+    kei_rotor_skill_collect = "collect",
+    kei_rotor_skill_friendly = "friendly",
+    kei_rotor_skill_fishing = "fishing",
+    kei_rotor_skill_nature = "nature",
+    kei_rotor_skill_pending_1 = "pending_1",
+    kei_rotor_skill_pending_2 = "pending_2",
+    kei_rotor_skill_pending_3 = "pending_3",
+}
+
 local function GetNetMask(inst)
     return inst ~= nil
         and inst._kei_rotor_skill_mask ~= nil
@@ -47,44 +66,11 @@ function RotorSurveySkills.HasSkill(inst, skill)
 end
 
 function RotorSurveySkills.IsSkillRecipe(recname)
-    return recname == "kei_rotor_skill_pilot"
-        or recname == "kei_rotor_skill_resurrection"
-        or recname == "kei_rotor_skill_heal"
-        or recname == "kei_rotor_skill_strengthen"
-        or recname == "kei_rotor_skill_confinement"
-        or recname == "kei_rotor_skill_dead"
-        or recname == "kei_rotor_skill_survey"
-        or recname == "kei_rotor_skill_follow"
-        or recname == "kei_rotor_skill_teleport"
-        or recname == "kei_rotor_skill_collect"
-        or recname == "kei_rotor_skill_friendly"
-        or recname == "kei_rotor_skill_fishing"
-        or recname == "kei_rotor_skill_nature"
-        or recname == "kei_rotor_skill_pending_1"
-        or recname == "kei_rotor_skill_pending_2"
-        or recname == "kei_rotor_skill_pending_3"
+    return SKILL_BY_RECIPE[recname] ~= nil
 end
 
 function RotorSurveySkills.GetSkillForRecipe(recname)
-    local skills = {
-        kei_rotor_skill_pilot = "pilot",
-        kei_rotor_skill_resurrection = "resurrection",
-        kei_rotor_skill_heal = "heal",
-        kei_rotor_skill_strengthen = "strengthen",
-        kei_rotor_skill_confinement = "confinement",
-        kei_rotor_skill_dead = "dead",
-        kei_rotor_skill_survey = "survey",
-        kei_rotor_skill_follow = "follow",
-        kei_rotor_skill_teleport = "teleport",
-        kei_rotor_skill_collect = "collect",
-        kei_rotor_skill_friendly = "friendly",
-        kei_rotor_skill_fishing = "fishing",
-        kei_rotor_skill_nature = "nature",
-        kei_rotor_skill_pending_1 = "pending_1",
-        kei_rotor_skill_pending_2 = "pending_2",
-        kei_rotor_skill_pending_3 = "pending_3",
-    }
-    return skills[recname]
+    return SKILL_BY_RECIPE[recname]
 end
 
 return RotorSurveySkills

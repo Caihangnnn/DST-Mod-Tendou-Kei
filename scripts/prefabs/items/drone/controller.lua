@@ -708,8 +708,6 @@ local function fn()
     inst.AnimState:PlayAnimation("drone_zap_bundle")
 
     inst:AddTag("kei_rotor_survey_controller")
-    inst:AddTag("show_spoilage")
-    inst:AddTag("fresh")
     inst:AddTag("donotautopick")
     inst:AddTag("nosteal")
     inst._kei_controller_owner_userid_net = net_string(inst.GUID, "kei_rotor_survey_controller.owner_userid")

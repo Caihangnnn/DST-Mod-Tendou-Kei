@@ -1,4 +1,5 @@
 local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
+local VirtualEquipment = require("kei/protocols/analysis/virtual_equipment")
 
 local ArmorAnalysisEquipment = {}
 
@@ -37,6 +38,7 @@ local function CleanVirtualEquipment(item, equipslot)
     item:RemoveTag("repairable")
 
     if item.components.equippable ~= nil then
+        VirtualEquipment.GuardBuildDiscount(item)
         -- A virtual armor copy must not run arbitrary source-prefab equip
         -- callbacks after its fueled/uses components have been removed.
         item.components.equippable:SetOnEquip(nil)

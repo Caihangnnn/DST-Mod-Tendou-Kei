@@ -250,7 +250,8 @@ function KeiExperience:GetGrowthMode()
 end
 
 function KeiExperience:IsNonAttackDamageImmune()
-    return self:GetGrowthMode() ~= nil
+    -- 满经验只提供属性强化；非受击伤害免疫仅属于临时潜能状态。
+    return self:GetGrowthMode() == "potential"
 end
 
 function KeiExperience:RefreshGrowthEffects()

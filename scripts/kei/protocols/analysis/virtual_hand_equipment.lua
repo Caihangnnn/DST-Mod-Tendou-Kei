@@ -1,4 +1,5 @@
 local VirtualHandEquipment = {}
+local VirtualEquipment = require("kei/protocols/analysis/virtual_equipment")
 
 -- Keep source callbacks safe while disabling armor inheritance.
 local function DisableVirtualHandArmor(item)
@@ -63,6 +64,7 @@ local function CleanVirtualEquipment(item)
         item:RemoveComponent("perishable")
     end
 
+    VirtualEquipment.GuardBuildDiscount(item)
     DisableVirtualHandArmor(item)
 end
 

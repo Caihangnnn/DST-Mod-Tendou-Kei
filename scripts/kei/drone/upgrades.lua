@@ -27,16 +27,17 @@ local RotorUpgrades = {
     },
 }
 
+local UPGRADE_BY_RECIPE = {}
+for upgrade, definition in pairs(RotorUpgrades.DEFINITIONS) do
+    UPGRADE_BY_RECIPE[definition.recipe] = upgrade
+end
+
 local function GetDefinition(upgrade)
     return RotorUpgrades.DEFINITIONS[upgrade]
 end
 
 function RotorUpgrades.GetUpgradeForRecipe(recname)
-    for upgrade, definition in pairs(RotorUpgrades.DEFINITIONS) do
-        if definition.recipe == recname then
-            return upgrade
-        end
-    end
+    return UPGRADE_BY_RECIPE[recname]
 end
 
 function RotorUpgrades.IsUpgradeRecipe(recname)

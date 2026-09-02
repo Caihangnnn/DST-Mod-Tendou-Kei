@@ -396,36 +396,119 @@ local function SetInventoryImage(inst, imagename, atlasname)
     TrySetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.atlas, DEFAULT_ANALYSIS_VISUAL.image)
 end
 
-local function SetAnalysisWorldAnimation(inst, bank, build, anim)
-    local use_default_visual = bank == nil and build == nil and anim == nil
-    bank = bank or DEFAULT_ANALYSIS_VISUAL.bank
-    build = build or DEFAULT_ANALYSIS_VISUAL.build
-    anim = anim or DEFAULT_ANALYSIS_VISUAL.anim
+local function SetAnalysisVisualSkinBuild(inst, skin_build, base_build)
+    local animstate = inst.AnimState
+    if animstate == nil then
+        return
+    end
+
+    -- SetAnalysisData can run more than once for an item copied from another
+    -- CD. Remove the previous skin override before applying the new one.
+    if inst.kei_analysis_visual_skin_build ~= nil
+        and animstate.ClearOverrideBuild ~= nil
+    then
+        pcall(animstate.ClearOverrideBuild, animstate, inst.kei_analysis_visual_skin_build)
+    end
+    inst.kei_analysis_visual_skin_build = nil
+
+    if skin_build ~= nil
+        and skin_build ~= base_build
+        and animstate.AddOverrideBuild ~= nil
+    then
+        local success = pcall(animstate.AddOverrideBuild, animstate, skin_build)
+        if success then
+            inst.kei_analysis_visual_skin_build = skin_build
+        end
+    end
+end
+
+local function TrySetAnalysisWorldAnimation(inst, bank, build, anim, skin_build)
+    if bank == nil or build == nil or anim == nil then
+        return false
+    end
 
     local success, visual_valid = pcall(function()
         inst.AnimState:SetBank(bank)
         inst.AnimState:SetBuild(build)
+        SetAnalysisVisualSkinBuild(inst, skin_build, build)
         inst.AnimState:PlayAnimation(anim)
+
+        -- IsCurrentAnimation only confirms the requested name. A missing
+        -- animation can still report that name, so also require real frames.
+        local frame_count = inst.AnimState:GetCurrentAnimationNumFrames()
+        local length = inst.AnimState:GetCurrentAnimationLength()
         return (type(bank) ~= "number" or inst.AnimState:GetBankHash() == bank)
             and inst.AnimState:GetBuild() == build
             and inst.AnimState:IsCurrentAnimation(anim)
+            and (type(frame_count) ~= "number" or frame_count > 0)
+            and (type(length) ~= "number" or length > 0)
     end)
 
-    if success and visual_valid then
-        SetWorldScale(inst, use_default_visual and DEFAULT_ANALYSIS_VISUAL.scale or nil)
+    return success and visual_valid
+end
+
+local function SetAnalysisFloater(inst, floater_visual)
+    local floater = inst.components ~= nil and inst.components.floater or nil
+    if floater == nil or floater.SetBankSwapOnFloat == nil then
         return
     end
 
-    -- 外部动画 bank、build 或 anim 不存在时回退到通用解析 CD 地面动画。
-    local fallback_success = pcall(function()
-        inst.AnimState:SetBank(DEFAULT_ANALYSIS_VISUAL.bank)
-        inst.AnimState:SetBuild(DEFAULT_ANALYSIS_VISUAL.build)
-        inst.AnimState:PlayAnimation(DEFAULT_ANALYSIS_VISUAL.anim)
-        SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
-    end)
-    if not fallback_success then
-        SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
+    if floater_visual ~= nil and floater_visual.do_bank_swap then
+        floater:SetBankSwapOnFloat(
+            true,
+            floater_visual.float_index,
+            floater_visual.swap_data
+        )
+    elseif floater_visual ~= nil and floater_visual.swap_data ~= nil
+        and floater.SetSwapData ~= nil
+    then
+        floater:SetBankSwapOnFloat(false)
+        floater:SetSwapData(floater_visual.swap_data)
+    else
+        floater:SetBankSwapOnFloat(false)
+        if floater.SetSwapData ~= nil then
+            floater:SetSwapData(nil)
+        end
     end
+end
+
+local function SetAnalysisWorldAnimation(inst, bank, build, anim, skin_build, floater_visual)
+    local use_default_visual = bank == nil and build == nil and anim == nil
+    local source_visual_valid = not use_default_visual
+        and TrySetAnalysisWorldAnimation(inst, bank, build, anim, skin_build)
+
+    -- A few equipment prefabs expose a valid ground animation only through
+    -- their floater swap data. Try that bank/animation before giving up.
+    if not source_visual_valid
+        and floater_visual ~= nil
+        and floater_visual.swap_data ~= nil
+    then
+        local swap_data = floater_visual.swap_data
+        source_visual_valid = TrySetAnalysisWorldAnimation(
+            inst,
+            swap_data.bank,
+            build,
+            swap_data.anim,
+            skin_build
+        )
+    end
+
+    if source_visual_valid then
+        SetWorldScale(inst, 1)
+        SetAnalysisFloater(inst, floater_visual)
+        return true
+    end
+
+    -- 外部动画 bank、build 或 anim 不存在时回退到通用解析 CD 地面动画。
+    local fallback_success = TrySetAnalysisWorldAnimation(
+        inst,
+        DEFAULT_ANALYSIS_VISUAL.bank,
+        DEFAULT_ANALYSIS_VISUAL.build,
+        DEFAULT_ANALYSIS_VISUAL.anim
+    )
+    SetAnalysisFloater(inst, nil)
+    SetWorldScale(inst, DEFAULT_ANALYSIS_VISUAL.scale)
+    return fallback_success
 end
 
 local WORLD_ANIM_CANDIDATES = {
@@ -440,6 +523,16 @@ local WORLD_ANIM_CANDIDATES = {
 
 local function GetCurrentOrFallbackAnim(source, fallback)
     if source ~= nil and source.AnimState ~= nil then
+        if source.AnimState.GetCurrentAnimationName ~= nil then
+            local success, current = pcall(
+                source.AnimState.GetCurrentAnimationName,
+                source.AnimState
+            )
+            if success and type(current) == "string" and current ~= "" then
+                return current
+            end
+        end
+
         for _, anim in ipairs(WORLD_ANIM_CANDIDATES) do
             if source.AnimState:IsCurrentAnimation(anim) then
                 return anim
@@ -483,10 +576,28 @@ local function GetAnalysisVisualFromSource(data)
     local visual = nil
     if source.AnimState ~= nil then
         local visual_success, visual_data = pcall(function()
+            local floater = source.components ~= nil and source.components.floater or nil
+            local swap_data = floater ~= nil and floater.swap_data or nil
+            local copied_swap_data = nil
+            if floater ~= nil and swap_data ~= nil then
+                copied_swap_data = {
+                    bank = swap_data.bank,
+                    anim = swap_data.anim,
+                    sym_build = swap_data.sym_build,
+                    sym_name = swap_data.sym_name,
+                }
+            end
+
             return {
-                bank = source.AnimState:GetBankHash(),
-                build = data.skin_build or GetSkinBuild(source) or source.AnimState:GetBuild(),
+                bank = source.AnimState:GetBankHash() or data.visual_bank,
+                build = source.AnimState:GetBuild() or data.visual_build,
                 anim = GetCurrentOrFallbackAnim(source, data.visual_anim),
+                skin_build = data.skin_build or GetSkinBuild(source),
+                floater = floater ~= nil and {
+                    do_bank_swap = floater.do_bank_swap == true,
+                    float_index = floater.float_index,
+                    swap_data = copied_swap_data,
+                } or nil,
             }
         end)
         visual = visual_success and visual_data or nil
@@ -505,7 +616,9 @@ local function ApplyAnalysisAppearance(inst, data, icon_image, visual)
             inst,
             visual ~= nil and visual.bank or nil,
             visual ~= nil and visual.build or nil,
-            visual ~= nil and visual.anim or nil
+            visual ~= nil and visual.anim or nil,
+            visual ~= nil and visual.skin_build or nil,
+            visual ~= nil and visual.floater or nil
         )
     else
         SetInventoryImage(inst, DEFAULT_ANALYSIS_VISUAL.image, DEFAULT_ANALYSIS_VISUAL.atlas)

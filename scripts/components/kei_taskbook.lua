@@ -15,6 +15,7 @@ local KeiTaskBook = Class(function(self, inst)
     self.tasks = {}
     self.task_serial = 0
     self.last_generated_day = -1
+    self.last_blueprint_reward_day = -1
     self.task_version = TaskBook.TASK_VERSION
     self.completed_task_count = 0
     self.claimed_task_milestones = {}
@@ -139,6 +140,68 @@ function KeiTaskBook:GiveTaskMilestoneGifts()
     end
 end
 
+local function CanReceiveRandomBlueprint(recipe, builder)
+    if recipe == nil or recipe.nounlock or recipe.builder_tag ~= nil then
+        return false
+    end
+
+    -- Match the game's random blueprint rules: recipes without a real tech
+    -- tier and recipes from the LOST tier are not learnable blueprint rewards.
+    local has_tech = false
+    for _, value in pairs(recipe.level or {}) do
+        if value >= 10 then
+            return false
+        elseif value > 0 then
+            has_tech = true
+        end
+    end
+    if not has_tech or builder == nil then return false end
+
+    return not builder:KnowsRecipe(recipe) and builder:CanLearn(recipe.name)
+end
+
+function KeiTaskBook:GiveDailyBlueprintReward()
+    local day = GetWorldDay()
+    if self.last_blueprint_reward_day == day then return false end
+
+    local builder = self.inst.components ~= nil and self.inst.components.builder or nil
+    if builder == nil or AllRecipes == nil then return false end
+
+    local candidates = {}
+    for _, recipe in pairs(AllRecipes) do
+        if IsRecipeValid(recipe.name) and CanReceiveRandomBlueprint(recipe, builder) then
+            table.insert(candidates, recipe)
+        end
+    end
+    if #candidates == 0 then return false end
+
+    local recipe = candidates[math.random(#candidates)]
+    local blueprint = SpawnPrefab("blueprint")
+    if blueprint == nil or blueprint.components == nil or blueprint.components.teacher == nil then
+        if blueprint ~= nil then blueprint:Remove() end
+        return false
+    end
+
+    blueprint.recipetouse = recipe.name
+    blueprint.components.teacher:SetRecipe(recipe.name)
+    local names = STRINGS ~= nil and STRINGS.NAMES or nil
+    local recipe_name = names ~= nil and names[string.upper(recipe.name)] or nil
+    local blueprint_name = names ~= nil and names.BLUEPRINT or "Blueprint"
+    local unknown_name = names ~= nil and names.UNKNOWN or "Unknown"
+    if blueprint.components.named ~= nil then
+        blueprint.components.named:SetName((recipe_name or unknown_name or recipe.name) .. " " .. blueprint_name)
+    end
+
+    local inventory = self.inst.components.inventory
+    if inventory == nil then
+        blueprint:Remove()
+        return false
+    end
+    inventory:GiveItem(blueprint, nil, self.inst:GetPosition())
+    self.last_blueprint_reward_day = day
+    return true
+end
+
 function KeiTaskBook:RemoveExpiredTasks(day)
     local kept, changed = {}, false
     for _, task in ipairs(self.tasks) do
@@ -219,6 +282,7 @@ function KeiTaskBook:SubmitTask(id)
             task.completed = true
             self.completed_task_count = self.completed_task_count + 1
             self:GiveTaskMilestoneGifts()
+            self:GiveDailyBlueprintReward()
             self:SyncNetValues()
             self.inst:PushEvent("kei_taskbook_changed", { task_id = id, completed = true })
             return true
@@ -469,6 +533,7 @@ function KeiTaskBook:OnSave()
     return {
         records = self.records, implanted = self.implanted, tasks = self.tasks,
         task_serial = self.task_serial, last_generated_day = self.last_generated_day,
+        last_blueprint_reward_day = self.last_blueprint_reward_day,
         task_version = self.task_version, completed_task_count = self.completed_task_count,
         claimed_task_milestones = self.claimed_task_milestones,
     }
@@ -487,6 +552,7 @@ function KeiTaskBook:OnLoad(data)
     self.tasks = data ~= nil and data.tasks or {}
     self.task_serial = tonumber(data ~= nil and data.task_serial) or 0
     self.last_generated_day = tonumber(data ~= nil and data.last_generated_day) or -1
+    self.last_blueprint_reward_day = tonumber(data ~= nil and data.last_blueprint_reward_day) or -1
     self.completed_task_count = math.max(0, tonumber(data ~= nil and data.completed_task_count) or 0)
     self.claimed_task_milestones = data ~= nil and data.claimed_task_milestones or {}
     local task_version = tonumber(data ~= nil and data.task_version) or 1

@@ -11,7 +11,7 @@
 
 -- 模组在游戏列表中的基础信息。
 author = "StellarVoyage"
-version = "0.1.2"
+version = "0.0.1"
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 
@@ -69,6 +69,24 @@ configuration_options = {
         default = true,
     },
     {
+        name = "KEI_VIRTUAL_EQUIPMENT_BUILD_DISCOUNT",
+        label = "虚拟装备建造减半",
+        hover = "设置协议槽中的虚拟装备是否可以提供建造材料减半效果。",
+        options = {
+            {
+                description = "启用",
+                hover = "允许虚拟装备提供建造材料折扣。",
+                data = true,
+            },
+            {
+                description = "关闭",
+                hover = "关闭所有虚拟装备提供的建造材料折扣，真实装备不受影响。",
+                data = false,
+            },
+        },
+        default = true,
+    },
+    {
         name = "KEI_ALLOW_DATA_COPY",
         label = "允许拷贝协议数据",
         hover = "开启后，可用空白数据记录 CD 拷贝战斗数据 CD，也可用装备解析工具拷贝数据化装备。",
@@ -106,8 +124,8 @@ configuration_options = {
     },
     {
         name = "KEI_PROTOCOL_SLOT_MAX",
-        label = "Protocol slot total",
-        hover = "Sets the total number of protocol slots available to Kei.",
+        label = "协议槽总数",
+        hover = "设置 Kei 可用的协议槽数量。",
         options = {
             { description = "1", data = 1 },
             { description = "2", data = 2 },

@@ -1,4 +1,6 @@
 local KEI_ROTOR_FILTER = "KEI_ROTOR"
+local KEI_PROTOCOL_FILTER = "KEI_PROTOCOL"
+local CombatProtocolDefs = require("kei/protocols/combat")
 local GrowthRecipes = require("kei/growth_recipes")
 local ROTOR_ICON = "wx78_drone_zap_remote.tex"
 local ROTOR_ATLAS = GetInventoryItemAtlas(ROTOR_ICON)
@@ -14,6 +16,26 @@ AddRecipeFilter({
     image_size = 64,
 })
 STRINGS.UI.CRAFTING_FILTERS[KEI_ROTOR_FILTER] = "无人机"
+
+local PROTOCOL_ICON = "kei_blank_cd.tex"
+local PROTOCOL_ATLAS = "images/inventoryimages/kei_items.xml"
+
+local function GetRecipeImage(image_name)
+    if image_name == nil then
+        return PROTOCOL_ICON
+    end
+    return image_name:match("%.tex$") ~= nil
+        and image_name
+        or image_name .. ".tex"
+end
+
+AddRecipeFilter({
+    name = KEI_PROTOCOL_FILTER,
+    atlas = PROTOCOL_ATLAS,
+    image = PROTOCOL_ICON,
+    image_size = 64,
+})
+STRINGS.UI.CRAFTING_FILTERS[KEI_PROTOCOL_FILTER] = "协议"
 
 local function image(tex)
     -- AddRecipe2 需要 atlas + image 成对传入。
@@ -79,18 +101,126 @@ end
 -- 普通 Kei 配方归入冒险家（角色）栏；无人机配方只归入无人机栏。
 local filters = { "CHARACTER" }
 local rotor_filters = { KEI_ROTOR_FILTER }
+local protocol_filters = { KEI_PROTOCOL_FILTER }
 
--- 空白 CD：保留用于其他数据复制测试，不再参与数据记录器流程。
+-- 空白 CD 和可直接制作的协议 CD 统一放在协议栏。
 AddRecipe2(
     "kei_blank_cd",
-    { Ingredient("charcoal", 10) },
+    { fixed_experience_ingredient(1000) },
     TECH.NONE,
     kei_config({
         atlas = "images/inventoryimages/kei_items.xml",
         image = "kei_blank_cd.tex",
     }),
-    filters
+    protocol_filters
 )
+
+local function IsDirectlyCraftableProtocol(def)
+    return def ~= nil
+        and def.prefab ~= nil
+        and def.category == "beast"
+        and def.tier == "basic"
+end
+
+-- 初级巨兽协议使用对应战利品和 1 个空白 CD 制作。
+-- 材料以协议 ID 维护，避免把配方名和材料名耦合在一起。
+local BASIC_BEAST_PROTOCOL_INGREDIENTS = {
+    deerclops_basic = {
+        { prefab = "deerclops_eyeball", amount = 1 },
+    },
+    bearger_basic = {
+        { prefab = "bearger_fur", amount = 1 },
+    },
+    moose_basic = {
+        { prefab = "goose_feather", amount = 6 },
+    },
+    antlion_basic = {
+        { prefab = "townportaltalisman", amount = 10 },
+    },
+    eyeofterror_basic = {
+        { prefab = "eyemaskhat", amount = 1 },
+    },
+    daywalker_basic = {
+        { prefab = "dreadstonehat", amount = 1 },
+        { prefab = "armordreadstone", amount = 1 },
+    },
+    daywalker2_basic = {
+        { prefab = "wagpunkbits_kit", amount = 1 },
+        { prefab = "scraphat", amount = 1 },
+    },
+    lordfruitfly_basic = {
+        { prefab = "fruitflyfruit", amount = 1 },
+    },
+    minotaur_basic = {
+        { prefab = "minotaurhorn", amount = 1 },
+    },
+    vault_pillar_guard_basic = {
+        { prefab = "vault_pillar_guard_piece_1", amount = 1 },
+        { prefab = "vault_pillar_guard_piece_2", amount = 1 },
+        { prefab = "vault_pillar_guard_piece_3", amount = 1 },
+    },
+    dragonfly_basic = {
+        { prefab = "dragon_scales", amount = 2 },
+    },
+    malbatross_basic = {
+        { prefab = "malbatross_beak", amount = 1 },
+    },
+    klaus_basic = {
+        { prefab = "klaussackkey", amount = 1 },
+    },
+    toadstool_basic = {
+        { prefab = "shroom_skin", amount = 3 },
+    },
+    beequeen_basic = {
+        { prefab = "hivehat", amount = 1 },
+        { prefab = "royal_jelly", amount = 2 },
+    },
+    stalker_atrium_basic = {
+        { prefab = "skeletonhat", amount = 1 },
+        { prefab = "armorskeleton", amount = 1 },
+    },
+    alterguardian_basic = {
+        { prefab = "alterguardianhat", amount = 1 },
+    },
+}
+
+local function GetProtocolIngredients(def)
+    local ingredients = BASIC_BEAST_PROTOCOL_INGREDIENTS[def.protocol]
+    if def.category == "beast" and def.tier == "basic" then
+        assert(ingredients ~= nil, "Missing ingredients for basic beast protocol: " .. tostring(def.protocol))
+    end
+    if ingredients == nil then
+        return { Ingredient("goldnugget", 1) }
+    end
+
+    local recipe_ingredients = {
+        Ingredient("kei_blank_cd", 1, PROTOCOL_ATLAS, nil, PROTOCOL_ICON),
+    }
+    for _, ingredient in ipairs(ingredients) do
+        table.insert(recipe_ingredients, Ingredient(ingredient.prefab, ingredient.amount))
+    end
+    return recipe_ingredients
+end
+
+-- 使用协议定义自动生成初级巨兽配方，新增初级巨兽协议时无需重复维护配方列表。
+for _, def in ipairs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST) do
+    if IsDirectlyCraftableProtocol(def) then
+        local recipe_name = def.prefab
+        local visual = CombatProtocolDefs.GetProtocolVisual(def.protocol)
+        STRINGS.RECIPE_DESC[string.upper(recipe_name)] = "使用指定材料和 1 个空白 CD 制作该协议 CD。"
+        AddRecipe2(
+            recipe_name,
+            GetProtocolIngredients(def),
+            TECH.NONE,
+            kei_config({
+                atlas = visual ~= nil and visual.atlas or PROTOCOL_ATLAS,
+                image = GetRecipeImage(visual ~= nil and visual.image or nil),
+                product = def.prefab,
+            }),
+            protocol_filters
+        )
+    end
+end
 
 -- 数据记录仪部署包：部署后创建场景中的记录仪结构。
 AddRecipe2(
@@ -133,7 +263,7 @@ AddRecipe2(
 -- 装备解析工具：把装备属性转换为解析协议 CD。
 AddRecipe2(
     "kei_analysis_tool",
-    { Ingredient("goldnugget", 10) },
+    { fixed_experience_ingredient(1000) },
     TECH.NONE,
     kei_config({
         atlas = "images/inventoryimages/kei_items.xml",
