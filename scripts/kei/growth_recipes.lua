@@ -6,6 +6,25 @@ local RotorSurveySkills = require("kei/drone/skills")
 local RotorUpgrades = require("kei/drone/upgrades")
 local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 
+local KEI_EXPERIENCE_INGREDIENT = "kei_experience"
+CHARACTER_INGREDIENT.KEI_EXPERIENCE = KEI_EXPERIENCE_INGREDIENT
+
+-- Keep experience separate from built-in character resources such as sanity.
+-- This module is loaded through require(), whose environment does not expose
+-- the modmain-only GLOBAL alias. Wrap the existing global function directly.
+local old_is_character_ingredient = IsCharacterIngredient
+if old_is_character_ingredient ~= nil then
+    local is_character_ingredient = function(ingredienttype)
+        if ingredienttype == KEI_EXPERIENCE_INGREDIENT then
+            return true
+        end
+        return old_is_character_ingredient(ingredienttype)
+    end
+    IsCharacterIngredient = is_character_ingredient
+end
+
+STRINGS.NAMES[string.upper(KEI_EXPERIENCE_INGREDIENT)] = "经验"
+
 local GrowthRecipes = {
     SLOT_UNLOCK_RECIPE = "kei_protocol_slot_unlock",
     DEEP_IMPLANT_RECIPE = "kei_deep_implant",
@@ -18,7 +37,8 @@ local GrowthRecipes = {
 
 function GrowthRecipes.IsExperienceIngredient(ingredient)
     return ingredient ~= nil
-        and (ingredient.kei_growth_recipe ~= nil
+        and (ingredient.type == KEI_EXPERIENCE_INGREDIENT
+            or ingredient.kei_growth_recipe ~= nil
             or ingredient.kei_experience_cost ~= nil
             or ingredient.kei_experience_cost_fn ~= nil)
 end
@@ -86,6 +106,38 @@ function GrowthRecipes.GetExperienceIngredientAmount(ingredient, builder)
         builder ~= nil and builder.components ~= nil and builder.components.kei_experience or nil,
         builder
     )
+end
+
+function GrowthRecipes.ConsumeExperienceIngredients(builder, recipe)
+    if builder == nil or builder.freebuildmode then
+        return 0
+    end
+
+    local experience = builder.components ~= nil and builder.components.kei_experience or nil
+    if experience == nil then
+        return 0
+    end
+
+    if type(recipe) == "string" then
+        recipe = GetValidRecipe(recipe)
+    end
+    if recipe == nil or recipe.character_ingredients == nil then
+        return 0
+    end
+
+    local amount = 0
+    for _, ingredient in ipairs(recipe.character_ingredients) do
+        if GrowthRecipes.IsExperienceIngredient(ingredient) then
+            amount = amount + GrowthRecipes.GetExperienceIngredientAmount(ingredient, builder)
+        end
+    end
+
+    if amount <= 0 or experience.current < amount then
+        return 0
+    end
+
+    experience:DoDelta(-amount)
+    return amount
 end
 
 function GrowthRecipes.HasEnoughExperienceAmount(builder, amount)

@@ -1,6 +1,46 @@
 local TaskSummon = {}
 local RecorderDaywalker2 = require("kei/recorder/bosses/recorder_daywalker2")
 
+local TASK_REFUSAL_TARGET_CHECK_INTERVAL = .25
+local TASK_REFUSAL_TARGET_LOST_TIMEOUT = 5
+
+local function IsTaskRefusalOwnerAvailable(owner)
+    return owner ~= nil and owner:IsValid()
+        and not owner:IsInLimbo()
+        and not owner:HasTag("playerghost")
+        and (owner.components == nil
+            or owner.components.health == nil
+            or not owner.components.health:IsDead())
+end
+
+local function SpawnTaskRefusalFX(target)
+    if target == nil or not target:IsValid() or target.Transform == nil then
+        return
+    end
+    local fx = SpawnPrefab("spawn_fx_medium_static")
+    if fx ~= nil then
+        fx.Transform:SetPosition(target.Transform:GetWorldPosition())
+    end
+end
+
+function TaskSummon.PlayTaskRefusalSpawnFX(target)
+    SpawnTaskRefusalFX(target)
+end
+
+function TaskSummon.DespawnTaskRefusalTarget(target)
+    if target == nil or not target:IsValid() then
+        return
+    end
+
+    -- A killed target already has its normal death presentation. The portal
+    -- effect is for the special disappearance caused by lost aggro.
+    local health = target.components ~= nil and target.components.health or nil
+    if health == nil or not health:IsDead() then
+        SpawnTaskRefusalFX(target)
+    end
+    target:Remove()
+end
+
 -- These bosses normally assume a world-spawned encounter. Keep their
 -- instance-specific setup in one place so task and recorder summons agree.
 function TaskSummon.PrepareSpecialTarget(target, doer, support_owner)
@@ -82,6 +122,14 @@ function TaskSummon.CleanupSpecialTarget(target)
         target.kei_task_refusal_attack_task:Cancel()
         target.kei_task_refusal_attack_task = nil
     end
+    if target ~= nil and target.kei_task_refusal_target_check_task ~= nil then
+        target.kei_task_refusal_target_check_task:Cancel()
+        target.kei_task_refusal_target_check_task = nil
+    end
+    if target ~= nil and target.kei_task_refusal_target_lost_task ~= nil then
+        target.kei_task_refusal_target_lost_task:Cancel()
+        target.kei_task_refusal_target_lost_task = nil
+    end
     if target ~= nil and target.kei_special_summon_land_task ~= nil then
         target.kei_special_summon_land_task:Cancel()
         target.kei_special_summon_land_task = nil
@@ -110,34 +158,89 @@ end
 -- all. A normal SuggestTarget is a no-op for them, so refusal summons receive
 -- a lightweight, instance-only close-range retaliation loop.
 function TaskSummon.StartTaskAggression(target, doer)
-    TaskSummon.AggroTarget(target, doer)
-    if target == nil or not target:IsValid()
-        or (target.components ~= nil and target.components.combat ~= nil)
-        or doer == nil or not doer:IsValid()
-    then
+    if target == nil or not target:IsValid() or doer == nil then
         return
     end
 
-    target.kei_task_refusal_attack_task = target:DoPeriodicTask(1.5, function(inst)
+    target.kei_task_refusal_owner = doer
+    local combat = target.components ~= nil and target.components.combat or nil
+    if combat ~= nil then
+        -- Refusal summons are not allowed to keep another player as a target.
+        -- Losing this target starts the delayed disappearance check below.
+        combat:SetKeepTargetFunction(function(inst, current_target)
+            local owner = inst.kei_task_refusal_owner
+            return current_target == owner and IsTaskRefusalOwnerAvailable(owner)
+        end)
+        combat:SetTarget(doer)
+    end
+
+    local function HasOwnerTarget(inst)
         local owner = inst.kei_task_refusal_owner
-        if owner == nil or not owner:IsValid()
-            or owner.components.health == nil or owner.components.health:IsDead()
-        then
+        if not IsTaskRefusalOwnerAvailable(owner) then
+            return false
+        end
+        local current_combat = inst.components ~= nil and inst.components.combat or nil
+        return current_combat == nil or current_combat.target == owner
+    end
+
+    local function CancelLostTargetTimer(inst)
+        if inst.kei_task_refusal_target_lost_task ~= nil then
+            inst.kei_task_refusal_target_lost_task:Cancel()
+            inst.kei_task_refusal_target_lost_task = nil
+        end
+    end
+
+    local function StartLostTargetTimer(inst)
+        if inst.kei_task_refusal_target_lost_task ~= nil then
             return
         end
 
-        local ix, _, iz = inst.Transform:GetWorldPosition()
-        local ox, _, oz = owner.Transform:GetWorldPosition()
-        local dx, dz = ox - ix, oz - iz
-        if dx * dx + dz * dz <= 9 then
-            local combat = owner.components.combat
-            if combat ~= nil then
-                combat:GetAttacked(inst, 10)
+        inst.kei_task_refusal_target_lost_task = inst:DoTaskInTime(
+            TASK_REFUSAL_TARGET_LOST_TIMEOUT,
+            function(summon)
+                summon.kei_task_refusal_target_lost_task = nil
+                if not HasOwnerTarget(summon) then
+                    TaskSummon.DespawnTaskRefusalTarget(summon)
+                end
             end
-        elseif inst.components.locomotor ~= nil then
-            inst.components.locomotor:GoToPoint(Vector3(ox, 0, oz))
-        end
-    end)
+        )
+    end
+
+    target.kei_task_refusal_target_check_task = target:DoPeriodicTask(
+        TASK_REFUSAL_TARGET_CHECK_INTERVAL,
+        function(inst)
+            local owner = inst.kei_task_refusal_owner
+            if HasOwnerTarget(inst) then
+                CancelLostTargetTimer(inst)
+            else
+                StartLostTargetTimer(inst)
+            end
+        end,
+        0
+    )
+
+    -- Passive creatures have no combat component, so keep their existing
+    -- close-range retaliation behavior while the target monitor handles exit.
+    if combat == nil then
+        target.kei_task_refusal_attack_task = target:DoPeriodicTask(1.5, function(inst)
+            local owner = inst.kei_task_refusal_owner
+            if not IsTaskRefusalOwnerAvailable(owner) then
+                return
+            end
+
+            local ix, _, iz = inst.Transform:GetWorldPosition()
+            local ox, _, oz = owner.Transform:GetWorldPosition()
+            local dx, dz = ox - ix, oz - iz
+            if dx * dx + dz * dz <= 9 then
+                local owner_combat = owner.components ~= nil and owner.components.combat or nil
+                if owner_combat ~= nil then
+                    owner_combat:GetAttacked(inst, 10)
+                end
+            elseif inst.components.locomotor ~= nil then
+                inst.components.locomotor:GoToPoint(Vector3(ox, 0, oz))
+            end
+        end)
+    end
 end
 
 return TaskSummon

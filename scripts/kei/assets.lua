@@ -3,6 +3,8 @@
 Assets = {
     Asset("ATLAS", "images/quagmire_recipebook.xml"),
     Asset("IMAGE", "images/quagmire_recipebook.tex"),
+    Asset("SOUNDPACKAGE", "sound/tendou_kei_vc.fev"),
+    Asset("SOUND", "sound/tendou_kei_vc.fsb"),
 }
 
 local ANIM_ASSETS = {

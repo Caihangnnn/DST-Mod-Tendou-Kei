@@ -53,6 +53,11 @@ local RotorSurveyTargets = {
                 and TheWorld.state.isday == true
         end,
     },
+    {
+        id = "monkeyqueen_ripen",
+        prefabs = { "monkeyqueen" },
+        protocol = "ripen",
+    },
 }
 
 local function MatchesPrefab(def, target)

@@ -192,22 +192,39 @@ local function IsStoredByOwner(inst, owner)
     if holder == owner then
         return true
     end
-    if holder ~= nil and holder:HasTag("kei_mini_alice") then
-        return inventoryitem:GetGrandOwner() == owner
-    end
     return false
 end
 
 local function SetControllerOwner(inst, owner)
     local userid = owner ~= nil and owner.userid or nil
+    local power = inst.components ~= nil and inst.components["drone/power"] or nil
+    local inherited_power = owner ~= nil and owner._kei_rotor_controller_power or nil
+
+    if inherited_power == nil and userid ~= nil then
+        local previous = RotorSurveyRegistry.FindController(userid)
+        local previous_power = previous ~= nil
+            and previous ~= inst
+            and previous.components ~= nil
+            and previous.components["drone/power"]
+            or nil
+        if previous_power ~= nil and previous_power.GetPower ~= nil then
+            inherited_power = previous_power:GetPower()
+        end
+    end
+
     inst._kei_controller_owner = owner
     inst._kei_controller_owner_userid = userid
     if inst._kei_controller_owner_userid_net ~= nil then
         inst._kei_controller_owner_userid_net:set(userid or "")
     end
     RotorSurveyRegistry.RegisterController(inst, userid)
-    if inst.components ~= nil and inst.components["drone/power"] ~= nil then
-        inst.components["drone/power"]:RefreshMaxPower(owner)
+    if power ~= nil then
+        power:RefreshMaxPower(owner)
+        if inherited_power ~= nil then
+            power:SetPower(inherited_power)
+        elseif owner ~= nil then
+            owner._kei_rotor_controller_power = power:GetPower()
+        end
     end
 end
 
@@ -293,7 +310,27 @@ local function StopPilotForOwner(inst, owner)
     end
 end
 
-local function OnEquip(inst, owner)
+local function IsControllerOwnedBy(inst, owner)
+    if owner ~= nil and inst._kei_controller_owner == owner then
+        return true
+    end
+
+    local owned = owner ~= nil
+        and owner.userid ~= nil
+        and GetOwnerUserId(inst) == owner.userid
+    if owned then
+        -- Loaded controllers do not have the live player reference until the
+        -- player has rejoined. Refresh it as soon as the bound player equips it.
+        inst._kei_controller_owner = owner
+    end
+    return owned
+end
+
+local function ApplyEquipVisuals(inst, owner)
+    if owner == nil or owner.AnimState == nil then
+        return
+    end
+
     owner.AnimState:OverrideSymbol(
         "swap_object",
         "swap_wx78_drone_zap_remote",
@@ -309,12 +346,61 @@ local function OnEquip(inst, owner)
     inst.components.inventoryitem:ChangeImageName("wx78_drone_zap_remote_held")
 end
 
+local function IsEquippedBy(inst, owner)
+    return owner ~= nil
+        and owner.components ~= nil
+        and owner.components.inventory ~= nil
+        and owner.components.inventory:GetEquippedItem(EQUIPSLOTS.HANDS) == inst
+end
+
+local function VerifyControllerEquip(inst, owner, attempt)
+    if inst == nil or not inst:IsValid() or owner == nil or not owner:IsValid() then
+        return
+    end
+
+    -- An equip callback can run while the active item is moving toward the
+    -- hand slot. Wait briefly for the slot update, but never remove an item
+    -- that remains only in the active-item cursor.
+    if not IsEquippedBy(inst, owner) then
+        if (attempt or 0) < 10 then
+            inst:DoTaskInTime(0.1, function(controller)
+                VerifyControllerEquip(controller, owner, (attempt or 0) + 1)
+            end)
+        end
+        return
+    end
+
+    if IsControllerOwnedBy(inst, owner) then
+        ApplyEquipVisuals(inst, owner)
+        return
+    end
+
+    -- The owner id can arrive one simulation tick after the equip callback for
+    -- a freshly crafted or loaded item. Give that synchronization a short,
+    -- bounded window before treating the equip as unauthorized.
+    local owner_userid = GetOwnerUserId(inst)
+    if (owner_userid == nil or owner_userid == "") and (attempt or 0) < 10 then
+        inst:DoTaskInTime(0.1, function(controller)
+            VerifyControllerEquip(controller, owner, (attempt or 0) + 1)
+        end)
+        return
+    end
+
+    inst:Remove()
+end
+
+local function OnEquip(inst, owner)
+    VerifyControllerEquip(inst, owner, 0)
+end
+
 local function OnUnequip(inst, owner)
     StopPilotForOwner(inst, owner)
-    owner.AnimState:ClearOverrideSymbol("drone_zap_remote_parts")
-    owner.AnimState:ClearOverrideSymbol("swap_object")
-    owner.AnimState:Hide("ARM_carry")
-    owner.AnimState:Show("ARM_normal")
+    if owner ~= nil and owner.AnimState ~= nil then
+        owner.AnimState:ClearOverrideSymbol("drone_zap_remote_parts")
+        owner.AnimState:ClearOverrideSymbol("swap_object")
+        owner.AnimState:Hide("ARM_carry")
+        owner.AnimState:Show("ARM_normal")
+    end
     inst.components.inventoryitem:ChangeImageName("wx78_drone_zap_remote")
 end
 
@@ -734,6 +820,13 @@ local function fn()
 
     inst:AddComponent("inventoryitem")
     inst.components.inventoryitem:ChangeImageName("wx78_drone_zap_remote")
+    -- cangoincontainer 必须保持开启，否则 DST 的 SetActiveItem 会直接
+    -- 丢弃控制器，导致鼠标拿起、右键装备流程中的物品消失。普通容器仍
+    -- 由 kei/drone/hooks/containers.lua 拦截。
+    inst.components.inventoryitem.canbepickedup = true
+    inst.components.inventoryitem.cangoincontainer = true
+    inst.components.inventoryitem.canonlygoinpocketorpocketcontainers = true
+    inst.components.inventoryitem.keepondeath = true
 
     inst:AddComponent("perishable")
     inst.components.perishable:SetPerishTime(TUNING.KEI_ROTOR_CONTROLLER_MAX_POWER or 240)

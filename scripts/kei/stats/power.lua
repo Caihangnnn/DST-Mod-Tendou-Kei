@@ -23,10 +23,16 @@ function Power.Configure(inst)
     end
 end
 
+-- 计算便携电池应回复的电量，参数为目标的最大电量。
+function Power.GetBatteryRestoreAmount(max_power)
+    local percent = math.max(0, tonumber(TUNING.KEI_BATTERY_RESTORE_PERCENT) or 0.33)
+    return math.max(0, tonumber(max_power) or Power.GetBaseMax()) * percent
+end
+
 -- 食用电池回复电量（饱食度）
 function Power.ApplyBattery(inst)
     if inst.components.hunger ~= nil then
-        inst.components.hunger:DoDelta(TUNING.KEI_BATTERY_POWER or 30)
+        inst.components.hunger:DoDelta(Power.GetBatteryRestoreAmount(inst.components.hunger.max))
     end
 end
 

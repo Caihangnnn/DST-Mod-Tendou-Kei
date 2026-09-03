@@ -12,18 +12,9 @@ local function IsAllowedControllerDestination(container, owner, item)
         return false
     end
     if container == owner then
-        return item.GetControllerOwnerUserId ~= nil
-            and item:GetControllerOwnerUserId() == owner.userid
+        return true
     end
-    if not container:HasTag("kei_mini_alice") then
-        return false
-    end
-    local inventoryitem = container.components ~= nil
-        and container.components.inventoryitem or nil
-    return inventoryitem ~= nil
-        and inventoryitem:GetGrandOwner() == owner
-        and item.GetControllerOwnerUserId ~= nil
-        and item:GetControllerOwnerUserId() == owner.userid
+    return false
 end
 
 AddComponentPostInit("inventory", function(self)
@@ -35,10 +26,7 @@ AddComponentPostInit("inventory", function(self)
 
     function self:CanTakeItemInSlot(item, slot)
         if IsController(item) then
-            return item.GetControllerOwnerUserId ~= nil
-                and self.inst ~= nil
-                and self.inst.userid ~= nil
-                and item:GetControllerOwnerUserId() == self.inst.userid
+            return true
         end
         return old_CanTakeItemInSlot(self, item, slot)
     end
@@ -68,9 +56,6 @@ AddComponentPostInit("inventory", function(self)
     end
 
     function self:DropItem(item, wholestack, randomdir, pos, keepoverstacked)
-        if IsController(item) then
-            return nil
-        end
         return old_DropItem(self, item, wholestack, randomdir, pos, keepoverstacked)
     end
 end)

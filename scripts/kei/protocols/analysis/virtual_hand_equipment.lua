@@ -1,6 +1,22 @@
 local VirtualHandEquipment = {}
 local VirtualEquipment = require("kei/protocols/analysis/virtual_equipment")
 
+-- Only these vanilla weapon prefabs receive the virtual-staff attack cooldown.
+-- Keep this list explicit: ranged or spellcaster items are not automatically
+-- treated as staves.
+local VIRTUAL_STAFF_PREFABS = {
+    icestaff = true,
+    icestaff2 = true,
+    icestaff3 = true,
+    firestaff = true,
+}
+
+function VirtualHandEquipment.IsVirtualStaff(item)
+    return item ~= nil
+        and item:HasTag("kei_virtual_hand_equipment")
+        and VIRTUAL_STAFF_PREFABS[item.kei_source_prefab or item.prefab] == true
+end
+
 -- Keep source callbacks safe while disabling armor inheritance.
 local function DisableVirtualHandArmor(item)
     local armor = item.components.armor
@@ -248,6 +264,9 @@ function VirtualHandEquipment.Apply(protocolslots, entry)
 
     virtual.kei_source_prefab = data.source
     virtual:AddTag("kei_virtual_hand_equipment")
+    if VIRTUAL_STAFF_PREFABS[data.source] then
+        virtual:AddTag("kei_virtual_staff")
+    end
     CleanVirtualEquipment(virtual)
     WrapVirtualHandEquipment(virtual)
 

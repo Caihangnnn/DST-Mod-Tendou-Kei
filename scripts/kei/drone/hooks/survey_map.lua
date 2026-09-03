@@ -41,7 +41,7 @@ ACTIONS.MAPSCOUTSELECT_MAP.maponly_checkvalidpos_fn = function(act)
             x,
             y,
             z,
-            TUNING.SKILLS.WX78.MAPSCOUTSELECT_DETECTION_RADIUS,
+            TUNING.KEI_ROTOR_MAP_SELECT_DETECTION_RADIUS or 10,
             act.doer
         )
         -- FindClosestMapIconInRange 使用自定义登记名时只会返回 Kei 的

@@ -27,6 +27,13 @@ local RotorUpgrades = {
     },
 }
 
+-- Snapshot Kei's own flight parameters after config.lua has loaded. Do not
+-- read TUNING.SKILLS.WX78: other mods commonly change that table for WX-78.
+local BASE_CONTROL_RANGE = tonumber(TUNING.KEI_ROTOR_SURVEYOR_RANGE) or 500
+local MAX_CONTROL_RANGE = tonumber(TUNING.KEI_ROTOR_SIGNAL_RANGE_MAX) or 1500
+local BASE_DRONE_SPEED = tonumber(TUNING.KEI_ROTOR_SURVEYOR_SPEED) or 3
+local MOBILITY_SPEED_MULT = tonumber(TUNING.KEI_ROTOR_MOBILITY_SPEED_MULT_PER_LEVEL) or 1
+
 local UPGRADE_BY_RECIPE = {}
 for upgrade, definition in pairs(RotorUpgrades.DEFINITIONS) do
     UPGRADE_BY_RECIPE[definition.recipe] = upgrade
@@ -64,17 +71,13 @@ function RotorUpgrades.GetMaxLevel(upgrade)
 end
 
 function RotorUpgrades.GetControlRange(owner)
-    local base = TUNING.KEI_ROTOR_SURVEYOR_RANGE or 500
     local level = RotorUpgrades.GetLevel(owner, "signal")
-    local maximum = TUNING.KEI_ROTOR_SIGNAL_RANGE_MAX or 1500
-    return math.min(base * (1 + level), maximum)
+    return math.min(BASE_CONTROL_RANGE * (1 + level), MAX_CONTROL_RANGE)
 end
 
 function RotorUpgrades.GetDroneSpeed(owner)
-    local base = TUNING.SKILLS.WX78.SCOUTDRONE_SPEED or 8
     local level = RotorUpgrades.GetLevel(owner, "mobility")
-    local per_level = TUNING.KEI_ROTOR_MOBILITY_SPEED_MULT_PER_LEVEL or 1
-    return base * (1 + level * per_level)
+    return BASE_DRONE_SPEED * (1 + level * MOBILITY_SPEED_MULT)
 end
 
 function RotorUpgrades.GetControllerMaxPower(owner)

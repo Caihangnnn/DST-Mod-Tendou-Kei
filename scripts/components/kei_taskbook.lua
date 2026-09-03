@@ -15,6 +15,10 @@ local KeiTaskBook = Class(function(self, inst)
     self.tasks = {}
     self.task_serial = 0
     self.last_generated_day = -1
+    -- An empty task list is only eligible for a retry when the previous
+    -- generation was waiting for creature targets to be discovered. Refusing
+    -- the last task must not re-enter that initialization path.
+    self.waiting_for_task_targets = true
     self.last_blueprint_reward_day = -1
     self.task_version = TaskBook.TASK_VERSION
     self.completed_task_count = 0
@@ -234,7 +238,7 @@ function KeiTaskBook:GetActiveTargetPrefabs()
 end
 
 function KeiTaskBook:GenerateDailyTasks(day)
-    if self.last_generated_day == day then return false end
+    if self.last_generated_day == day and not self.waiting_for_task_targets then return false end
     self.last_generated_day = day
     local changed = self:RemoveExpiredTasks(day)
     local active_targets = self:GetActiveTargetPrefabs()
@@ -255,6 +259,7 @@ function KeiTaskBook:GenerateDailyTasks(day)
             end
         end
     end
+    self.waiting_for_task_targets = #self.tasks == 0
     if changed then self:SyncNetValues() self.inst:PushEvent("kei_taskbook_changed") end
     return changed
 end
@@ -343,22 +348,14 @@ function KeiTaskBook:SpawnRefusedTaskTarget(prefab)
     target.kei_task_refusal_summon = true
     target.kei_task_refusal_owner = self.inst
     DisableTaskSummonLoot(target)
+    TaskSummon.PlayTaskRefusalSpawnFX(target)
     TaskSummon.PrepareSpecialTarget(target, self.inst, target)
     TaskSummon.StartTaskAggression(target, self.inst)
     target:DoTaskInTime(0, function(inst)
         TaskSummon.AggroTarget(inst, self.inst)
     end)
 
-    local function RemoveTaskSummon()
-        if target ~= nil and target:IsValid() then target:Remove() end
-    end
-    target.kei_task_refusal_owner_death_fn = RemoveTaskSummon
-    target.kei_task_refusal_owner_remove_fn = RemoveTaskSummon
-    target:ListenForEvent("death", RemoveTaskSummon, self.inst)
-    target:ListenForEvent("onremove", RemoveTaskSummon, self.inst)
     target:ListenForEvent("onremove", function(inst)
-        inst:RemoveEventCallback("death", RemoveTaskSummon, self.inst)
-        inst:RemoveEventCallback("onremove", RemoveTaskSummon, self.inst)
         TaskSummon.CleanupSpecialTarget(inst)
     end)
     return true
@@ -368,7 +365,10 @@ function KeiTaskBook:RefuseTask(id)
     for index, task in ipairs(self.tasks) do
         if task.id == id and not task.completed and task.expires_day > GetWorldDay() then
             table.remove(self.tasks, index)
-            if math.random() < .5 then
+            if #self.tasks == 0 then
+                self.waiting_for_task_targets = false
+            end
+            if math.random() < .25 then
                 if self:SpawnRefusedTaskTarget(task.target_prefab) then
                     local talker = self.inst.components ~= nil and self.inst.components.talker or nil
                     if talker ~= nil then
@@ -533,6 +533,7 @@ function KeiTaskBook:OnSave()
     return {
         records = self.records, implanted = self.implanted, tasks = self.tasks,
         task_serial = self.task_serial, last_generated_day = self.last_generated_day,
+        waiting_for_task_targets = self.waiting_for_task_targets,
         last_blueprint_reward_day = self.last_blueprint_reward_day,
         task_version = self.task_version, completed_task_count = self.completed_task_count,
         claimed_task_milestones = self.claimed_task_milestones,
@@ -552,6 +553,15 @@ function KeiTaskBook:OnLoad(data)
     self.tasks = data ~= nil and data.tasks or {}
     self.task_serial = tonumber(data ~= nil and data.task_serial) or 0
     self.last_generated_day = tonumber(data ~= nil and data.last_generated_day) or -1
+    if data ~= nil and data.waiting_for_task_targets ~= nil then
+        self.waiting_for_task_targets = data.waiting_for_task_targets == true
+    else
+        -- Older saves did not persist the retry state. An empty book from a
+        -- previous generation is treated as initialized for the current day,
+        -- while an uninitialized/older book remains eligible for discovery.
+        self.waiting_for_task_targets = #self.tasks == 0
+            and self.last_generated_day < GetWorldDay()
+    end
     self.last_blueprint_reward_day = tonumber(data ~= nil and data.last_blueprint_reward_day) or -1
     self.completed_task_count = math.max(0, tonumber(data ~= nil and data.completed_task_count) or 0)
     self.claimed_task_milestones = data ~= nil and data.claimed_task_milestones or {}

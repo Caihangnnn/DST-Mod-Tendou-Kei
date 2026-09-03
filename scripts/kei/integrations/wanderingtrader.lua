@@ -155,7 +155,7 @@ end
 
 local function MakeExperienceIngredient(recipe, item)
     local ingredient = Ingredient(
-        CHARACTER_INGREDIENT.SANITY,
+        CHARACTER_INGREDIENT.KEI_EXPERIENCE,
         5,
         EXPERIENCE_ATLAS,
         nil,
@@ -168,7 +168,7 @@ end
 
 local function MakeFixedExperienceIngredient(amount)
     local ingredient = Ingredient(
-        CHARACTER_INGREDIENT.SANITY,
+        CHARACTER_INGREDIENT.KEI_EXPERIENCE,
         5,
         EXPERIENCE_ATLAS,
         nil,
@@ -258,7 +258,18 @@ end
 
 local function HasShopWares(inst)
     local craftingstation = inst.components ~= nil and inst.components.craftingstation or nil
-    return craftingstation ~= nil and craftingstation:KnowsRecipe(CD_ITEMS[1].recipe)
+    if craftingstation == nil then
+        return false
+    end
+
+    -- A previous shared-station purchase can remove only one recipe. Check
+    -- every Kei shop recipe so the next refresh repairs partial state.
+    for recipename in pairs(SHOP_ITEMS_BY_RECIPE) do
+        if not craftingstation:KnowsRecipe(recipename) then
+            return false
+        end
+    end
+    return true
 end
 
 local function RefreshShopWares(inst, force)
@@ -431,13 +442,40 @@ local function DoShopBuild(builder, recipename)
     return true
 end
 
+local function ActivateShopTraderWithoutConsumingSharedStock(builder, recipe)
+    local prototyper = builder ~= nil and builder.current_prototyper or nil
+    local prototyper_component = prototyper ~= nil
+        and prototyper.components ~= nil
+        and prototyper.components.prototyper
+        or nil
+
+    -- The normal activation path calls CraftingStation:RecipeCrafted first.
+    -- Kei shop stock is player-specific, so keep only the trader callback.
+    if prototyper_component ~= nil and prototyper_component.onactivate ~= nil then
+        prototyper_component.onactivate(prototyper, builder.inst, recipe)
+    end
+end
+
 AddComponentPostInit("builder", function(builder)
     local old_DoBuild = builder.DoBuild
+    local old_ActivateCurrentResearchMachine = builder.ActivateCurrentResearchMachine
     builder.DoBuild = function(self, recipename, ...)
         if IsShopRecipe(recipename) then
             return DoShopBuild(self, recipename, ...)
         end
         return old_DoBuild(self, recipename, ...)
+    end
+
+    builder.ActivateCurrentResearchMachine = function(self, recipe, ...)
+        local recipename = type(recipe) == "string"
+            and recipe
+            or recipe ~= nil and recipe.name
+            or nil
+        if IsShopRecipe(recipename) then
+            ActivateShopTraderWithoutConsumingSharedStock(self, recipe)
+            return
+        end
+        return old_ActivateCurrentResearchMachine(self, recipe, ...)
     end
 
     local old_EvaluateTechTrees = builder.EvaluateTechTrees

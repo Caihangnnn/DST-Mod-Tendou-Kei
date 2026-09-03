@@ -98,7 +98,8 @@ function Registry.Find(userid, predicate)
     return nil
 end
 
--- 控制器与无人机分别登记；控制器需要在重载后仍保持每名玩家唯一。
+-- 控制器与无人机分别登记；控制器按玩家 userid 管理，制作新控制器时
+-- 可以一次清理该玩家此前登记的全部旧控制器。
 function Registry.RegisterController(controller, userid)
     if controller == nil or userid == nil then
         return
@@ -109,12 +110,27 @@ function Registry.RegisterController(controller, userid)
         return
     end
 
-    local previous = entries[userid]
-    if previous ~= nil and previous ~= controller and previous:IsValid() then
-        previous:Remove()
+    local owned = entries[userid]
+    if owned == nil then
+        owned = {}
+        entries[userid] = owned
+    elseif owned.IsValid ~= nil then
+        -- 兼容本次脚本热重载前留下的单控制器登记格式。
+        owned = { [owned] = true }
+        entries[userid] = owned
     end
 
-    entries[userid] = controller
+    -- 先登记新控制器，避免旧控制器的 onremove 回调把玩家登记一并清空。
+    owned[controller] = true
+    for previous in pairs(owned) do
+        if previous ~= controller then
+            owned[previous] = nil
+            if previous ~= nil and previous:IsValid() then
+                previous:Remove()
+            end
+        end
+    end
+
     controller._kei_controller_owner_userid = userid
 end
 
@@ -125,8 +141,16 @@ function Registry.UnregisterController(controller, userid)
 
     userid = userid or controller._kei_controller_owner_userid
     local entries = GetControllers()
-    if entries ~= nil and userid ~= nil and entries[userid] == controller then
-        entries[userid] = nil
+    local owned = entries ~= nil and userid ~= nil and entries[userid] or nil
+    if owned ~= nil and owned.IsValid ~= nil then
+        if owned == controller then
+            entries[userid] = nil
+        end
+    elseif owned ~= nil then
+        owned[controller] = nil
+        if next(owned) == nil then
+            entries[userid] = nil
+        end
     end
 end
 
@@ -136,11 +160,26 @@ function Registry.FindController(userid)
     end
 
     local entries = GetControllers()
-    local controller = entries ~= nil and entries[userid] or nil
-    if controller ~= nil and controller:IsValid() then
-        return controller
+    local owned = entries ~= nil and entries[userid] or nil
+    if owned == nil then
+        return nil
     end
-    if entries ~= nil then
+
+    if owned.IsValid ~= nil then
+        -- 兼容本次脚本热重载前留下的单控制器登记格式。
+        local controller = owned
+        entries[userid] = { [controller] = true }
+        return controller:IsValid() and controller or nil
+    end
+
+    for controller in pairs(owned) do
+        if controller ~= nil and controller:IsValid() then
+            return controller
+        end
+        owned[controller] = nil
+    end
+
+    if next(owned) == nil then
         entries[userid] = nil
     end
     return nil
@@ -152,20 +191,7 @@ local function IsController(item)
         and item:HasTag("kei_rotor_survey_controller")
 end
 
-local function FindControllerInContainer(container)
-    if container == nil or container.GetNumSlots == nil or container.GetItemInSlot == nil then
-        return nil
-    end
-
-    for slot = 1, container:GetNumSlots() do
-        local item = container:GetItemInSlot(slot)
-        if IsController(item) then
-            return item
-        end
-    end
-end
-
--- 查找玩家主物品栏及娇小爱丽丝中的控制器。该函数同时兼容服务端组件和客户端 replica。
+-- 查找玩家主物品栏或手部装备中的控制器。该函数同时兼容服务端组件和客户端 replica。
 function Registry.FindControllerInOwner(owner)
     if owner == nil then
         return nil
@@ -190,17 +216,6 @@ function Registry.FindControllerInOwner(owner)
         local item = inventory:GetItemInSlot(slot)
         if IsController(item) then
             return item
-        end
-
-        if item ~= nil and item:HasTag("kei_mini_alice") then
-            local container = item.components ~= nil and item.components.container or nil
-            if container == nil and item.replica ~= nil then
-                container = item.replica.container
-            end
-            local controller = FindControllerInContainer(container)
-            if controller ~= nil then
-                return controller
-            end
         end
     end
 end

@@ -20,16 +20,9 @@ local function IsAllowedControllerDestination(container, opener, item)
         return false
     end
     if container == opener then
-        return GetControllerOwnerUserId(item) == opener.userid
+        return true
     end
-    if not container:HasTag("kei_mini_alice") then
-        return false
-    end
-    local inventoryitem = container.components ~= nil
-        and container.components.inventoryitem or nil
-    return inventoryitem ~= nil
-        and inventoryitem:GetGrandOwner() == opener
-        and GetControllerOwnerUserId(item) == opener.userid
+    return false
 end
 
 AddComponentPostInit("container", function(self)
@@ -41,24 +34,12 @@ AddComponentPostInit("container", function(self)
 
     function self:CanTakeItemInSlot(item, slot)
         if IsController(item) then
-            if not self.inst:HasTag("kei_mini_alice") then
-                return false
-            end
-
-            local inventoryitem = self.inst.components ~= nil and self.inst.components.inventoryitem or nil
-            local owner = inventoryitem ~= nil and inventoryitem:GetGrandOwner() or nil
-            return GetControllerOwnerUserId(item) == (owner ~= nil and owner.userid or nil)
-                and owner ~= nil
-                and owner.userid ~= nil
+            return false
         end
         return old_CanTakeItemInSlot(self, item, slot)
     end
 
     function self:DropItemBySlot(slot, ...)
-        local item = self:GetItemInSlot(slot)
-        if IsController(item) then
-            return nil
-        end
         return old_DropItemBySlot(self, slot, ...)
     end
 
@@ -93,9 +74,7 @@ if not TheNet:IsDedicated() then
 
         function self:CanTakeItemInSlot(item, slot)
             if IsController(item) then
-                return self.inst ~= nil
-                    and self.inst.userid ~= nil
-                    and GetControllerOwnerUserId(item) == self.inst.userid
+                return true
             end
             return old_CanTakeItemInSlot(self, item, slot)
         end
@@ -106,15 +85,7 @@ if not TheNet:IsDedicated() then
 
         function self:CanTakeItemInSlot(item, slot)
             if IsController(item) then
-                if self.inst == nil or not self.inst:HasTag("kei_mini_alice") then
-                    return false
-                end
-
-                local alice_inventoryitem = self.inst.replica.inventoryitem
-                return ThePlayer ~= nil
-                    and alice_inventoryitem ~= nil
-                    and alice_inventoryitem:IsGrandOwner(ThePlayer)
-                    and GetControllerOwnerUserId(item) == ThePlayer.userid
+                return false
             end
             return old_CanTakeItemInSlot(self, item, slot)
         end
@@ -126,21 +97,14 @@ if not TheNet:IsDedicated() then
         local old_Click = self.Click
         local old_TradeItem = self.TradeItem
 
-        local function IsAllowedClientDestination(container, owner)
+        local function IsAllowedClientInventoryDestination(container, owner)
             if container == nil or owner == nil then
                 return false
             end
             if container == owner.replica.inventory then
                 return true
             end
-            local container_inst = container.inst
-            if container_inst == nil or not container_inst:HasTag("kei_mini_alice") then
-                return false
-            end
-            local inventoryitem = container_inst.replica ~= nil
-                and container_inst.replica.inventoryitem or nil
-            return inventoryitem ~= nil
-                and inventoryitem:IsGrandOwner(owner)
+            return false
         end
 
         function self:Click(stack_mod)
@@ -149,7 +113,7 @@ if not TheNet:IsDedicated() then
                 and owner.replica.inventory or nil
             local active_item = inventory ~= nil and inventory:GetActiveItem() or nil
             if IsController(active_item)
-                and not IsAllowedClientDestination(self.container, owner)
+                and not IsAllowedClientInventoryDestination(self.container, owner)
             then
                 return
             end
@@ -163,11 +127,12 @@ if not TheNet:IsDedicated() then
                 local owner = self.owner
                 local inventory = owner ~= nil and owner.replica ~= nil
                     and owner.replica.inventory or nil
-                -- 控制器在主物品栏中不能被交易到其他容器；娇小爱丽丝中的
-                -- 控制器仍允许按原版流程移回主物品栏。
-                if self.container ~= inventory
-                    and not IsAllowedClientDestination(self.container, owner)
-                then
+                -- 控制器不能从主物品栏交易到容器；保留旧存档中
+                -- Alice 控制器向主物品栏单向取出的机会。
+                local source_is_alice = self.container ~= nil
+                    and self.container.inst ~= nil
+                    and self.container.inst:HasTag("kei_mini_alice")
+                if self.container ~= inventory and not source_is_alice then
                     return
                 end
                 if self.container == inventory then

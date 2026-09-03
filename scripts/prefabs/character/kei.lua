@@ -13,6 +13,9 @@ local ClientSettings = require("kei/client_settings")
 
 local assets = {
     Asset("SCRIPT", "scripts/prefabs/player_common.lua"),
+    -- The FEV is registered globally; the FSB is attached to the character
+    -- prefab just like the reference character's voice bank.
+    Asset("SOUND", "sound/tendou_kei_vc.fsb"),
     Asset("ANIM", "anim/kei.zip"),
     Asset("ANIM", "anim/ghost_kei_build.zip"),
     Asset("ANIM", "anim/player_idles_kei.zip"),
@@ -150,6 +153,46 @@ local function EnsureMiniAliceItem(inst)
     end
 end
 
+local function OpenMiniAlice(inst)
+    if not TheWorld.ismastersim
+        or inst == nil
+        or not inst:IsValid()
+        or inst:HasTag("playerghost")
+        or inst.components == nil
+        or inst.components.inventory == nil
+    then
+        return
+    end
+
+    local alice = FindMiniAliceItem(inst)
+    local container = alice ~= nil
+        and alice.components ~= nil
+        and alice.components.container
+        or nil
+    if container ~= nil and not container:IsOpenedBy(inst) then
+        container:Open(inst)
+    end
+end
+
+local function ScheduleOpenMiniAlice(inst, delay)
+    if inst == nil or not inst:IsValid() then
+        return
+    end
+    if inst._kei_mini_alice_open_task ~= nil then
+        return
+    end
+
+    inst._kei_mini_alice_open_task = inst:DoTaskInTime(delay or 0, function(owner)
+        owner._kei_mini_alice_open_task = nil
+        EnsureMiniAliceItem(owner)
+        OpenMiniAlice(owner)
+    end)
+end
+
+local function OnKeiRespawnedFromGhost(inst)
+    ScheduleOpenMiniAlice(inst, 0.1)
+end
+
 local function RecordTaskBookItemTree(taskbook, item, visited)
     if item == nil or visited[item] then
         return
@@ -229,13 +272,7 @@ local function EnsureRotorSurveyController(inst)
         return
     end
 
-    local alice = FindMiniAliceItem(inst)
-    local container = alice ~= nil and alice.components ~= nil and alice.components.container or nil
-    if container ~= nil and container:GiveItem(controller) then
-        return
-    end
-
-    -- Keep the unique controller available if both storage locations are full.
+    -- 控制器限定在主物品栏；物品栏已满时按原有失败路径放在角色位置。
     controller.Transform:SetPosition(inst.Transform:GetWorldPosition())
 end
 
@@ -587,6 +624,9 @@ local function common_postinit(inst)
 
     -- 标签用于动作过滤、专属配方解锁，以及电击免疫等基础设定。
     inst:AddTag("kei")
+    -- Make the vanilla Wilson stategraph resolve hurt/talk/death sounds to
+    -- the Kei address space instead of relying on the prefab fallback.
+    inst.soundsname = "kei"
     inst:AddTag("electricdamageimmune")
     inst:AddTag("batteryuser")
     inst:AddTag(FOODTYPE.KEI_DEVICE .. "_eater")
@@ -621,6 +661,8 @@ local function common_postinit(inst)
     inst._kei_status_defense = net_float(inst.GUID, "kei.status_defense", "kei_status_combat_dirty")
     inst._kei_status_attack_detail = net_string(inst.GUID, "kei.status_attack_detail", "kei_status_combat_dirty")
     inst._kei_status_defense_detail = net_string(inst.GUID, "kei.status_defense_detail", "kei_status_combat_dirty")
+    inst._kei_virtual_staff_equipped = net_bool(inst.GUID, "kei.virtual_staff_equipped", "kei_virtual_staff_dirty")
+    inst._kei_virtual_staff_on_cooldown = net_bool(inst.GUID, "kei.virtual_staff_on_cooldown", "kei_virtual_staff_cd_dirty")
     inst._kei_eyeofterror_protocol_active = net_bool(inst.GUID, "kei.eyeofterror_protocol_active", "kei_eyeofterror_protocol_dirty")
     inst._kei_eyeofterror_dash_on_cooldown = net_bool(inst.GUID, "kei.eyeofterror_dash_on_cooldown", "kei_eyeofterror_dash_cd_dirty")
     inst._kei_daywalker_protocol_active = net_bool(inst.GUID, "kei.daywalker_protocol_active", "kei_daywalker_protocol_dirty")
@@ -1066,7 +1108,10 @@ local function StartKeiDormant(inst, playfx)
     end
 
     if inst.components.health ~= nil then
-        inst.kei_dormant_old_invincible = inst.components.health.invincible
+        if not inst.kei_dormant_old_invincible_saved then
+            inst.kei_dormant_old_invincible = inst.components.health.invincible == true
+            inst.kei_dormant_old_invincible_saved = true
+        end
         inst.components.health:SetInvincible(true)
     end
     if inst.components.locomotor ~= nil then
@@ -1130,6 +1175,7 @@ local function StopKeiDormant(inst, playfx)
         inst.components.health:SetInvincible(inst.kei_dormant_old_invincible == true)
     end
     inst.kei_dormant_old_invincible = nil
+    inst.kei_dormant_old_invincible_saved = nil
     if inst.components.locomotor ~= nil then
         inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_dormant")
     end
@@ -1177,6 +1223,20 @@ local function OnSave(inst, data)
     if inst.components["drone/upgrades"] ~= nil then
         data.kei_rotor_upgrades = inst.components["drone/upgrades"]:OnSave()
     end
+    local controller_power = inst._kei_rotor_controller_power
+    if controller_power == nil and inst.userid ~= nil then
+        local controller = RotorSurveyRegistry.FindController(inst.userid)
+        local power = controller ~= nil
+            and controller.components ~= nil
+            and controller.components["drone/power"]
+            or nil
+        if power ~= nil and power.GetPower ~= nil then
+            controller_power = power:GetPower()
+        end
+    end
+    if controller_power ~= nil then
+        data.kei_rotor_controller_power = controller_power
+    end
     if inst.components.kei_taskbook ~= nil then
         data.kei_taskbook = inst.components.kei_taskbook:OnSave()
     end
@@ -1194,6 +1254,9 @@ local function OnLoad(inst, data)
     end
     if data ~= nil and data.kei_rotor_upgrades ~= nil and inst.components["drone/upgrades"] ~= nil then
         inst.components["drone/upgrades"]:OnLoad(data.kei_rotor_upgrades)
+    end
+    if data ~= nil and data.kei_rotor_controller_power ~= nil then
+        inst._kei_rotor_controller_power = tonumber(data.kei_rotor_controller_power)
     end
     if data ~= nil and data.kei_taskbook ~= nil and inst.components.kei_taskbook ~= nil then
         inst.components.kei_taskbook:OnLoad(data.kei_taskbook)
@@ -1213,7 +1276,7 @@ local function OnLoad(inst, data)
         RecordExistingTaskBookData(inst)
     end)
 
-    inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    ScheduleOpenMiniAlice(inst, 0.1)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 end
 
@@ -1288,8 +1351,17 @@ local function master_postinit(inst)
 
     KeiBackupBody.ConfigurePlayer(inst)
     inst:DoTaskInTime(.1, RecordExistingTaskBookData)
-    inst:DoTaskInTime(0, EnsureMiniAliceItem)
+    ScheduleOpenMiniAlice(inst, 0.1)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
+
+    -- 重进游戏或跨世界后，服务器会在玩家恢复完成时发送该事件。
+    inst._kei_mini_alice_player_joined_fn = function(_, player)
+        if player == inst then
+            ScheduleOpenMiniAlice(inst, 0.1)
+        end
+    end
+    inst:ListenForEvent("ms_playerjoined", inst._kei_mini_alice_player_joined_fn, TheWorld)
+    inst:ListenForEvent("ms_respawnedfromghost", OnKeiRespawnedFromGhost)
 
     -- MakePlayerCharacter 会调用角色实例上的 OnSave / OnLoad 字段。
     inst._OnSave = OnSave

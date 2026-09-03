@@ -2,6 +2,8 @@ local CombatProtocolDefs = require("kei/protocols/combat")
 local EyeOfTerrorDash = require("kei/protocols/combat/effects/beast/_eyeofterror_dash")
 local DaywalkerLeap = require("kei/protocols/combat/effects/beast/_daywalker_leap")
 local RookGuard = require("kei/protocols/combat/effects/biome/rook")
+local PowerStat = require("kei/stats/power")
+local IntegrityStat = require("kei/stats/integrity")
 local SpDamageUtil = require("components/spdamageutil")
 
 local function AddKeiActionHandler(action, state)
@@ -724,7 +726,7 @@ local charge_action = AddAction("KEI_CHARGE", "充电", function(act)
         return false
     end
     if act.doer.components.hunger ~= nil then
-        act.doer.components.hunger:DoDelta(TUNING.KEI_BATTERY_POWER)
+        PowerStat.ApplyBattery(act.doer)
     end
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_CHARGED")
@@ -747,7 +749,8 @@ local rotor_recharge_action = AddAction("KEI_RECHARGE_ROTOR", "充电", function
         return false
     end
 
-    controller.components["drone/power"]:Recharge(TUNING.KEI_BATTERY_POWER or 240)
+    local power = controller.components["drone/power"]
+    power:Recharge(PowerStat.GetBatteryRestoreAmount(power:GetMaxPower()))
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_CHARGED")
     return true
@@ -763,7 +766,7 @@ local repair_action = AddAction("KEI_REPAIR", "修复", function(act)
         return false
     end
     if act.doer.components.health ~= nil and not act.doer.components.health:IsDead() then
-        act.doer.components.health:DoDelta(TUNING.KEI_REPAIR_VALUE, nil, "kei_repair_tool")
+        act.doer.components.health:DoDelta(IntegrityStat.GetRepairAmount(act.doer), nil, "kei_repair_tool")
     end
     ConsumeOne(act.invobject)
     Say(act.doer, "ANNOUNCE_KEI_REPAIRED")
@@ -1019,6 +1022,10 @@ AddStategraphState("wilson", State{
         FrameEvent(19, function(inst)
             inst.sg:AddStateTag("nointerrupt")
             if inst.components.health ~= nil then
+                if not inst.kei_dormant_old_invincible_saved then
+                    inst.kei_dormant_old_invincible = inst.components.health.invincible == true
+                    inst.kei_dormant_old_invincible_saved = true
+                end
                 inst.components.health:SetInvincible(true)
             end
         end),
@@ -1041,8 +1048,10 @@ AddStategraphState("wilson", State{
         if not inst.sg.statemem.dormant_success then
             inst:RemoveTag("notarget")
             if inst.components.health ~= nil then
-                inst.components.health:SetInvincible(false)
+                inst.components.health:SetInvincible(inst.kei_dormant_old_invincible == true)
             end
+            inst.kei_dormant_old_invincible = nil
+            inst.kei_dormant_old_invincible_saved = nil
             SetKeiDormantControls(inst, true)
         else
             inst:ShowActions(true)

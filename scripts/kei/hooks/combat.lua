@@ -1,6 +1,47 @@
 local KeiTimeScale = require("kei/time_scale")
 
-AddComponentPostInit("combat", KeiTimeScale.InstallCombatHooks)
+local function IsKeiVirtualStaffOnCooldown(inst)
+    return inst ~= nil
+        and inst:HasTag("kei")
+        and inst._kei_virtual_staff_equipped ~= nil
+        and inst._kei_virtual_staff_equipped:value()
+        and inst._kei_virtual_staff_on_cooldown ~= nil
+        and inst._kei_virtual_staff_on_cooldown:value()
+end
+
+local function InstallKeiVirtualStaffAttackHooks(combat)
+    if combat._kei_virtual_staff_attack_hooks_installed then
+        return
+    end
+    combat._kei_virtual_staff_attack_hooks_installed = true
+
+    local old_can_attack = combat.CanAttack
+    combat.CanAttack = function(self, target, ...)
+        local results = { old_can_attack(self, target, ...) }
+        if results[1] and IsKeiVirtualStaffOnCooldown(self.inst) then
+            results[1] = false
+        end
+        return unpack(results)
+    end
+
+    local old_locomotor_can_attack = combat.LocomotorCanAttack
+    combat.LocomotorCanAttack = function(self, reached_dest, target, ...)
+        local results = { old_locomotor_can_attack(self, reached_dest, target, ...) }
+        if not results[2] and IsKeiVirtualStaffOnCooldown(self.inst) then
+            results[3] = true
+        end
+        return unpack(results)
+    end
+end
+
+AddComponentPostInit("combat", function(combat)
+    KeiTimeScale.InstallCombatHooks(combat)
+    InstallKeiVirtualStaffAttackHooks(combat)
+end)
+
+-- Player attack prediction runs through combat_replica on clients, so apply
+-- the same read-only cooldown gate there as well.
+AddClassPostConstruct("components/combat_replica", InstallKeiVirtualStaffAttackHooks)
 
 local KEI_CONTROL_IMMUNE_EVENTS = {
     suspended = true,

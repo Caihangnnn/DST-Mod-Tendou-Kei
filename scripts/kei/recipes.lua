@@ -72,10 +72,9 @@ local function kei_config(tex, extra)
 end
 
 local function experience_ingredient(recname)
-    -- SANITY is an already registered character ingredient. The private
-    -- marker lets Kei replace its check without consuming sanity.
+    -- The private marker supplies dynamic experience costs for this recipe.
     local ingredient = Ingredient(
-        CHARACTER_INGREDIENT.SANITY,
+        CHARACTER_INGREDIENT.KEI_EXPERIENCE,
         5,
         "images/inventoryimages/kei_exp.xml",
         nil,
@@ -86,9 +85,10 @@ local function experience_ingredient(recname)
 end
 
 local function fixed_experience_ingredient(amount)
-    -- 复用已注册的 SANITY 角色材料分类，实际检查和扣除由 Kei 经验系统接管。
+    -- The marker stores the fixed cost while the ingredient remains a
+    -- dedicated character-resource type.
     local ingredient = Ingredient(
-        CHARACTER_INGREDIENT.SANITY,
+        CHARACTER_INGREDIENT.KEI_EXPERIENCE,
         5,
         "images/inventoryimages/kei_exp.xml",
         nil,

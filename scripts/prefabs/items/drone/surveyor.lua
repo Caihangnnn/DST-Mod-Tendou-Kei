@@ -22,6 +22,7 @@ local prefabs =
 local FOLLOW_DECISION_PERIOD = .25
 local FOLLOW_MOVE_PERIOD = FRAMES
 local FOLLOW_DISTANCE = 3
+local PILOT_INPUT_TIMEOUT = 0.75
 
 local function CreateDecal(skin_build)
     local inst = CreateEntity()
@@ -303,7 +304,7 @@ local function CalcProgress(t, length, dx, dz, speed)
     end
 
     local distance = math.sqrt(dx * dx + dz * dz)
-    local accel_and_decel_dist = speed or TUNING.SKILLS.WX78.SCOUTDRONE_SPEED
+    local accel_and_decel_dist = speed or RotorUpgrades.GetDroneSpeed(nil)
     local accel_part = accel_and_decel_dist / 2 / distance
     if t <= 1 then
         return easing.inQuad(t, 0, accel_part, 1)
@@ -588,8 +589,11 @@ local function OnPilotLocomote(inst, data)
     if inst._kei_rotor_auto_drive then
         inst._kei_rotor_move_deadline = nil
     else
-        -- 普通控制需要客户端持续发送心跳；超过该时间没有收到心跳就停止。
-        inst._kei_rotor_move_deadline = GetTime() + 0.2
+        -- 普通控制需要客户端持续发送心跳。客户端存在其他高负载逻辑时，
+        -- 允许短暂延迟，避免无人机因一次丢帧而提前停止；明确的空输入仍
+        -- 会在上面的分支立即停止。
+        inst._kei_rotor_move_deadline = GetTime()
+            + (tonumber(TUNING.KEI_ROTOR_PILOT_INPUT_TIMEOUT) or PILOT_INPUT_TIMEOUT)
     end
     -- dir 与 fishing 的 RunInDirection 参数一致，单位为角度；只有三角
     -- 函数计算边界方向时才转换为弧度。
@@ -706,7 +710,7 @@ local function fn()
     inst:AddComponent("follower")
     inst.components.follower:DisableLeashing()
 
-    inst:SetStateGraph("SGwx78_drone_scout")
+    inst:SetStateGraph("SGkei_rotor_surveyor")
 
     inst:ListenForEvent("onremove", OnDroneRemoved)
     inst:ListenForEvent("locomote", OnPilotLocomote)

@@ -23,10 +23,21 @@ function Integrity.Configure(inst)
     end
 end
 
+-- 计算修理工具应恢复的完整度，按当前最大生命值计算。
+function Integrity.GetRepairAmount(inst)
+    local health = inst ~= nil and inst.components ~= nil and inst.components.health or nil
+    if health == nil then
+        return 0
+    end
+
+    local percent = math.max(0, tonumber(TUNING.KEI_REPAIR_RESTORE_PERCENT) or 0.33)
+    return math.max(0, health.maxhealth or Integrity.GetBaseMax()) * percent
+end
+
 -- 修理工具修复（生命值）
 function Integrity.ApplyRepair(inst)
     if inst.components.health ~= nil and not inst.components.health:IsDead() then
-        inst.components.health:DoDelta(TUNING.KEI_REPAIR_VALUE or 30, nil, "kei_repair_tool")
+        inst.components.health:DoDelta(Integrity.GetRepairAmount(inst), nil, "kei_repair_tool")
     end
 end
 

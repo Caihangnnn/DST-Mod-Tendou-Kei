@@ -8,6 +8,7 @@ local WEATHER_RECIPE = "kei_weather_spell"
 
 AddComponentPostInit("builder", function(self)
     local old_HasCharacterIngredient = self.HasCharacterIngredient
+    local old_RemoveIngredients = self.RemoveIngredients
     local old_DoBuild = self.DoBuild
 
     function self:HasCharacterIngredient(ingredient)
@@ -17,6 +18,11 @@ AddComponentPostInit("builder", function(self)
             return GrowthRecipes.HasEnoughExperienceIngredient(self.inst, ingredient), amount
         end
         return old_HasCharacterIngredient(self, ingredient)
+    end
+
+    function self:RemoveIngredients(ingredients, recname, discounted, ...)
+        GrowthRecipes.ConsumeExperienceIngredients(self.inst, recname)
+        return old_RemoveIngredients(self, ingredients, recname, discounted, ...)
     end
 
     function self:DoBuild(recname, pt, rotation, skin)

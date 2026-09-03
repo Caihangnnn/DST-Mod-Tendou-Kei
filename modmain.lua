@@ -16,6 +16,8 @@ PrefabFiles = { char_prefab .. "__all_prefabs" }
 
 -- 资源清单单独维护，避免入口文件同时承担资源和逻辑注册。
 modimport("scripts/kei/assets.lua")
+-- Load voice events before the larger Kei feature tree.
+modimport("scripts/kei/sounds.lua")
 modimport("scripts/kei/config.lua")
 modimport("scripts/kei/hooks/init.lua")
 modimport("scripts/kei/init.lua")

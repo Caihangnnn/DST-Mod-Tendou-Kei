@@ -98,7 +98,7 @@ function TaskBook.GetDefinition(kind, protocol, prefab)
     elseif def.category == "biome" then
         acquisition = "蓝色战斗协议CD礼盒"
     elseif def.tier == "basic" then
-        acquisition = "金色战斗协议CD礼盒"
+        acquisition = "金色战斗协议CD礼盒\n或使用对应材料和 1 个空白 CD 制作"
     else
         acquisition = "紫色战斗协议CD礼盒\n使用数据记录器完成对应巨兽的数据记录"
     end

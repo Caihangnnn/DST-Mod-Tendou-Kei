@@ -187,6 +187,8 @@ local KeiProtocolSlots = Class(function(self, inst)
     self.active_life = {}
     self.virtual_equips = {}
     self.virtual_hand_equip = nil
+    self._kei_virtual_staff_attack_cooldown_until = nil
+    self._kei_virtual_staff_attack_cd_task = nil
     self.analysis_base_damage_bonus = 0
     self.analysis_tool_actions = {}
     self._kei_worker_action_old_values = {}
@@ -357,6 +359,42 @@ local KeiProtocolSlots = Class(function(self, inst)
 
         self._old_combat_doattack = combat.DoAttack
         combat.DoAttack = function(component, ...)
+            local weapon = select(2, ...)
+            local projectile = select(3, ...)
+            if weapon == nil and component.GetWeapon ~= nil then
+                weapon = component:GetWeapon()
+            end
+
+            -- A ranged staff calls DoAttack twice: once to launch its
+            -- projectile and once again when that projectile hits.  The
+            -- cooldown belongs to the launch, while the hit-side call must
+            -- continue so the staff's onattack callback can apply its effect.
+            if VirtualHandEquipment.IsVirtualStaff(weapon) and projectile == nil then
+                local now = GetTime()
+                if self._kei_virtual_staff_attack_cooldown_until ~= nil
+                    and self._kei_virtual_staff_attack_cooldown_until > now
+                then
+                    component:ClearAttackTemps()
+                    return
+                end
+
+                local cooldown = math.max(0, TUNING.KEI_VIRTUAL_STAFF_ATTACK_COOLDOWN or 3)
+                self._kei_virtual_staff_attack_cooldown_until = now + cooldown
+                if self.inst._kei_virtual_staff_on_cooldown ~= nil then
+                    self.inst._kei_virtual_staff_on_cooldown:set(true)
+                end
+                if self._kei_virtual_staff_attack_cd_task ~= nil then
+                    self._kei_virtual_staff_attack_cd_task:Cancel()
+                end
+                self._kei_virtual_staff_attack_cd_task = self.inst:DoTaskInTime(cooldown, function()
+                    self._kei_virtual_staff_attack_cooldown_until = nil
+                    self._kei_virtual_staff_attack_cd_task = nil
+                    if self.inst._kei_virtual_staff_on_cooldown ~= nil then
+                        self.inst._kei_virtual_staff_on_cooldown:set(false)
+                    end
+                end)
+            end
+
             local bonus = self.basic_attribute_modifiers.fixed_damage_bonus or 0
             local old_bonus = component.damagebonus or 0
             local old_context = component._kei_damage_parts_context or 0
@@ -1011,6 +1049,7 @@ function KeiProtocolSlots:OnRemoveFromEntity()
         self._life_durability_task,
         self._scheduled_refresh_task,
         self._combat_status_sync_task,
+        self._kei_virtual_staff_attack_cd_task,
     }
     for _, task in ipairs(tasks) do
         if task ~= nil then
@@ -1023,6 +1062,8 @@ function KeiProtocolSlots:OnRemoveFromEntity()
     self._life_durability_task = nil
     self._scheduled_refresh_task = nil
     self._combat_status_sync_task = nil
+    self._kei_virtual_staff_attack_cd_task = nil
+    self._kei_virtual_staff_attack_cooldown_until = nil
 
     local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
     if inventory ~= nil then
@@ -1077,6 +1118,7 @@ function KeiProtocolSlots:UnlockNextSlot()
     end
     self:EnsureProtocolContainers()
     self:Refresh()
+    self.inst:PushEvent("kei_protocol_slot_unlocked", { slot = self.unlocked_slots })
     return true
 end
 
@@ -1367,11 +1409,24 @@ function KeiProtocolSlots:ClearVirtualEquips(keep)
 end
 
 function KeiProtocolSlots:RemoveHandVirtualEquip()
-    return VirtualHandEquipment.Remove(self)
+    local result = VirtualHandEquipment.Remove(self)
+    self:SyncVirtualStaffState()
+    return result
 end
 
 function KeiProtocolSlots:ApplyHandVirtualEquip(entry)
-    return VirtualHandEquipment.Apply(self, entry)
+    local result = VirtualHandEquipment.Apply(self, entry)
+    self:SyncVirtualStaffState()
+    return result
+end
+
+function KeiProtocolSlots:SyncVirtualStaffState()
+    local inventory = self.inst.components ~= nil and self.inst.components.inventory or nil
+    local equipped = inventory ~= nil and inventory:GetEquippedItem(EQUIPSLOTS.HANDS) or nil
+    local is_virtual_staff = VirtualHandEquipment.IsVirtualStaff(equipped)
+    if self.inst._kei_virtual_staff_equipped ~= nil then
+        self.inst._kei_virtual_staff_equipped:set(is_virtual_staff)
+    end
 end
 
 ----------------------------------------------------------------

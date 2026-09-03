@@ -156,6 +156,7 @@ AddComponentPostInit("container", function(self)
     local old_MoveItemFromAllOfSlot = self.MoveItemFromAllOfSlot
     local old_MoveItemFromHalfOfSlot = self.MoveItemFromHalfOfSlot
     local old_MoveItemFromCountOfSlot = self.MoveItemFromCountOfSlot
+    local old_GiveItem = self.GiveItem
     local old_RemoveItemBySlot = self.RemoveItemBySlot
     local old_DropItemBySlot = self.DropItemBySlot
     local old_RemoveItem = self.RemoveItem
@@ -171,8 +172,55 @@ AddComponentPostInit("container", function(self)
             or MiniAlice.IsSlotAccessible(container, slot)
     end
 
+    local function FindAccessibleMiniAliceSlot(container, item)
+        if not IsMiniAliceContainer(container) or item == nil then
+            return nil
+        end
+
+        if container:AcceptsStacks() and item.components.stackable ~= nil then
+            for slot = 1, container:GetNumSlots() do
+                local stored = container:GetItemInSlot(slot)
+                if stored ~= nil
+                    and stored.components.stackable ~= nil
+                    and not stored.components.stackable:IsFull()
+                    and stored.components.stackable:CanStackWith(item)
+                    and container:CanTakeItemInSlot(item, slot)
+                then
+                    return slot
+                end
+            end
+        end
+
+        for slot = 1, container:GetNumSlots() do
+            if container:GetItemInSlot(slot) == nil
+                and container:CanTakeItemInSlot(item, slot)
+            then
+                return slot
+            end
+        end
+    end
+
     function self:CanTakeItemInSlot(item, slot)
+        if not IsAccessibleMiniAliceSlot(self, slot) then
+            return false
+        end
         return old_CanTakeItemInSlot(self, item, slot)
+    end
+
+    function self:GiveItem(item, slot, src_pos, drop_on_fail)
+        if IsMiniAliceContainer(self) then
+            if slot ~= nil then
+                if not MiniAlice.IsSlotAccessible(self, slot) then
+                    return false
+                end
+            else
+                slot = FindAccessibleMiniAliceSlot(self, item)
+                if slot == nil then
+                    return false
+                end
+            end
+        end
+        return old_GiveItem(self, item, slot, src_pos, drop_on_fail)
     end
 
     function self:RemoveItemBySlot(slot, ...)
@@ -352,6 +400,57 @@ local function ClientFindProtocolMoveDestination(character, item)
 end
 
 if not TheNet:IsDedicated() then
+    local function IsMiniAliceReplica(container)
+        return container ~= nil
+            and container.inst ~= nil
+            and container.inst:HasTag("kei_mini_alice")
+    end
+
+    local function FindClientMiniAliceSlot(container, item)
+        if not IsMiniAliceReplica(container) or item == nil then
+            return nil
+        end
+
+        if container:AcceptsStacks() and item.replica.stackable ~= nil then
+            for slot = 1, container:GetNumSlots() do
+                local stored = container:GetItemInSlot(slot)
+                local stored_stackable = stored ~= nil and stored.replica.stackable or nil
+                if stored_stackable ~= nil
+                    and not stored_stackable:IsFull()
+                    and stored_stackable:CanStackWith(item)
+                    and MiniAlice.IsSlotAccessible(container, slot)
+                    and container:CanTakeItemInSlot(item, slot)
+                then
+                    return slot
+                end
+            end
+        end
+
+        for slot = 1, container:GetNumSlots() do
+            if container:GetItemInSlot(slot) == nil
+                and MiniAlice.IsSlotAccessible(container, slot)
+                and container:CanTakeItemInSlot(item, slot)
+            then
+                return slot
+            end
+        end
+    end
+
+    AddClassPostConstruct("components/container_replica", function(self)
+        local old_CanTakeItemInSlot = self.CanTakeItemInSlot
+
+        function self:CanTakeItemInSlot(item, slot)
+            if self.inst ~= nil
+                and self.inst:HasTag("kei_mini_alice")
+                and slot ~= nil
+                and not MiniAlice.IsSlotAccessible(self, slot)
+            then
+                return false
+            end
+            return old_CanTakeItemInSlot(self, item, slot)
+        end
+    end)
+
     AddClassPostConstruct("widgets/invslot", function(self)
         local old_TradeItem = self.TradeItem
 
@@ -388,6 +487,31 @@ if not TheNet:IsDedicated() then
             end
 
             return old_TradeItem(self, stack_mod, ...)
+        end
+    end)
+
+    AddPrefabPostInit("container_classified", function(inst)
+        local old_ReceiveItem = inst.ReceiveItem
+        if old_ReceiveItem == nil then
+            return
+        end
+
+        function inst:ReceiveItem(item, count, forceslot, ...)
+            local parent = self._parent
+            if parent ~= nil and parent:HasTag("kei_mini_alice") then
+                local container = parent.replica ~= nil and parent.replica.container or nil
+                if forceslot ~= nil then
+                    if not MiniAlice.IsSlotAccessible(container, forceslot) then
+                        return nil
+                    end
+                else
+                    forceslot = FindClientMiniAliceSlot(container, item)
+                    if forceslot == nil then
+                        return nil
+                    end
+                end
+            end
+            return old_ReceiveItem(self, item, count, forceslot, ...)
         end
     end)
 end

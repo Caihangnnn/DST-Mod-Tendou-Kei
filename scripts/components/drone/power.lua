@@ -16,13 +16,25 @@ local KeiRotorPower = Class(function(self, inst)
 end)
 
 local function GetOwner(inst)
+    if inst ~= nil and inst._kei_controller_owner ~= nil
+        and inst._kei_controller_owner:IsValid()
+    then
+        return inst._kei_controller_owner
+    end
+
     local inventoryitem = inst ~= nil
         and inst.components ~= nil
         and inst.components.inventoryitem
         or nil
     return inventoryitem ~= nil and inventoryitem.owner
-        or inst ~= nil and inst._kei_controller_owner
         or nil
+end
+
+local function SyncOwnerPower(self)
+    local owner = GetOwner(self.inst)
+    if owner ~= nil and owner.userid ~= nil then
+        owner._kei_rotor_controller_power = self.power
+    end
 end
 
 function KeiRotorPower:IsEquipped()
@@ -63,6 +75,7 @@ function KeiRotorPower:SetPower(value)
     value = tonumber(value) or 0
     self.power = math.max(0, math.min(self.max_power, value))
     self:SyncPerishable()
+    SyncOwnerPower(self)
 end
 
 function KeiRotorPower:RefreshMaxPower(owner)

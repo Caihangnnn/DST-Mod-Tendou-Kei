@@ -32,8 +32,7 @@ local function RefreshTaskBooks(prefab)
         local taskbook = player.components ~= nil and player.components.kei_taskbook or nil
         if taskbook ~= nil then
             taskbook:UpdateTaskVisual(prefab)
-            if #taskbook.tasks == 0 then
-                taskbook.last_generated_day = -1
+            if #taskbook.tasks == 0 and taskbook.waiting_for_task_targets then
                 taskbook:RefreshDailyTasks()
             end
         end
