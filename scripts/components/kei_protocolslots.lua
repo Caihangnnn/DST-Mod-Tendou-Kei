@@ -7,6 +7,7 @@ local LifeRecipeUnlocks = require("kei/protocols/life/recipe_unlocks")
 local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipment")
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
+local MiniAlice = require("kei/mini_alice")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 local BASIC_ATTRIBUTE_PROTOCOLS = BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOLS
@@ -44,6 +45,9 @@ local BASIC_DAMAGE_MODIFIER = "kei_basic_attribute_damage"
 local COMBAT_PROTOCOL_DAMAGE_MODIFIER = "kei_combat_protocol_damage"
 local BASIC_SPEED_MODIFIER = "kei_basic_attribute_speed"
 local BASIC_ABSORB_MODIFIER = "kei_basic_attribute_absorb"
+local MINI_ALICE_ACTION_TAKEOUT = "takeout"
+local MINI_ALICE_ACTION_STORE = "store"
+local MINI_ALICE_ACTION_SORT = "sort"
 
 local function FormatStatusNumber(value)
     value = tonumber(value) or 0
@@ -150,6 +154,175 @@ local function ReturnItemToOwner(owner, item)
     if owner ~= nil then
         item.Transform:SetPosition(owner.Transform:GetWorldPosition())
     end
+end
+
+local function GetItemIdentity(item)
+    if item == nil then
+        return nil
+    end
+    return tostring(item.prefab or "") .. "\31" .. tostring(item.skinname or "")
+end
+
+local function ContainerHasRoomForItem(container, item)
+    if container == nil
+        or item == nil
+        or not container:CanTakeItemInSlot(item)
+    then
+        return false
+    end
+
+    for slot = 1, container:GetNumSlots() do
+        local stored = container:GetItemInSlot(slot)
+        if stored == nil then
+            if container:CanTakeItemInSlot(item, slot) then
+                return true
+            end
+        elseif container:AcceptsStacks()
+            and stored.components ~= nil
+            and stored.components.stackable ~= nil
+            and not stored.components.stackable:IsFull()
+            and stored.components.stackable:CanStackWith(item)
+            and container:CanTakeItemInSlot(item, slot)
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function GetOpenChestContainers(owner, alice)
+    local inventory = owner ~= nil and owner.components ~= nil and owner.components.inventory or nil
+    if inventory == nil then
+        return {}
+    end
+
+    local result = {}
+    for container_inst in pairs(inventory.opencontainers or {}) do
+        local container = container_inst ~= nil
+            and container_inst.components ~= nil
+            and container_inst.components.container
+            or nil
+        if container ~= nil
+            and container ~= alice
+            and container.type == "chest"
+            and container:IsOpenedBy(owner)
+            and not container.readonlycontainer
+        then
+            result[#result + 1] = container
+        end
+    end
+
+    table.sort(result, function(a, b)
+        return (a.inst.GUID or 0) < (b.inst.GUID or 0)
+    end)
+    return result
+end
+
+local function CollectItemIdentities(container, accessible_only)
+    local identities = {}
+    if container == nil then
+        return identities
+    end
+
+    for slot = 1, container:GetNumSlots() do
+        if not accessible_only or MiniAlice.IsSlotAccessible(container, slot) then
+            local item = container:GetItemInSlot(slot)
+            local identity = GetItemIdentity(item)
+            if identity ~= nil then
+                identities[identity] = true
+            end
+        end
+    end
+    return identities
+end
+
+local function AddContainerItemIdentities(identities, container)
+    for identity in pairs(CollectItemIdentities(container, false)) do
+        identities[identity] = true
+    end
+end
+
+local function MoveMatchingItems(source, target, identities, owner)
+    if source == nil or target == nil or identities == nil then
+        return
+    end
+
+    for slot = 1, source:GetNumSlots() do
+        local item = source:GetItemInSlot(slot)
+        if item ~= nil
+            and identities[GetItemIdentity(item)]
+            and ContainerHasRoomForItem(target, item)
+        then
+            source:MoveItemFromAllOfSlot(slot, target.inst, owner)
+        end
+    end
+end
+
+local function GetPerishablePercent(item)
+    local perishable = item ~= nil
+        and item.components ~= nil
+        and item.components.perishable
+        or nil
+    if perishable ~= nil and perishable.GetPercent ~= nil then
+        return tonumber(perishable:GetPercent()) or 0
+    end
+    return 0
+end
+
+local function SortMiniAliceItems(alice, owner)
+    local slots = {}
+    local items = {}
+    for slot = 1, alice:GetNumSlots() do
+        if MiniAlice.IsSlotAccessible(alice, slot) then
+            slots[#slots + 1] = slot
+            local item = alice:GetItemInSlot(slot)
+            if item ~= nil then
+                items[#items + 1] = {
+                    item = item,
+                    slot = slot,
+                    identity = GetItemIdentity(item) or "",
+                    has_freshness = item.components ~= nil and item.components.perishable ~= nil,
+                    is_stackable = item.components ~= nil and item.components.stackable ~= nil,
+                    freshness = GetPerishablePercent(item),
+                }
+            end
+        end
+    end
+
+    if #items <= 1 then
+        return
+    end
+
+    table.sort(items, function(a, b)
+        if a.has_freshness ~= b.has_freshness then
+            return a.has_freshness
+        elseif a.is_stackable ~= b.is_stackable then
+            return a.is_stackable
+        elseif a.identity ~= b.identity then
+            return a.identity < b.identity
+        elseif a.has_freshness and a.freshness ~= b.freshness then
+            return a.freshness > b.freshness
+        end
+        return a.slot < b.slot
+    end)
+
+    local removed = {}
+    for _, entry in ipairs(items) do
+        removed[entry.slot] = alice:RemoveItemBySlot(entry.slot)
+    end
+
+    local old_ignoresound = alice.ignoresound
+    alice.ignoresound = true
+    for index, entry in ipairs(items) do
+        local item = removed[entry.slot]
+        if item ~= nil and not alice:GiveItem(item, slots[index], nil, false) then
+            -- Keep the item in the original slot if an external container hook
+            -- rejects the sorted destination.
+            alice:GiveItem(item, entry.slot, nil, false)
+        end
+    end
+    alice.ignoresound = old_ignoresound
 end
 
 local function RemoveProtocolContainer(owner, inventory, container)
@@ -604,6 +777,47 @@ local KeiProtocolSlots = Class(function(self, inst)
     end
     inst:ListenForEvent("ms_playerjoined", self._player_joined_refresh_fn, TheWorld)
 end)
+
+function KeiProtocolSlots:PerformMiniAliceAction(action)
+    if action ~= MINI_ALICE_ACTION_TAKEOUT
+        and action ~= MINI_ALICE_ACTION_STORE
+        and action ~= MINI_ALICE_ACTION_SORT
+    then
+        return false
+    end
+
+    local alice = MiniAlice.GetContainer(self.inst)
+    if alice == nil or not alice:IsOpenedBy(self.inst) then
+        return false
+    end
+
+    if action == MINI_ALICE_ACTION_SORT then
+        SortMiniAliceItems(alice, self.inst)
+        return true
+    end
+
+    local chests = GetOpenChestContainers(self.inst, alice)
+    if #chests == 0 then
+        return false
+    end
+
+    if action == MINI_ALICE_ACTION_STORE then
+        local alice_items = CollectItemIdentities(alice, true)
+        for _, chest in ipairs(chests) do
+            MoveMatchingItems(chest, alice, alice_items, self.inst)
+        end
+    else
+        local chest_items = {}
+        for _, chest in ipairs(chests) do
+            AddContainerItemIdentities(chest_items, chest)
+        end
+        for _, chest in ipairs(chests) do
+            MoveMatchingItems(alice, chest, chest_items, self.inst)
+        end
+    end
+
+    return true
+end
 
 ----------------------------------------------------------------
 -- 槽位管理

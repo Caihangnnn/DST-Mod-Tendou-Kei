@@ -661,6 +661,7 @@ end
 local MINI_ALICE_UI_OFFSET = Vector3(290, 100, 0)
 local MINI_ALICE_PAGE_TWEEN_TIME = 0.1
 local MINI_ALICE_PAGE_TWEEN_DISTANCE = 620
+local MINI_ALICE_PAGE_ROW_SPACING = 72
 
 local function GetMiniAlicePosition(container, doer)
     local slot = GetInventorySlotWidget(container, doer)
@@ -976,7 +977,12 @@ if not TheNet:IsDedicated() then
         local clip = widget:AddChild(Widget("MiniAliceSlotClip"))
         -- Alice UI 动画包的可见横向范围约为 -304 到 300。
         -- 纵向留出足够空间，只裁剪翻页时左右越界的格子。
-        clip:SetScissor(-294, -200, 584, 400)
+        clip:SetScissor(
+            -294,
+            -60,
+            584,
+            MINI_ALICE_PAGE_ROW_SPACING * MiniAlice.GetMaxPages() + 120
+        )
 
         for _, slot in ipairs(widget.inv or {}) do
             local position = slot:GetPosition()
@@ -988,8 +994,24 @@ if not TheNet:IsDedicated() then
     end
 
     local function UpdateMiniAlicePageButtons(widget, page, unlocked_pages)
+        local display_mode = MiniAlice.GetDisplayMode()
         local transition = widget._kei_mini_alice_page_transition == true
-        local has_multiple_pages = unlocked_pages > 1
+        local visible_page_limit = display_mode == MiniAlice.DISPLAY_MODE_FUSED
+            and MiniAlice.GetFusionPages()
+            or 1
+        local has_multiple_pages = unlocked_pages > visible_page_limit
+
+        if display_mode == MiniAlice.DISPLAY_MODE_EXPANDED then
+            if widget._kei_mini_alice_previous_button ~= nil then
+                widget._kei_mini_alice_previous_button:Disable()
+                widget._kei_mini_alice_previous_button:Hide()
+            end
+            if widget._kei_mini_alice_next_button ~= nil then
+                widget._kei_mini_alice_next_button:Disable()
+                widget._kei_mini_alice_next_button:Hide()
+            end
+            return
+        end
 
         if widget._kei_mini_alice_previous_button ~= nil then
             if not MiniAlice.HasLeftArrow() then
@@ -1017,9 +1039,25 @@ if not TheNet:IsDedicated() then
         end
     end
 
+    local function UpdateMiniAliceActionButtonPositions(widget, visible_pages)
+        if widget._kei_mini_alice_action_buttons == nil then
+            return
+        end
+
+        local button_y = (math.max(visible_pages or 1, 1) - 1) * MINI_ALICE_PAGE_ROW_SPACING + 65
+        for _, button in pairs(widget._kei_mini_alice_action_buttons) do
+            local position = button:GetPosition()
+            button:SetPosition(Vector3(position.x, button_y, 0))
+        end
+    end
+
     local function ShowMiniAlicePage(widget, page, owner)
         local unlocked_pages = MiniAlice.GetUnlockedPages(owner)
         page = math.clamp(page or 1, 1, unlocked_pages)
+        local display_mode = MiniAlice.GetDisplayMode()
+        if display_mode == MiniAlice.DISPLAY_MODE_FUSED then
+            page = MiniAlice.GetFusionPageStart(page, unlocked_pages, MiniAlice.GetFusionPages())
+        end
 
         if widget._kei_mini_alice_page_transition_task ~= nil then
             widget._kei_mini_alice_page_transition_task:Cancel()
@@ -1028,21 +1066,39 @@ if not TheNet:IsDedicated() then
         widget._kei_mini_alice_page_transition = false
         HideMiniAliceSlots(widget)
 
-        local first_slot = (page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
-        local last_slot = first_slot + MiniAlice.SLOTS_PER_PAGE - 1
-        for slot_index = first_slot, last_slot do
-            if widget.inv[slot_index] ~= nil then
-                local position = MINI_ALICE_SLOT_POSITIONS[slot_index - first_slot + 1]
-                widget.inv[slot_index]:SetPosition(position)
-                widget.inv[slot_index]:Show()
+        local first_page = display_mode == MiniAlice.DISPLAY_MODE_EXPANDED and 1 or page
+        local visible_pages = display_mode == MiniAlice.DISPLAY_MODE_EXPANDED
+            and unlocked_pages
+            or (display_mode == MiniAlice.DISPLAY_MODE_FUSED
+                and math.min(MiniAlice.GetFusionPages(), unlocked_pages - first_page + 1)
+                or 1)
+        local last_page = math.min(first_page + visible_pages - 1, unlocked_pages)
+
+        for visible_page = first_page, last_page do
+            local row = visible_page - first_page
+            local first_slot = (visible_page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
+            local last_slot = first_slot + MiniAlice.SLOTS_PER_PAGE - 1
+            for slot_index = first_slot, last_slot do
+                if widget.inv[slot_index] ~= nil then
+                    local base_position = MINI_ALICE_SLOT_POSITIONS[slot_index - first_slot + 1]
+                    local position = Vector3(
+                        base_position.x,
+                        base_position.y + row * MINI_ALICE_PAGE_ROW_SPACING,
+                        0
+                    )
+                    widget.inv[slot_index]:SetPosition(position)
+                    widget.inv[slot_index]:Show()
+                end
             end
         end
 
         widget._kei_mini_alice_page = page
         widget._kei_mini_alice_unlocked_pages = unlocked_pages
+        widget._kei_mini_alice_visible_pages = last_page - first_page + 1
         if widget.container ~= nil then
             widget.container._kei_mini_alice_page = page
         end
+        UpdateMiniAliceActionButtonPositions(widget, widget._kei_mini_alice_visible_pages)
         UpdateMiniAlicePageButtons(widget, page, unlocked_pages)
     end
 
@@ -1054,35 +1110,63 @@ if not TheNet:IsDedicated() then
         local current_page = widget._kei_mini_alice_page or 1
         local unlocked_pages = MiniAlice.GetUnlockedPages(owner)
         page = math.clamp(page or current_page, 1, unlocked_pages)
+        local display_mode = MiniAlice.GetDisplayMode()
+
+        if display_mode == MiniAlice.DISPLAY_MODE_EXPANDED then
+            ShowMiniAlicePage(widget, page, owner)
+            return
+        elseif display_mode == MiniAlice.DISPLAY_MODE_FUSED then
+            local fusion_pages = MiniAlice.GetFusionPages()
+            current_page = MiniAlice.GetFusionPageStart(current_page, unlocked_pages, fusion_pages)
+            page = MiniAlice.GetFusionPageStart(page, unlocked_pages, fusion_pages)
+        end
+
         if page == current_page then
             UpdateMiniAlicePageButtons(widget, current_page, unlocked_pages)
             return
         end
 
         local direction = page > current_page and 1 or -1
-        local old_first_slot = (current_page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
-        local new_first_slot = (page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
         local offset = Vector3(direction * MINI_ALICE_PAGE_TWEEN_DISTANCE, 0, 0)
+        local visible_pages = display_mode == MiniAlice.DISPLAY_MODE_FUSED
+            and MiniAlice.GetFusionPages()
+            or 1
 
         widget._kei_mini_alice_page_transition = true
         UpdateMiniAlicePageButtons(widget, current_page, unlocked_pages)
 
-        for i = 1, MiniAlice.SLOTS_PER_PAGE do
-            local position = MINI_ALICE_SLOT_POSITIONS[i]
-            local old_slot = widget.inv[old_first_slot + i - 1]
-            local new_slot = widget.inv[new_first_slot + i - 1]
+        for row = 0, visible_pages - 1 do
+            local position_page = current_page + row
+            local new_position_page = page + row
+            local position_y = row * MINI_ALICE_PAGE_ROW_SPACING
 
-            if old_slot ~= nil then
-                old_slot:SetPosition(position)
-                old_slot:Show()
-                old_slot:MoveTo(position, position - offset, MINI_ALICE_PAGE_TWEEN_TIME)
+            if position_page <= unlocked_pages then
+                local old_first_slot = (position_page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
+                for i = 1, MiniAlice.SLOTS_PER_PAGE do
+                    local old_slot = widget.inv[old_first_slot + i - 1]
+                    if old_slot ~= nil then
+                        local base_position = MINI_ALICE_SLOT_POSITIONS[i]
+                        local position = Vector3(base_position.x, position_y, 0)
+                        old_slot:SetPosition(position)
+                        old_slot:Show()
+                        old_slot:MoveTo(position, position - offset, MINI_ALICE_PAGE_TWEEN_TIME)
+                    end
+                end
             end
 
-            if new_slot ~= nil then
-                local start_position = position + offset
-                new_slot:SetPosition(start_position)
-                new_slot:Show()
-                new_slot:MoveTo(start_position, position, MINI_ALICE_PAGE_TWEEN_TIME)
+            if new_position_page <= unlocked_pages then
+                local new_first_slot = (new_position_page - 1) * MiniAlice.SLOTS_PER_PAGE + 1
+                for i = 1, MiniAlice.SLOTS_PER_PAGE do
+                    local new_slot = widget.inv[new_first_slot + i - 1]
+                    if new_slot ~= nil then
+                        local base_position = MINI_ALICE_SLOT_POSITIONS[i]
+                        local position = Vector3(base_position.x, position_y, 0)
+                        local start_position = position + offset
+                        new_slot:SetPosition(start_position)
+                        new_slot:Show()
+                        new_slot:MoveTo(start_position, position, MINI_ALICE_PAGE_TWEEN_TIME)
+                    end
+                end
             end
         end
 
@@ -1117,7 +1201,10 @@ if not TheNet:IsDedicated() then
         previous_button:SetOnClick(function()
             local page = widget._kei_mini_alice_page or 1
             local page_count = MiniAlice.GetUnlockedPages(owner)
-            AnimateMiniAlicePage(widget, MiniAlice.GetPreviousPage(page, page_count), owner)
+            local target = MiniAlice.GetDisplayMode() == MiniAlice.DISPLAY_MODE_FUSED
+                and MiniAlice.GetPreviousFusionPage(page, page_count, MiniAlice.GetFusionPages())
+                or MiniAlice.GetPreviousPage(page, page_count)
+            AnimateMiniAlicePage(widget, target, owner)
         end)
 
         local next_button = widget:AddChild(ImageButton(
@@ -1135,7 +1222,10 @@ if not TheNet:IsDedicated() then
         next_button:SetOnClick(function()
             local page = widget._kei_mini_alice_page or 1
             local page_count = MiniAlice.GetUnlockedPages(owner)
-            AnimateMiniAlicePage(widget, MiniAlice.GetNextPage(page, page_count), owner)
+            local target = MiniAlice.GetDisplayMode() == MiniAlice.DISPLAY_MODE_FUSED
+                and MiniAlice.GetNextFusionPage(page, page_count, MiniAlice.GetFusionPages())
+                or MiniAlice.GetNextPage(page, page_count)
+            AnimateMiniAlicePage(widget, target, owner)
         end)
 
         widget._kei_mini_alice_controls = true
@@ -1144,11 +1234,7 @@ if not TheNet:IsDedicated() then
         widget._kei_mini_alice_page_owner = owner
         widget._kei_mini_alice_client_settings_listener = ClientSettings:Subscribe(function()
             if widget._kei_mini_alice_controls then
-                UpdateMiniAlicePageButtons(
-                    widget,
-                    widget._kei_mini_alice_page or 1,
-                    MiniAlice.GetUnlockedPages(owner)
-                )
+                ShowMiniAlicePage(widget, widget._kei_mini_alice_page or 1, owner)
             end
         end)
 
@@ -1180,6 +1266,52 @@ if not TheNet:IsDedicated() then
             stored_page = 1
         end
         ShowMiniAlicePage(widget, stored_page, owner)
+    end
+
+    local function InstallMiniAliceActionButtons(widget)
+        if widget._kei_mini_alice_action_buttons ~= nil then
+            return
+        end
+
+        local function MakeActionButton(text, action, position)
+            local button = widget:AddChild(ImageButton(
+                "images/ui.xml",
+                "button_small.tex",
+                "button_small_over.tex",
+                "button_small_disabled.tex",
+                nil,
+                nil,
+                { 1, 1 },
+                { 0, 0 }
+            ))
+            button.scale_on_focus = false
+            button:SetPosition(position)
+            button:SetText(text)
+            button:SetFont(BUTTONFONT)
+            button:SetDisabledFont(BUTTONFONT)
+            button:SetTextSize(25)
+            button.text:SetVAlign(ANCHOR_MIDDLE)
+            button.text:SetColour(0, 0, 0, 1)
+            button:SetOnClick(function()
+                local rpc = MOD_RPC ~= nil and MOD_RPC["TendouKei"] or nil
+                if ThePlayer ~= nil
+                    and widget.container ~= nil
+                    and widget.container:HasTag("kei_mini_alice")
+                    and rpc ~= nil
+                    and rpc.MiniAliceAction ~= nil
+                then
+                    SendModRPCToServer(rpc.MiniAliceAction, action)
+                end
+            end)
+            return button
+        end
+
+        widget._kei_mini_alice_action_buttons = {
+            takeout = MakeActionButton("取出", "takeout", Vector3(-170, 65, 0)),
+            store = MakeActionButton("存入", "store", Vector3(0, 65, 0)),
+            sort = MakeActionButton("整理", "sort", Vector3(170, 65, 0)),
+        }
+        UpdateMiniAliceActionButtonPositions(widget, widget._kei_mini_alice_visible_pages or 1)
     end
 
     AddClassPostConstruct("widgets/containerwidget", function(self)
@@ -1257,6 +1389,7 @@ if not TheNet:IsDedicated() then
                 InstallMiniAliceSlotClip(widget)
                 PlayMiniAliceAnimationOnce(widget, container, doer, "open")
                 InstallMiniAlicePageControls(widget, doer or widget.owner)
+                InstallMiniAliceActionButtons(widget)
             end
         end
 
@@ -1305,8 +1438,15 @@ if not TheNet:IsDedicated() then
             widget._kei_mini_alice_controls = nil
             widget._kei_mini_alice_page = nil
             widget._kei_mini_alice_unlocked_pages = nil
+            widget._kei_mini_alice_visible_pages = nil
             widget._kei_mini_alice_previous_button = nil
             widget._kei_mini_alice_next_button = nil
+            if widget._kei_mini_alice_action_buttons ~= nil then
+                for _, button in pairs(widget._kei_mini_alice_action_buttons) do
+                    button:Kill()
+                end
+                widget._kei_mini_alice_action_buttons = nil
+            end
             local result = old_Close(widget, ...)
             if IsMiniAliceWidgetContainer(container)
                 and widget._kei_mini_alice_slot_clip ~= nil

@@ -696,21 +696,39 @@ local TaskPage = Class(Widget, function(self, owner)
         self.key_buttons[action] = button
     end
 
-    local function AddUnassignedKeyBinding(y)
-        local button = CreateSmallSettingsButton(49, y)
-        button:SetText("未设定")
-        button:Disable()
-        local text = self.settings_root:AddChild(Text(HEADERFONT, 19, "未设定", UICOLOURS.BROWN_DARK))
-        text:SetRegionSize(70, 30)
-        text:SetHAlign(ANCHOR_RIGHT)
-        text:SetPosition(120, y)
-    end
-
     AddKeyBinding("冰火", "flame", 145)
     AddKeyBinding("无人机控制器", "rotor", 88)
     AddKeyBinding("冒险手记", "task_book", 31)
-    AddUnassignedKeyBinding(145)
-    AddUnassignedKeyBinding(88)
+
+    local alice_display_mode_button = CreateSmallSettingsButton(49, 145)
+    alice_display_mode_button:SetOnClick(function()
+        ClientSettings:CycleMiniAliceDisplayMode()
+    end)
+    self.mini_alice_display_mode_button = alice_display_mode_button
+    local alice_display_mode_label = self.settings_root:AddChild(Text(
+        HEADERFONT,
+        19,
+        "爱丽丝格子",
+        UICOLOURS.BROWN_DARK
+    ))
+    alice_display_mode_label:SetRegionSize(70, 30)
+    alice_display_mode_label:SetHAlign(ANCHOR_RIGHT)
+    alice_display_mode_label:SetPosition(120, 145)
+
+    local alice_fusion_pages_button = CreateSmallSettingsButton(49, 88)
+    alice_fusion_pages_button:SetOnClick(function()
+        ClientSettings:CycleMiniAliceFusionPages()
+    end)
+    self.mini_alice_fusion_pages_button = alice_fusion_pages_button
+    local alice_fusion_pages_label = self.settings_root:AddChild(Text(
+        HEADERFONT,
+        19,
+        "融合页数",
+        UICOLOURS.BROWN_DARK
+    ))
+    alice_fusion_pages_label:SetRegionSize(70, 30)
+    alice_fusion_pages_label:SetHAlign(ANCHOR_RIGHT)
+    alice_fusion_pages_label:SetPosition(120, 88)
 
     local alice_mode_button = CreateSmallSettingsButton(49, 31)
     alice_mode_button:SetOnClick(function()
@@ -1104,6 +1122,16 @@ function TaskPage:RefreshClientSettings()
     self.updating_client_settings = true
     for index, spinner in ipairs(self.priority_spinners or {}) do
         spinner:SetSelected(ClientSettings:GetRightClickPriority()[index])
+    end
+    if self.mini_alice_display_mode_button ~= nil then
+        local mode = ClientSettings:GetMiniAliceDisplayMode()
+        self.mini_alice_display_mode_button:SetText(MiniAlice.GetDisplayModeName(mode))
+        self.mini_alice_display_mode_button:SetHoverText(MiniAlice.GetDisplayModeRule(mode))
+    end
+    if self.mini_alice_fusion_pages_button ~= nil then
+        local pages = ClientSettings:GetMiniAliceFusionPages()
+        self.mini_alice_fusion_pages_button:SetText(tostring(pages) .. "页")
+        self.mini_alice_fusion_pages_button:SetHoverText("融合模式同时展开的页数")
     end
     if self.mini_alice_arrow_mode_button ~= nil then
         local mode = ClientSettings:GetMiniAliceArrowMode()

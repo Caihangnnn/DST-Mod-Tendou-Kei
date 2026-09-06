@@ -22,6 +22,21 @@ local function HasMutatedWargProtocol(player)
         and player.components.kei_protocolslots:HasCombatProtocol("mutatedwarg")
 end
 
+AddModRPCHandler(KEI_RPC_NAMESPACE, "MiniAliceAction", function(player, action)
+    if player == nil
+        or player.components == nil
+        or player.components.kei_protocolslots == nil
+        or not player:HasTag("kei")
+        or player:HasTag("playerghost")
+        or player:HasTag("kei_dormant")
+        or type(action) ~= "string"
+    then
+        return
+    end
+
+    player.components.kei_protocolslots:PerformMiniAliceAction(action)
+end)
+
 local function IsMutatedWargFlameReady(player)
     return player ~= nil
         and player:HasTag("kei")

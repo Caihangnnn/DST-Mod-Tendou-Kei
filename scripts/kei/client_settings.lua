@@ -2,6 +2,8 @@ local ClientSettings = {}
 
 local SAVE_KEY = "tendou_kei_client_settings_v1"
 local DEFAULT_MINI_ALICE_ARROW_MODE = 1
+local DEFAULT_MINI_ALICE_DISPLAY_MODE = 1
+local DEFAULT_MINI_ALICE_FUSION_PAGES = 2
 local DEFAULTS = {
     bindings = {
         flame = KEY_Z,
@@ -10,6 +12,8 @@ local DEFAULTS = {
     },
     right_click_priority = { "guard", "leap", "dash" },
     mini_alice_arrow_mode = DEFAULT_MINI_ALICE_ARROW_MODE,
+    mini_alice_display_mode = DEFAULT_MINI_ALICE_DISPLAY_MODE,
+    mini_alice_fusion_pages = DEFAULT_MINI_ALICE_FUSION_PAGES,
 }
 
 local KEY_NAMES = {
@@ -58,6 +62,8 @@ local function CopyDefaults()
         },
         right_click_priority = { "guard", "leap", "dash" },
         mini_alice_arrow_mode = DEFAULTS.mini_alice_arrow_mode,
+        mini_alice_display_mode = DEFAULTS.mini_alice_display_mode,
+        mini_alice_fusion_pages = DEFAULTS.mini_alice_fusion_pages,
     }
 end
 
@@ -72,6 +78,16 @@ end
 local function IsValidMiniAliceArrowMode(value)
     value = tonumber(value)
     return value ~= nil and value >= 1 and value <= 4 and value == math.floor(value)
+end
+
+local function IsValidMiniAliceDisplayMode(value)
+    value = tonumber(value)
+    return value ~= nil and value >= 1 and value <= 3 and value == math.floor(value)
+end
+
+local function IsValidMiniAliceFusionPages(value)
+    value = tonumber(value)
+    return value == 2 or value == 3
 end
 
 ClientSettings.data = CopyDefaults()
@@ -96,6 +112,18 @@ function ClientSettings:GetMiniAliceArrowMode()
     return IsValidMiniAliceArrowMode(self.data.mini_alice_arrow_mode)
         and self.data.mini_alice_arrow_mode
         or DEFAULTS.mini_alice_arrow_mode
+end
+
+function ClientSettings:GetMiniAliceDisplayMode()
+    return IsValidMiniAliceDisplayMode(self.data.mini_alice_display_mode)
+        and self.data.mini_alice_display_mode
+        or DEFAULTS.mini_alice_display_mode
+end
+
+function ClientSettings:GetMiniAliceFusionPages()
+    return IsValidMiniAliceFusionPages(self.data.mini_alice_fusion_pages)
+        and self.data.mini_alice_fusion_pages
+        or DEFAULTS.mini_alice_fusion_pages
 end
 
 function ClientSettings:NotifyChanged()
@@ -168,6 +196,50 @@ function ClientSettings:CycleMiniAliceArrowMode()
     local mode = self:GetMiniAliceArrowMode() % 4 + 1
     self:SetMiniAliceArrowMode(mode)
     return mode
+end
+
+function ClientSettings:SetMiniAliceDisplayMode(mode)
+    mode = tonumber(mode)
+    if not IsValidMiniAliceDisplayMode(mode) then
+        return false
+    end
+
+    mode = math.floor(mode)
+    if self:GetMiniAliceDisplayMode() == mode then
+        return true
+    end
+    self.data.mini_alice_display_mode = mode
+    self:Save()
+    self:NotifyChanged()
+    return true
+end
+
+function ClientSettings:CycleMiniAliceDisplayMode()
+    local mode = self:GetMiniAliceDisplayMode() % 3 + 1
+    self:SetMiniAliceDisplayMode(mode)
+    return mode
+end
+
+function ClientSettings:SetMiniAliceFusionPages(pages)
+    pages = tonumber(pages)
+    if not IsValidMiniAliceFusionPages(pages) then
+        return false
+    end
+
+    pages = math.floor(pages)
+    if self:GetMiniAliceFusionPages() == pages then
+        return true
+    end
+    self.data.mini_alice_fusion_pages = pages
+    self:Save()
+    self:NotifyChanged()
+    return true
+end
+
+function ClientSettings:CycleMiniAliceFusionPages()
+    local pages = self:GetMiniAliceFusionPages() == 2 and 3 or 2
+    self:SetMiniAliceFusionPages(pages)
+    return pages
 end
 
 function ClientSettings:BeginCapture(action, callback)
@@ -258,6 +330,12 @@ local function Load()
         end
         if IsValidMiniAliceArrowMode(saved.mini_alice_arrow_mode) then
             data.mini_alice_arrow_mode = math.floor(saved.mini_alice_arrow_mode)
+        end
+        if IsValidMiniAliceDisplayMode(saved.mini_alice_display_mode) then
+            data.mini_alice_display_mode = math.floor(saved.mini_alice_display_mode)
+        end
+        if IsValidMiniAliceFusionPages(saved.mini_alice_fusion_pages) then
+            data.mini_alice_fusion_pages = math.floor(saved.mini_alice_fusion_pages)
         end
         ClientSettings.data = data
         ClientSettings:NotifyChanged()
