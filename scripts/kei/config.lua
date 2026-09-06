@@ -11,10 +11,10 @@ local protocol_slot_hard_max = 7
 local protocol_slot_max = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_SLOT_MAX"), protocol_slot_hard_max, 1, protocol_slot_hard_max)
 local protocol_slot_base_initial = 1
 local protocol_slot_initial_extra = ClampConfigNumber(GetModConfigData("KEI_PROTOCOL_INITIAL_EXTRA_SLOTS"), 0, 0, protocol_slot_max - protocol_slot_base_initial)
-local mini_alice_arrow_mode = ClampConfigNumber(GetModConfigData("KEI_MINI_ALICE_ARROW_MODE"), 1, 1, 4)
 local mini_alice_max_pages = ClampConfigNumber(GetModConfigData("KEI_MINI_ALICE_MAX_PAGES"), 7, 1, 7)
 local rotor_surveyor_range = 500 -- 旋翼调查仪无人机的最大飞行半径，可直接修改
 TUNING.KEI_ANALYSIS_CONSUME_EQUIPMENT = GetModConfigData("KEI_ANALYSIS_CONSUME_EQUIPMENT") == true
+TUNING.KEI_ANALYSIS_RECORD_ENCHANT = GetModConfigData("KEI_ANALYSIS_RECORD_ENCHANT") == true
 TUNING.KEI_ANALYSIS_USE_EQUIPMENT_VISUAL = GetModConfigData("KEI_ANALYSIS_USE_EQUIPMENT_VISUAL") ~= false
 TUNING.KEI_VIRTUAL_EQUIPMENT_BUILD_DISCOUNT = GetModConfigData("KEI_VIRTUAL_EQUIPMENT_BUILD_DISCOUNT") ~= false
 TUNING.KEI_ALLOW_DATA_COPY = GetModConfigData("KEI_ALLOW_DATA_COPY") ~= false
@@ -40,7 +40,6 @@ TUNING.KEI_PROTOCOL_SLOT_HARD_MAX = protocol_slot_hard_max -- 协议槽位的硬
 TUNING.KEI_PROTOCOL_SLOT_BASE_INITIAL = protocol_slot_base_initial -- 基础解锁的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_INITIAL = protocol_slot_base_initial + protocol_slot_initial_extra -- 当前配置中初始拥有的协议槽位数
 TUNING.KEI_PROTOCOL_SLOT_MAX = protocol_slot_max -- 协议槽位的最大数量（根据配置）
-TUNING.KEI_MINI_ALICE_ARROW_MODE = mini_alice_arrow_mode -- 娇小爱丽丝箭头显示与循环翻页模式
 TUNING.KEI_MINI_ALICE_MAX_PAGES = mini_alice_max_pages -- 娇小爱丽丝可通过扩容配方解锁的最大页数
 TUNING.KEI_ROTOR_SURVEYOR_RANGE = rotor_surveyor_range -- 旋翼调查仪无人机的最大飞行半径
 TUNING.KEI_ROTOR_SIGNAL_RANGE_MAX = 1500
@@ -81,6 +80,8 @@ TUNING.KEI_EXPERIENCE_PLANT_DAILY_CAP = 50
 TUNING.KEI_EXPERIENCE_BLUEPRINT_AMOUNT = 50
 TUNING.KEI_EXPERIENCE_BLUEPRINT_DAILY_CAP = 50
 TUNING.KEI_TASK_EXPERIENCE_REWARD_BY_RARITY = { [1] = 10, [2] = 25, [3] = 50 }
+TUNING.KEI_TASK_REFUSAL_MONSTER_CHANCE = 0.33 -- 拒绝任务后生成敌对生物的概率
+TUNING.KEI_TASK_REFUSAL_GIFT_CHANCE = 0.5 -- 拒绝任务生成的生物死亡时掉落礼盒的概率
 
 -- 累计经验能力：心灵手巧。
 TUNING.KEI_CRAFTSMANSHIP_EXPERIENCE_THRESHOLD = 2000 -- 激活心灵手巧所需的累计经验值
@@ -274,7 +275,7 @@ TUNING.KEI_SPIDER_SPITTER_SLOW_MULT = 0.5 -- 喷吐蜘蛛协议命中后目标�
 TUNING.KEI_SPIDER_SPITTER_SLOW_DURATION = 10 -- 喷吐蜘蛛协议减速持续时间
 TUNING.KEI_SPIDER_SHATTERED_REFLECT_DAMAGE = 25 -- 破碎蜘蛛协议固定反伤
 TUNING.KEI_SPIDERQUEEN_WEB_RADIUS = 12 -- 蜘蛛网覆盖半径
-TUNING.KEI_SPIDERQUEEN_WEB_SLOW = 0.25 -- 蜘蛛网减速倍率（0.25 = 75%减速）
+TUNING.KEI_SPIDERQUEEN_WEB_SLOW = 0.5 -- 蜘蛛网减速倍率（0.5 = 50%减速）
 TUNING.KEI_SPIDERQUEEN_WEB_SCAN_PERIOD = 0.25 -- 蜘蛛网范围扫描周期
 TUNING.KEI_SPIDERQUEEN_WEB_ALPHA = 0.25 -- 蜘蛛网特效透明度（数值越高越明显）
 

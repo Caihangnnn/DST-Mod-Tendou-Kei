@@ -5,6 +5,14 @@ Assets = {
     Asset("IMAGE", "images/quagmire_recipebook.tex"),
     Asset("SOUNDPACKAGE", "sound/tendou_kei_vc.fev"),
     Asset("SOUND", "sound/tendou_kei_vc.fsb"),
+    Asset("SOUNDPACKAGE", "sound/kei_hit_sound.fev"),
+    Asset("SOUND", "sound/kei_hit_sound.fsb"),
+    Asset("SOUNDPACKAGE", "sound/kei_carol_a01.fev"),
+    Asset("SOUND", "sound/kei_carol_a01.fsb"),
+    Asset("SOUNDPACKAGE", "sound/kei_carol_a02.fev"),
+    Asset("SOUND", "sound/kei_carol_a02.fsb"),
+    Asset("SOUNDPACKAGE", "sound/kei_carol_a03.fev"),
+    Asset("SOUND", "sound/kei_carol_a03.fsb"),
 }
 
 local ANIM_ASSETS = {

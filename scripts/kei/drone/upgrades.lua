@@ -11,14 +11,17 @@ local RotorUpgrades = {
         signal = {
             recipe = "kei_rotor_upgrade_signal",
             max_level = 3,
+            experience = 500,
         },
         mobility = {
             recipe = "kei_rotor_upgrade_mobility",
             max_level = 5,
+            experience = 300,
         },
         battery = {
             recipe = "kei_rotor_upgrade_battery",
             max_level = 10,
+            experience = 150,
         },
         power_reduction = {
             recipe = "kei_rotor_upgrade_power_reduction",
@@ -68,6 +71,11 @@ end
 function RotorUpgrades.GetMaxLevel(upgrade)
     local definition = GetDefinition(upgrade)
     return definition ~= nil and definition.max_level or 0
+end
+
+function RotorUpgrades.GetExperienceCost(upgrade)
+    local definition = GetDefinition(upgrade)
+    return definition ~= nil and definition.experience or nil
 end
 
 function RotorUpgrades.GetControlRange(owner)

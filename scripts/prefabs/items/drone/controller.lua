@@ -127,16 +127,18 @@ local function SetBoundDrone(inst, drone, owner)
         RotorSurveyRegistry.Register(drone, inst.drone_owner_userid)
         drone.persists = false
         if owner ~= nil and drone.components ~= nil then
-            local function RemoveDroneForOwnerLeave(drone_inst, data)
-                local player = data ~= nil and data.player or data
-                if player == owner and drone_inst:IsValid() then
-                    drone_inst:Remove()
+            -- These callbacks use owner/TheWorld as the event source, so their
+            -- first argument is the source entity rather than the drone.
+            local function RemoveDroneForOwnerLeave(_source, data)
+                local player = data ~= nil and data.player or data or owner
+                if player == owner and drone:IsValid() then
+                    drone:Remove()
                 end
             end
 
-            local function RemoveDroneForOwnerRemove(drone_inst)
-                if drone_inst:IsValid() then
-                    drone_inst:Remove()
+            local function RemoveDroneForOwnerRemove()
+                if drone:IsValid() then
+                    drone:Remove()
                 end
             end
 
@@ -145,6 +147,7 @@ local function SetBoundDrone(inst, drone, owner)
             drone._kei_detach_owner_callbacks = function(drone_inst)
                 if owner ~= nil then
                     drone_inst:RemoveEventCallback("onremove", RemoveDroneForOwnerRemove, owner)
+                    drone_inst:RemoveEventCallback("player_despawn", RemoveDroneForOwnerLeave, owner)
                 end
                 if TheWorld ~= nil then
                     drone_inst:RemoveEventCallback("ms_playerdespawn", RemoveDroneForOwnerLeave, TheWorld)
@@ -157,6 +160,10 @@ local function SetBoundDrone(inst, drone, owner)
             end
 
             drone:ListenForEvent("onremove", RemoveDroneForOwnerRemove, owner)
+            -- The player event fires before the player entity is removed,
+            -- including shard migration. This is earlier and more reliable
+            -- than relying only on the world migration event.
+            drone:ListenForEvent("player_despawn", RemoveDroneForOwnerLeave, owner)
             if TheWorld ~= nil then
                 drone:ListenForEvent("ms_playerdespawn", RemoveDroneForOwnerLeave, TheWorld)
                 drone:ListenForEvent("ms_playerdespawnanddelete", RemoveDroneForOwnerLeave, TheWorld)

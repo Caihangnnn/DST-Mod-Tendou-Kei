@@ -36,3 +36,18 @@ AddComponentPostInit("temperature", function(self)
     end
 end)
 
+-- Keep the vanilla freezable component intact and block only the Freeze call
+-- while the Deerclops protocol's immunity tag is active.
+AddComponentPostInit("freezable", function(self)
+    local old_Freeze = self.Freeze
+
+    function self:Freeze(...)
+        if self.inst:HasTag("kei_nofreezing") then
+            return
+        end
+        if old_Freeze ~= nil then
+            return old_Freeze(self, ...)
+        end
+    end
+end)
+

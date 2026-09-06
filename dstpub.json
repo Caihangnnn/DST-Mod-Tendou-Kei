@@ -1,7 +1,9 @@
 {
   "appid": 322330,
   "visibility": 3,
-  "tags": [],
+  "tags": [
+    "all_clients_require_mod"
+  ],
   "ignore": [
     "Design",
     "Tendou_Kei_角色完整内容记录.docx"

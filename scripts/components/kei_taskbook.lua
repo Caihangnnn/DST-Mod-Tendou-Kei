@@ -2,10 +2,16 @@ local TaskBook = require("kei/task_book")
 local TaskSummon = require("kei/task_summon")
 
 local TASK_MILESTONE_GIFTS = {
-    { count = 10, prefab = "kei_blank_cd_random" },
-    { count = 25, prefab = "kei_combat_cd_blue_random" },
-    { count = 50, prefab = "kei_combat_cd_golden_random" },
-    { count = 100, prefab = "kei_combat_cd_purple_random" },
+    { count = 5, prefab = "kei_blank_cd_random" },
+    { count = 10, prefab = "kei_combat_cd_blue_random" },
+    { count = 15, prefab = "kei_combat_cd_golden_random" },
+    { count = 30, prefab = "kei_combat_cd_purple_random" },
+}
+
+local TASK_REFUSAL_GIFTS = {
+    [1] = "kei_blank_cd_random",
+    [2] = "kei_combat_cd_blue_random",
+    [3] = "kei_combat_cd_golden_random",
 }
 
 local KeiTaskBook = Class(function(self, inst)
@@ -59,6 +65,7 @@ function KeiTaskBook:GetOwnedItems()
         CollectItems(inventory:GetItemInSlot(slot), items, visited)
     end
     CollectItems(inventory:GetActiveItem(), items, visited)
+    CollectItems(inventory:GetEquippedItem(EQUIPSLOTS.BACK), items, visited)
     return items
 end
 
@@ -338,7 +345,34 @@ local function DisableTaskSummonLoot(target)
     if dropper.DropLoot ~= nil then dropper.DropLoot = function() end end
 end
 
-function KeiTaskBook:SpawnRefusedTaskTarget(prefab)
+local function AddTaskRefusalGift(target, rarity)
+    local gift_prefab = TASK_REFUSAL_GIFTS[tonumber(rarity)]
+    if gift_prefab == nil then return end
+
+    target:ListenForEvent("death", function(inst)
+        if inst.kei_task_refusal_gift_dropped
+            or math.random() >= (TUNING.KEI_TASK_REFUSAL_GIFT_CHANCE or 0.5)
+        then
+            return
+        end
+        inst.kei_task_refusal_gift_dropped = true
+
+        local gift = SpawnPrefab(gift_prefab)
+        if gift == nil then return end
+
+        local dropper = inst.components ~= nil and inst.components.lootdropper or nil
+        if dropper ~= nil and dropper.FlingItem ~= nil then
+            dropper:FlingItem(gift, inst:GetPosition())
+        else
+            gift.Transform:SetPosition(inst.Transform:GetWorldPosition())
+            if gift.components ~= nil and gift.components.inventoryitem ~= nil then
+                gift.components.inventoryitem:OnDropped(true)
+            end
+        end
+    end)
+end
+
+function KeiTaskBook:SpawnRefusedTaskTarget(prefab, rarity)
     local target = SpawnPrefab(prefab)
     if target == nil then return false end
 
@@ -348,6 +382,7 @@ function KeiTaskBook:SpawnRefusedTaskTarget(prefab)
     target.kei_task_refusal_summon = true
     target.kei_task_refusal_owner = self.inst
     DisableTaskSummonLoot(target)
+    AddTaskRefusalGift(target, rarity)
     TaskSummon.PlayTaskRefusalSpawnFX(target)
     TaskSummon.PrepareSpecialTarget(target, self.inst, target)
     TaskSummon.StartTaskAggression(target, self.inst)
@@ -368,8 +403,8 @@ function KeiTaskBook:RefuseTask(id)
             if #self.tasks == 0 then
                 self.waiting_for_task_targets = false
             end
-            if math.random() < .25 then
-                if self:SpawnRefusedTaskTarget(task.target_prefab) then
+            if math.random() < (TUNING.KEI_TASK_REFUSAL_MONSTER_CHANCE or 0.33) then
+                if self:SpawnRefusedTaskTarget(task.target_prefab, task.rarity) then
                     local talker = self.inst.components ~= nil and self.inst.components.talker or nil
                     if talker ~= nil then
                         talker:Say("它好像生气了")

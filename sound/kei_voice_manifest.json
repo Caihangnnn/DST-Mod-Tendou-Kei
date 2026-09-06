@@ -1,8 +1,11 @@
 {
-  "format": "FSB5 PCM16, source normalized to mono 44100 Hz",
+  "hit_namespace": "kei_hit_sound/kei_hit_sound",
   "fev": "sound/tendou_kei_vc.fev",
-  "namespace": "tendou_kei_vc/tendou_kei_vc",
-  "language": "日配",
+  "hit_fev": "sound/kei_hit_sound.fev",
+  "individual_directory": "sound/kei_voice_individual",
+  "hit_bank": "sound/kei_hit_sound.fsb",
+  "bank": "sound/tendou_kei_vc.fsb",
+  "format": "FSB5 PCM16, source normalized to mono 44100 Hz",
   "mapping": [
     {
       "Name": "attacked_1",
@@ -85,7 +88,89 @@
       "Index": 86
     }
   ],
+  "hit_mapping": [
+    {
+      "Name": "attacked_1",
+      "Index": 42
+    },
+    {
+      "Name": "attacked_2",
+      "Index": 43
+    },
+    {
+      "Name": "attacked_3",
+      "Index": 51
+    },
+    {
+      "Name": "christmas_carol",
+      "Index": 57
+    },
+    {
+      "Name": "death",
+      "Index": 58
+    },
+    {
+      "Name": "do_emote",
+      "Index": 85
+    },
+    {
+      "Name": "drown_in_water",
+      "Index": 53
+    },
+    {
+      "Name": "feel_sleepy",
+      "Index": 54
+    },
+    {
+      "Name": "ghost_1",
+      "Index": 18
+    },
+    {
+      "Name": "ghost_2",
+      "Index": 19
+    },
+    {
+      "Name": "ghost_3",
+      "Index": 24
+    },
+    {
+      "Name": "ghost_4",
+      "Index": 71
+    },
+    {
+      "Name": "ghost_5",
+      "Index": 25
+    },
+    {
+      "Name": "pose",
+      "Index": 55
+    },
+    {
+      "Name": "talk_1",
+      "Index": 4
+    },
+    {
+      "Name": "talk_2",
+      "Index": 10
+    },
+    {
+      "Name": "talk_3",
+      "Index": 13
+    },
+    {
+      "Name": "talk_4",
+      "Index": 16
+    },
+    {
+      "Name": "talk_5",
+      "Index": 17
+    },
+    {
+      "Name": "yawn",
+      "Index": 86
+    }
+  ],
+  "namespace": "tendou_kei_vc/tendou_kei_vc",
   "source": "https://www.gamekee.com/ba/690582?tab=2",
-  "individual_directory": "sound/kei_voice_individual",
-  "bank": "sound/tendou_kei_vc.fsb"
+  "language": "日配"
 }

@@ -11,6 +11,12 @@ TaskBook.TASK_RARITIES = {
 }
 TaskBook.TASK_VERSION = 14
 
+-- These prefabs are valid game entities but should never be selected as
+-- random task targets.
+TaskBook.TASK_TARGET_EXCLUSIONS = {
+    crabking_cannontower = true,
+}
+
 -- Task targets define presentation and eligibility only. Their exchange loot
 -- is captured from the actual server-side lootdropper configuration.
 TaskBook.TASK_TARGETS = {
@@ -399,7 +405,10 @@ end
 
 function TaskBook.RegisterTaskTarget(prefab, rarity, loot, visual)
     rarity = tonumber(rarity)
-    if type(prefab) ~= "string" or TaskBook.TASK_RARITIES[rarity] == nil then return false end
+    if type(prefab) ~= "string" or TaskBook.TASK_RARITIES[rarity] == nil
+        or TaskBook.TASK_TARGET_EXCLUSIONS[prefab] then
+        return false
+    end
     if type(loot) == "table" and #loot > 0 then
         RuntimeLootCache[prefab] = CopyDrops(loot)
     end
@@ -471,7 +480,8 @@ function TaskBook.GetTaskTargets(rarity, excluded_prefabs)
     -- Prefab definitions cannot expose tags or animation state without being
     -- instantiated, so this avoids an unsafe scan of every registered Prefab.
     for prefab, target in pairs(RuntimeTaskTargets) do
-        if target.rarity == rarity and (excluded_prefabs == nil or not excluded_prefabs[prefab])
+        if target.rarity == rarity and not TaskBook.TASK_TARGET_EXCLUSIONS[prefab]
+            and (excluded_prefabs == nil or not excluded_prefabs[prefab])
             and HasSubmittableTaskLoot(TaskBook.GetTargetLoot(prefab)) then
             table.insert(targets, prefab)
         end

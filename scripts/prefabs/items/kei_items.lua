@@ -1,6 +1,7 @@
 local CombatProtocolDefs = require("kei/protocols/combat")
 local LifeProtocolDefs = require("kei/protocols/life")
 local BasicAttributeProtocolDefs = require("kei/protocols/basic_attributes")
+local Enchantment = require("kei/integrations/enchantment")
 
 local COMMON_ITEM_ATLAS = "images/inventoryimages/kei_items.xml"
 local COMMON_ITEM_BANK = "kei_item"
@@ -325,6 +326,8 @@ local function MakeBlankCD()
         inst:AddComponent("inventoryitem")
         inst.components.inventoryitem.atlasname = visual.atlas
         inst.components.inventoryitem:ChangeImageName(visual.image)
+        inst:AddComponent("stackable")
+        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
 
         inst.SetBoundTarget = SetBoundTarget
         inst.ClearBoundTarget = ClearBoundTarget
@@ -790,7 +793,28 @@ local function GetProtocolPrefabs(definitions, predicate)
     return prefabs
 end
 
-local function MakeRandomCDGift(name, display_name, visual_key, image, reward_prefabs)
+local function GiveUnwrappedItemToDoer(item, doer, pos)
+    if item == nil or not item:IsValid() then
+        return false
+    end
+
+    local inventory = doer ~= nil and doer.components ~= nil and doer.components.inventory or nil
+    if inventory ~= nil and inventory:GiveItem(item, nil, doer:GetPosition()) then
+        return true
+    end
+
+    if item.Physics ~= nil then
+        item.Physics:Teleport(pos:Get())
+    else
+        item.Transform:SetPosition(pos:Get())
+    end
+    if item.components ~= nil and item.components.inventoryitem ~= nil then
+        item.components.inventoryitem:OnDropped(true, .5)
+    end
+    return false
+end
+
+local function MakeRandomCDGift(name, display_name, visual_key, image, ground_anim, reward_prefabs)
     local visual = ITEM_VISUALS[visual_key]
     local assets = {
         Asset("ANIM", "anim/" .. visual.build .. ".zip"),
@@ -809,7 +833,7 @@ local function MakeRandomCDGift(name, display_name, visual_key, image, reward_pr
         SetWorldScale(inst, visual.scale)
         inst.AnimState:SetBank(visual.bank)
         inst.AnimState:SetBuild(visual.build)
-        inst.AnimState:PlayAnimation(visual.anim)
+        inst.AnimState:PlayAnimation(ground_anim or visual.anim)
         -- The action picker needs this tag on clients before components replicate.
         inst:AddTag("unwrappable")
 
@@ -830,6 +854,8 @@ local function MakeRandomCDGift(name, display_name, visual_key, image, reward_pr
         inst:AddComponent("inventoryitem")
         inst.components.inventoryitem.atlasname = visual.atlas
         inst.components.inventoryitem:ChangeImageName(image)
+        inst:AddComponent("stackable")
+        inst.components.stackable.maxsize = TUNING.STACK_SIZE_SMALLITEM
 
         inst:AddComponent("unwrappable")
         if #reward_prefabs > 0 then
@@ -840,8 +866,44 @@ local function MakeRandomCDGift(name, display_name, visual_key, image, reward_pr
             inst.components.unwrappable.canbeunwrapped = false
         end
         inst.components.unwrappable:SetOnUnwrappedFn(function(gift)
-            gift:Remove()
+            local stackable = gift.components.stackable
+            local stacksize = stackable ~= nil and stackable:StackSize() or 1
+            if stacksize > 1 then
+                stackable:SetStackSize(stacksize - 1)
+                gift.components.unwrappable:WrapItems({ reward_prefabs[math.random(#reward_prefabs)] })
+            else
+                gift:Remove()
+            end
         end)
+
+        -- The default unwrappable component always drops its contents on the
+        -- ground and consumes the whole stack. Gift boxes need one-at-a-time
+        -- opening so stacked boxes produce the same number of CDs.
+        local unwrappable = inst.components.unwrappable
+        unwrappable.Unwrap = function(component, doer)
+            local itemdata = component.itemdata
+            local pos = component.inst:GetPosition()
+            pos.y = 0
+            if itemdata ~= nil then
+                local creator = component.origin ~= nil
+                    and TheWorld.meta.session_identifier ~= component.origin
+                    and { sessionid = component.origin }
+                    or nil
+                for _, data in ipairs(itemdata) do
+                    local item = SpawnPrefab(data.prefab, data.skinname, data.skin_id, creator)
+                    if item ~= nil and item:IsValid() then
+                        item:SetPersistData(data.data)
+                        GiveUnwrappedItemToDoer(item, doer, pos)
+                        item:PushEvent("unwrappeditem", { bundle = component.inst, doer = doer })
+                    end
+                end
+                component.itemdata = nil
+            end
+            component.inst:PushEvent("unwrapped", { doer = doer })
+            if component.onunwrappedfn ~= nil then
+                component.onunwrappedfn(component.inst, pos, doer)
+            end
+        end
 
         MakeHauntableLaunch(inst)
 
@@ -881,6 +943,7 @@ local function SetAnalysisData(inst, data)
         skin_name = data.skin_name,
         skin_build = data.skin_build,
         full_equipment = data.full_equipment == true,
+        enchantments = data.enchantments,
         absorb = data.absorb or 0,
         damage_bonus = damage_bonus or 0,
         speed_mult = data.speed_mult or 1,
@@ -888,6 +951,7 @@ local function SetAnalysisData(inst, data)
         tool_actions = data.tool_actions,
         tool_tough = data.tool_tough or nil,
     }
+    Enchantment.Apply(inst, inst.kei_protocol_data.enchantments)
     ApplyAnalysisAppearance(inst, data, icon_image, source_visual)
     SetNamedName(inst, source_name ~= nil and ("数据化的 " .. source_name) or nil)
 end
@@ -970,20 +1034,24 @@ local prefabs = {
     MakeAnalysisCD(),
     MakeRandomCDGift(
         "kei_blank_cd_random", "白色CD礼盒", "blank_cd", "kei_blank_cd_random",
+        "kei_blank_cd_random_ground",
         GetProtocolPrefabs(BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOL_LIST)
     ),
     MakeRandomCDGift(
         "kei_combat_cd_blue_random", "蓝色CD礼盒", "combat_cd", "kei_combat_cd_blue_random",
+        "kei_combat_cd_blue_random_ground",
         GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def) return def.category == "biome" end)
     ),
     MakeRandomCDGift(
         "kei_combat_cd_golden_random", "金色CD礼盒", "combat_cd", "kei_combat_cd_golden_random",
+        "kei_combat_cd_golden_random_ground",
         GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def)
             return def.category == "beast" and def.tier == "basic"
         end)
     ),
     MakeRandomCDGift(
         "kei_combat_cd_purple_random", "紫色CD礼盒", "combat_cd", "kei_combat_cd_purple_random",
+        "kei_combat_cd_purple_random_ground",
         GetProtocolPrefabs(CombatProtocolDefs.COMBAT_PROTOCOL_LIST, function(def)
             return def.category == "beast" and def.tier ~= "basic"
         end)

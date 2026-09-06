@@ -32,6 +32,41 @@ containers.params.kei_protocol_container.widget.animfn = function(container, doe
     return anim
 end
 
+local function IsMiniAliceContainer(container)
+    return container ~= nil
+        and container.inst ~= nil
+        and container.inst:HasTag("kei_mini_alice")
+end
+
+local function IsAccessibleMiniAliceSlot(container, slot)
+    -- A nested Alice is loaded before its inventory owner is restored.
+    -- Do not apply the owner's unlocked-page limit during that pass.
+    if container ~= nil and container._kei_mini_alice_loading then
+        return true
+    end
+    return not IsMiniAliceContainer(container)
+        or MiniAlice.IsSlotAccessible(container, slot)
+end
+
+local function IsMiniAliceEffectivelyFull(container)
+    if not IsMiniAliceContainer(container) then
+        return nil
+    end
+
+    local accessible_slots = 0
+    local occupied_slots = 0
+    for slot = 1, container:GetNumSlots() do
+        if IsAccessibleMiniAliceSlot(container, slot) then
+            accessible_slots = accessible_slots + 1
+            if container:GetItemInSlot(slot) ~= nil then
+                occupied_slots = occupied_slots + 1
+            end
+        end
+    end
+
+    return occupied_slots >= accessible_slots
+end
+
 local function ContainerHasRoomForItem(container, item)
     if container == nil
         or item == nil
@@ -153,6 +188,7 @@ end
 
 AddComponentPostInit("container", function(self)
     local old_CanTakeItemInSlot = self.CanTakeItemInSlot
+    local old_IsFull = self.IsFull
     local old_MoveItemFromAllOfSlot = self.MoveItemFromAllOfSlot
     local old_MoveItemFromHalfOfSlot = self.MoveItemFromHalfOfSlot
     local old_MoveItemFromCountOfSlot = self.MoveItemFromCountOfSlot
@@ -160,16 +196,30 @@ AddComponentPostInit("container", function(self)
     local old_RemoveItemBySlot = self.RemoveItemBySlot
     local old_DropItemBySlot = self.DropItemBySlot
     local old_RemoveItem = self.RemoveItem
+    local old_OnLoad = self.OnLoad
 
-    local function IsMiniAliceContainer(container)
-        return container ~= nil
-            and container.inst ~= nil
-            and container.inst:HasTag("kei_mini_alice")
+    function self:OnLoad(data, newents)
+        local is_mini_alice = IsMiniAliceContainer(self)
+        if is_mini_alice then
+            self._kei_mini_alice_loading = true
+        end
+
+        local result = old_OnLoad(self, data, newents)
+
+        if is_mini_alice then
+            self._kei_mini_alice_loading = nil
+        end
+        return result
     end
 
-    local function IsAccessibleMiniAliceSlot(container, slot)
-        return not IsMiniAliceContainer(container)
-            or MiniAlice.IsSlotAccessible(container, slot)
+    -- Vanilla FindBestContainer uses IsFull before it searches for a target.
+    -- Locked Alice slots are intentionally empty, so count only unlocked slots
+    -- or vanilla will select Alice even though it cannot receive the item.
+    function self:IsFull()
+        if IsMiniAliceContainer(self) then
+            return IsMiniAliceEffectivelyFull(self)
+        end
+        return old_IsFull(self)
     end
 
     local function FindAccessibleMiniAliceSlot(container, item)
@@ -438,6 +488,7 @@ if not TheNet:IsDedicated() then
 
     AddClassPostConstruct("components/container_replica", function(self)
         local old_CanTakeItemInSlot = self.CanTakeItemInSlot
+        local old_IsFull = self.IsFull
 
         function self:CanTakeItemInSlot(item, slot)
             if self.inst ~= nil
@@ -448,6 +499,13 @@ if not TheNet:IsDedicated() then
                 return false
             end
             return old_CanTakeItemInSlot(self, item, slot)
+        end
+
+        function self:IsFull()
+            if IsMiniAliceContainer(self) then
+                return IsMiniAliceEffectivelyFull(self)
+            end
+            return old_IsFull(self)
         end
     end)
 
@@ -863,6 +921,7 @@ end
 if not TheNet:IsDedicated() then
     local ImageButton = require("widgets/imagebutton")
     local Widget = require("widgets/widget")
+    local ClientSettings = require("kei/client_settings")
 
     local function IsMiniAliceWidgetContainer(container)
         return container ~= nil and container:HasTag("kei_mini_alice")
@@ -1083,6 +1142,15 @@ if not TheNet:IsDedicated() then
         widget._kei_mini_alice_previous_button = previous_button
         widget._kei_mini_alice_next_button = next_button
         widget._kei_mini_alice_page_owner = owner
+        widget._kei_mini_alice_client_settings_listener = ClientSettings:Subscribe(function()
+            if widget._kei_mini_alice_controls then
+                UpdateMiniAlicePageButtons(
+                    widget,
+                    widget._kei_mini_alice_page or 1,
+                    MiniAlice.GetUnlockedPages(owner)
+                )
+            end
+        end)
 
         if owner ~= nil then
             widget._kei_mini_alice_slots_dirty_fn = function()
@@ -1217,6 +1285,10 @@ if not TheNet:IsDedicated() then
                 widget._kei_mini_alice_pages_dirty_fn = nil
             end
             widget._kei_mini_alice_page_owner = nil
+            if widget._kei_mini_alice_client_settings_listener ~= nil then
+                ClientSettings:Unsubscribe(widget._kei_mini_alice_client_settings_listener)
+                widget._kei_mini_alice_client_settings_listener = nil
+            end
 
             if widget._kei_mini_alice_page_transition_task ~= nil then
                 widget._kei_mini_alice_page_transition_task:Cancel()

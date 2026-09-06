@@ -1,5 +1,6 @@
 local VirtualHandEquipment = {}
 local VirtualEquipment = require("kei/protocols/analysis/virtual_equipment")
+local Enchantment = require("kei/integrations/enchantment")
 
 -- Only these vanilla weapon prefabs receive the virtual-staff attack cooldown.
 -- Keep this list explicit: ranged or spellcaster items are not automatically
@@ -241,9 +242,11 @@ function VirtualHandEquipment.Apply(protocolslots, entry)
     end
 
     local current = protocolslots.virtual_hand_equip
+    local enchantment_key = Enchantment.GetKey(data.enchantments)
     if current ~= nil
         and current:IsValid()
         and current.kei_source_prefab == data.source
+        and current.kei_enchantment_key == enchantment_key
         and inventory:GetEquippedItem(EQUIPSLOTS.HANDS) == current
     then
         return true
@@ -263,10 +266,12 @@ function VirtualHandEquipment.Apply(protocolslots, entry)
     end
 
     virtual.kei_source_prefab = data.source
+    virtual.kei_enchantment_key = enchantment_key
     virtual:AddTag("kei_virtual_hand_equipment")
     if VIRTUAL_STAFF_PREFABS[data.source] then
         virtual:AddTag("kei_virtual_staff")
     end
+    Enchantment.Apply(virtual, data.enchantments)
     CleanVirtualEquipment(virtual)
     WrapVirtualHandEquipment(virtual)
 

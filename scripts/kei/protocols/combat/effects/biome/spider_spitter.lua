@@ -2,6 +2,7 @@
 
 local SpiderSpitterEffect = {}
 local SLOW_MODIFIER = 'kei_spider_spitter_hit_slow'
+local SlowSources = require('kei/slow_sources')
 
 local function IsValidTarget(owner, target)
     if target == nil
@@ -51,6 +52,17 @@ local function ApplySlow(slots, inst, target)
         inst:RemoveEventCallback('death', old.ondeath, target)
     end
 
+    if not SlowSources.TryApply(
+        target,
+        SLOW_MODIFIER,
+        inst,
+        TUNING.KEI_SPIDER_SPITTER_SLOW_MULT or 0.5,
+        nil,
+        true
+    ) then
+        return
+    end
+
     local data = {}
     data.onremove = function()
         slots._kei_spider_spitter_slowed[target] = nil
@@ -65,11 +77,6 @@ local function ApplySlow(slots, inst, target)
     slots._kei_spider_spitter_slowed[target] = data
     inst:ListenForEvent('onremove', data.onremove, target)
     inst:ListenForEvent('death', data.ondeath, target)
-    target.components.locomotor:SetExternalSpeedMultiplier(
-        inst,
-        SLOW_MODIFIER,
-        TUNING.KEI_SPIDER_SPITTER_SLOW_MULT or 0.5
-    )
 end
 
 local function ClearAllSlows(slots, inst)

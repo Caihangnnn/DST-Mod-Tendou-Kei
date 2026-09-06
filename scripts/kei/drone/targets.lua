@@ -58,6 +58,11 @@ local RotorSurveyTargets = {
         prefabs = { "monkeyqueen" },
         protocol = "ripen",
     },
+    {
+        id = "sharkboi_fish_call",
+        prefabs = { "sharkboi" },
+        protocol = "fish_call",
+    },
 }
 
 local function MatchesPrefab(def, target)

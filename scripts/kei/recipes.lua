@@ -2,6 +2,7 @@ local KEI_ROTOR_FILTER = "KEI_ROTOR"
 local KEI_PROTOCOL_FILTER = "KEI_PROTOCOL"
 local CombatProtocolDefs = require("kei/protocols/combat")
 local GrowthRecipes = require("kei/growth_recipes")
+local RotorUpgrades = require("kei/drone/upgrades")
 local ROTOR_ICON = "wx78_drone_zap_remote.tex"
 local ROTOR_ATLAS = GetInventoryItemAtlas(ROTOR_ICON)
 if ROTOR_ATLAS == nil then
@@ -295,7 +296,6 @@ AddRecipe2(
     {
         Ingredient("telestaff", 1),
         Ingredient("orangestaff", 1),
-        Ingredient("trident", 1),
     },
     TECH.NONE,
     kei_config({
@@ -355,16 +355,22 @@ for _, data in ipairs(rotor_skill_recipes) do
 end
 
 local rotor_upgrade_recipes = {
-    { name = "kei_rotor_upgrade_signal", label = "Signal Enhancement" },
-    { name = "kei_rotor_upgrade_mobility", label = "Power Enhancement" },
-    { name = "kei_rotor_upgrade_battery", label = "Battery Expansion" },
+    { name = "kei_rotor_upgrade_signal", label = "Signal Enhancement", experience = 500 },
+    { name = "kei_rotor_upgrade_mobility", label = "Power Enhancement", experience = 300 },
+    { name = "kei_rotor_upgrade_battery", label = "Battery Expansion", experience = 150 },
     { name = "kei_rotor_upgrade_power_reduction", label = "Power Saving" },
 }
 
 for _, data in ipairs(rotor_upgrade_recipes) do
+    local upgrade = RotorUpgrades.GetUpgradeForRecipe(data.name)
     AddRecipe2(
         data.name,
-        { fixed_experience_ingredient(TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST or 1000) },
+        { fixed_experience_ingredient(
+            RotorUpgrades.GetExperienceCost(upgrade)
+                or data.experience
+                or TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST
+                or 1000
+        ) },
         TECH.NONE,
         kei_config({
             atlas = ROTOR_ATLAS,

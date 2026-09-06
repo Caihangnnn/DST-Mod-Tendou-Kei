@@ -1,5 +1,5 @@
 -- 旋翼调查仪光束的服务器端效果。
-local KeiTimeScale = require("kei/time_scale")
+local SlowSources = require("kei/slow_sources")
 local MiniAlice = require("kei/mini_alice")
 local LifeProtocolDefs = require("kei/protocols/life")
 local RotorSurveyTargets = require("kei/drone/targets")
@@ -74,25 +74,19 @@ local function RemovePlayerModifiers(source, target)
     if target.components.combat ~= nil then
         target.components.combat.externaldamagemultipliers:RemoveModifier(source, STRENGTHEN_DAMAGE_KEY)
     end
-    if target.components.locomotor ~= nil then
-        target.components.locomotor:RemoveExternalSpeedMultiplier(source, CONFINEMENT_SPEED_KEY)
-    end
+    SlowSources.Release(target, CONFINEMENT_SPEED_KEY, source)
 end
 
 local function ApplyConfinement(source, target)
-    local multiplier = TUNING.KEI_ROTOR_CONFINEMENT_ANIM_MULT
-        or TUNING.KEI_ROTOR_CONFINEMENT_SPEED_MULT
-        or 0.5
-
-    if target.components.locomotor ~= nil then
-        target.components.locomotor:SetExternalSpeedMultiplier(
-            source,
-            CONFINEMENT_SPEED_KEY,
-            TUNING.KEI_ROTOR_CONFINEMENT_SPEED_MULT or 0.5
-        )
-    end
-
-    KeiTimeScale.Add(target, source, multiplier)
+    SlowSources.TryApply(
+        target,
+        CONFINEMENT_SPEED_KEY,
+        source,
+        TUNING.KEI_ROTOR_CONFINEMENT_SPEED_MULT or 0.5,
+        TUNING.KEI_ROTOR_CONFINEMENT_ANIM_MULT
+            or TUNING.KEI_ROTOR_CONFINEMENT_SPEED_MULT
+            or 0.5
+    )
 end
 
 local function RemoveConfinement(source, target)
@@ -100,11 +94,7 @@ local function RemoveConfinement(source, target)
         return
     end
 
-    if target.components ~= nil and target.components.locomotor ~= nil then
-        target.components.locomotor:RemoveExternalSpeedMultiplier(source, CONFINEMENT_SPEED_KEY)
-    end
-
-    KeiTimeScale.Remove(target, source)
+    SlowSources.Release(target, CONFINEMENT_SPEED_KEY, source)
 end
 
 local function IsRecentAttacker(attacker, target)

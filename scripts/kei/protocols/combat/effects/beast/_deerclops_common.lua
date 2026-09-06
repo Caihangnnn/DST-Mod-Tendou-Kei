@@ -16,7 +16,7 @@ local function ClampColdTemperature(inst)
     end
 end
 
--- 添加冰冻免疫来源，并移除角色可冻结组件。
+-- 添加冰冻免疫来源，并清理当前的冻结状态。
 function DeerclopsCommon.EnableFreezeImmunity(slots, inst, source)
     source = source or "deerclops"
     slots._kei_deerclops_freeze_sources = slots._kei_deerclops_freeze_sources or {}
@@ -29,14 +29,12 @@ function DeerclopsCommon.EnableFreezeImmunity(slots, inst, source)
         inst:AddTag("kei_nofreezing")
 
         local freezable = inst.components.freezable
-        slots._kei_deerclops_had_freezable = freezable ~= nil
         if freezable ~= nil then
             if freezable:IsFrozen() then
                 freezable:Unfreeze()
             else
                 freezable:Reset()
             end
-            inst:RemoveComponent("freezable")
         end
     end
 
@@ -44,7 +42,7 @@ function DeerclopsCommon.EnableFreezeImmunity(slots, inst, source)
     ClampColdTemperature(inst)
 end
 
--- 移除冰冻免疫来源，并在需要时恢复可冻结组件。
+-- 移除冰冻免疫来源；freezable 组件始终保留，由标签钩子恢复原版行为。
 function DeerclopsCommon.DisableFreezeImmunity(slots, inst, source)
     source = source or "deerclops"
     local sources = slots._kei_deerclops_freeze_sources
@@ -57,17 +55,6 @@ function DeerclopsCommon.DisableFreezeImmunity(slots, inst, source)
     end
 
     inst:RemoveTag("kei_nofreezing")
-
-    if slots._kei_deerclops_had_freezable
-        and inst.components.freezable == nil
-        and not inst:HasTag("playerghost")
-    then
-        MakeLargeFreezableCharacter(inst, "torso")
-        inst.components.freezable:SetResistance(4)
-        inst.components.freezable:SetDefaultWearOffTime(TUNING.PLAYER_FREEZE_WEAR_OFF_TIME)
-    end
-
-    slots._kei_deerclops_had_freezable = nil
     slots._kei_deerclops_freeze_sources = nil
     slots._kei_had_freezable = nil
     slots._kei_freeze_immune = nil

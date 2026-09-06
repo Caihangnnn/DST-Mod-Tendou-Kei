@@ -2,6 +2,8 @@ local AnalysisArmorUpgrade = {
     RECIPE = "kei_analysis_armor_upgrade",
     MAX_LEVEL = 5,
     EXPERIENCE_PER_LEVEL = 1000,
+    BASE_ABSORB_SCALE = 0.5,
+    ABSORB_SCALE_PER_LEVEL = 0.1,
 }
 
 function AnalysisArmorUpgrade.ClampLevel(value)
@@ -26,7 +28,11 @@ function AnalysisArmorUpgrade.GetLevel(inst)
 end
 
 function AnalysisArmorUpgrade.GetAbsorbScale(inst)
-    return AnalysisArmorUpgrade.GetLevel(inst) / AnalysisArmorUpgrade.MAX_LEVEL
+    return math.min(
+        1,
+        AnalysisArmorUpgrade.BASE_ABSORB_SCALE
+            + AnalysisArmorUpgrade.GetLevel(inst) * AnalysisArmorUpgrade.ABSORB_SCALE_PER_LEVEL
+    )
 end
 
 function AnalysisArmorUpgrade.GetExperienceCost(inst)

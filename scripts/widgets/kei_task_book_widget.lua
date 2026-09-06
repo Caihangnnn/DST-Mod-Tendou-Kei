@@ -9,6 +9,8 @@ local TEMPLATES = require "widgets/redux/templates"
 local PlayerAvatarPortrait = require "widgets/redux/playeravatarportrait"
 local TaskBook = require "kei/task_book"
 local ClientSettings = require "kei/client_settings"
+local MiniAlice = require "kei/mini_alice"
+local MusicAPI = _G.TENDOU_KEI_MUSIC
 
 local ATLAS = "images/quagmire_recipebook.xml"
 local GRID_WIDTH = 390
@@ -27,6 +29,31 @@ local KEI_PORTRAIT_FACINGS = {
     FACING_DOWN,
     FACING_RIGHT,
     FACING_UP,
+}
+
+local function CreateCompactMusicButton(parent, label, width, height)
+    local button = parent:AddChild(ImageButton(
+        ATLAS,
+        "cookbook_known.tex",
+        "cookbook_known.tex",
+        "cookbook_known.tex",
+        "cookbook_known.tex"
+    ))
+    button:ForceImageSize(width or 28, height or 24)
+    button:SetText(label)
+    button:SetFont(HEADERFONT)
+    button:SetTextSize(16)
+    button:SetTextColour(UICOLOURS.BROWN_DARK)
+    button:SetTextFocusColour(UICOLOURS.GOLD)
+    button.scale_on_focus = false
+    button.move_on_click = false
+    return button
+end
+
+local MUSIC_RULE_LABELS = {
+    sequence = "顺序播放",
+    random = "随机播放",
+    loop = "循环播放",
 }
 
 local function GetOwnerSkinName(owner)
@@ -215,6 +242,7 @@ local function CountOwnedPrefab(owner, prefab)
     end
     for slot = 1, inventory:GetNumSlots() do Visit(inventory:GetItemInSlot(slot)) end
     Visit(inventory:GetActiveItem())
+    Visit(inventory:GetEquippedItem(EQUIPSLOTS.BACK))
     return count
 end
 
@@ -627,6 +655,10 @@ local TaskPage = Class(Widget, function(self, owner)
     self.settings_root = self:AddChild(Widget("client_settings_root"))
     self.settings_root:SetPosition(-GRID_WIDTH / 2 - 30, 0)
     AddDetailPanel(self.settings_root)
+    local feedback_text = self.settings_root:AddChild(Text(HEADERFONT, 17, "天童凯伊bug反馈Q群: 711300573", UICOLOURS.BROWN_DARK))
+    feedback_text:SetRegionSize(340, 24)
+    feedback_text:SetHAlign(ANCHOR_MIDDLE)
+    feedback_text:SetPosition(0, 238)
     local settings_title = self.settings_root:AddChild(Text(HEADERFONT, 22, "快捷键设定", UICOLOURS.BROWN_DARK))
     settings_title:SetPosition(0, 210)
 
@@ -652,6 +684,7 @@ local TaskPage = Class(Widget, function(self, owner)
         text:SetHAlign(ANCHOR_LEFT)
         text:SetPosition(-120, y)
         local button = CreateSmallSettingsButton(-49, y)
+        button:SetHoverText("点击绑定")
         button:SetOnClick(function()
             button:SetText("按下按键")
             ClientSettings:BeginCapture(action, function()
@@ -678,7 +711,21 @@ local TaskPage = Class(Widget, function(self, owner)
     AddKeyBinding("冒险手记", "task_book", 31)
     AddUnassignedKeyBinding(145)
     AddUnassignedKeyBinding(88)
-    AddUnassignedKeyBinding(31)
+
+    local alice_mode_button = CreateSmallSettingsButton(49, 31)
+    alice_mode_button:SetOnClick(function()
+        ClientSettings:CycleMiniAliceArrowMode()
+    end)
+    self.mini_alice_arrow_mode_button = alice_mode_button
+    local alice_mode_label = self.settings_root:AddChild(Text(
+        HEADERFONT,
+        19,
+        "爱丽丝翻页",
+        UICOLOURS.BROWN_DARK
+    ))
+    alice_mode_label:SetRegionSize(70, 30)
+    alice_mode_label:SetHAlign(ANCHOR_RIGHT)
+    alice_mode_label:SetPosition(120, 31)
 
     local priority_title = self.settings_root:AddChild(Text(HEADERFONT, 18, "右键优先级（重新装备 CD 后生效）", UICOLOURS.BROWN_DARK))
     priority_title:SetPosition(0, -58)
@@ -731,6 +778,7 @@ local TaskPage = Class(Widget, function(self, owner)
     self.protocol_ring = self.details_root:AddChild(Widget("protocol_ring"))
     self.protocol_ring:SetPosition(0, -8)
     self:CreatePlayerPortrait()
+    self:CreateMusicControls()
     self:RefreshProtocolRing(true)
     self:RefreshCombatStatusValues()
     self:RefreshClientSettings()
@@ -850,6 +898,198 @@ function TaskPage:CreatePlayerPortrait()
     self.skin_name:SetString(KEI_SKIN_OPTIONS[self.preview_skin_index].name)
 end
 
+function TaskPage:RefreshMusicControls()
+    if self.music_track_button == nil or MusicAPI == nil then
+        return
+    end
+
+    local index = MusicAPI:GetCurrentIndex()
+    local title = MusicAPI:GetTrackTitle(index)
+    if MusicAPI:IsPlaying() then
+        self.music_track_button:SetString(title)
+    else
+        self.music_track_button:SetString(title .. "（已暂停）")
+    end
+    self.music_pause_button:SetText(MusicAPI:IsPlaying() and "||" or ">")
+    self.music_mode_button:SetText(MusicAPI:GetMode() == "public" and "众乐乐" or "独乐乐")
+    self.music_rule_button:SetText(MUSIC_RULE_LABELS[MusicAPI:GetRule()] or MUSIC_RULE_LABELS.sequence)
+    self.music_volume_value:SetString(string.format("%d%%", math.floor(MusicAPI:GetVolume() * 100 + .5)))
+end
+
+function TaskPage:SelectMusicTrack(index)
+    if MusicAPI ~= nil then
+        MusicAPI:Play(index)
+        self:RefreshMusicControls()
+    end
+    self:CloseMusicList()
+end
+
+function TaskPage:OpenMusicList()
+    if self.music_list_open or MusicAPI == nil then
+        return
+    end
+
+    self.music_list_open = true
+
+    -- A transparent button catches clicks that are outside the list. It is
+    -- inserted before the list so the list remains clickable above it.
+    self.music_dismiss = self:AddChild(ImageButton("images/global.xml", "square.tex"))
+    self.music_dismiss:ForceImageSize(900, 550)
+    self.music_dismiss.image:SetTint(1, 1, 1, 0)
+    self.music_dismiss.scale_on_focus = false
+    self.music_dismiss.move_on_click = false
+    self.music_dismiss:SetOnClick(function()
+        self:CloseMusicList()
+    end)
+
+    self.music_list_root = self:AddChild(TEMPLATES.RectangleWindow(560, 280))
+    self.music_list_root:SetPosition(0, -125)
+
+    local titles = MusicAPI:GetTrackTitles()
+    local function ItemConstructor(_, index)
+        local widget = Widget("kei_music_item_" .. tostring(index))
+        widget:SetOnGainFocus(function()
+            if self.music_list ~= nil then
+                self.music_list:OnWidgetFocus(widget)
+            end
+        end)
+        widget.backing = widget:AddChild(TEMPLATES.ListItemBackground(250, 28, function() end))
+        widget.backing.move_on_click = false
+        widget.name = widget:AddChild(Text(BODYTEXTFONT, 15, ""))
+        widget.name:SetRegionSize(242, 26)
+        widget.name:SetHAlign(ANCHOR_MIDDLE)
+        widget.name:SetVAlign(ANCHOR_MIDDLE)
+        widget.name:SetPosition(0, 0)
+        widget.focus_forward = widget.backing
+        return widget
+    end
+    local function ApplyItem(_, widget, title, index)
+        widget.item_index = index
+        if title == nil then
+            widget:Hide()
+            widget.focus_forward = nil
+            return
+        end
+        widget:Show()
+        widget.name:SetString(title)
+        widget.name:SetColour(UICOLOURS.BROWN_DARK)
+        widget.backing:SetOnClick(function()
+            self:SelectMusicTrack(widget.item_index)
+        end)
+        widget.focus_forward = widget.backing
+    end
+
+    self.music_list = self.music_list_root:AddChild(TEMPLATES.ScrollingGrid(titles, {
+        widget_width = 250,
+        widget_height = 28,
+        num_visible_rows = 7,
+        num_columns = 2,
+        item_ctor_fn = ItemConstructor,
+        apply_fn = ApplyItem,
+        scrollbar_offset = 28,
+        scrollbar_height_offset = -70,
+        allow_bottom_empty_row = true,
+    }))
+    self.music_list_root.focus_forward = self.music_list
+    self.music_list_root:MoveToFront()
+    self.music_list_root:SetFocus()
+end
+
+function TaskPage:CloseMusicList()
+    if self.music_dismiss ~= nil then
+        self.music_dismiss:Kill()
+        self.music_dismiss = nil
+    end
+    if self.music_list_root ~= nil then
+        self.music_list_root:Kill()
+        self.music_list_root = nil
+        self.music_list = nil
+    end
+    self.music_list_open = false
+end
+
+function TaskPage:CreateMusicControls()
+    self.music_root = self:AddChild(Widget("kei_music_controls"))
+    self.music_root:SetPosition(0, -178)
+
+    -- Keep the five rows compact enough to stay inside the highlighted area:
+    -- icon, volume, audience, playback rule, then track controls.
+    self.music_volume_icon = self.music_root:AddChild(Text(HEADERFONT, 22, "♪", UICOLOURS.BROWN_DARK))
+    self.music_volume_icon:SetPosition(0, 42)
+    self.music_volume_icon:SetHAlign(ANCHOR_MIDDLE)
+    self.music_volume_icon:SetRegionSize(26, 22)
+
+    self.music_volume_minus = CreateCompactMusicButton(self.music_root, "-", 22, 18)
+    self.music_volume_minus:SetPosition(-25, 21)
+    self.music_volume_minus:SetHelpTextMessage("减小音量")
+    self.music_volume_minus:SetOnClick(function()
+        if MusicAPI ~= nil then MusicAPI:SetVolume(MusicAPI:GetVolume() - .1) end
+        self:RefreshMusicControls()
+    end)
+    self.music_volume_value = self.music_root:AddChild(Text(BODYTEXTFONT, 12, "50%", UICOLOURS.GOLD))
+    self.music_volume_value:SetPosition(0, 21)
+    self.music_volume_value:SetHAlign(ANCHOR_MIDDLE)
+    self.music_volume_value:SetRegionSize(28, 18)
+    self.music_volume_plus = CreateCompactMusicButton(self.music_root, "+", 22, 18)
+    self.music_volume_plus:SetPosition(25, 21)
+    self.music_volume_plus:SetHelpTextMessage("增大音量")
+    self.music_volume_plus:SetOnClick(function()
+        if MusicAPI ~= nil then MusicAPI:SetVolume(MusicAPI:GetVolume() + .1) end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_mode_button = CreateCompactMusicButton(self.music_root, "独乐乐", 76, 18)
+    self.music_mode_button:SetPosition(0, 0)
+    self.music_mode_button:SetHelpTextMessage("切换独乐乐或众乐乐")
+    self.music_mode_button:SetOnClick(function()
+        if MusicAPI ~= nil then
+            MusicAPI:SetMode(MusicAPI:GetMode() == "public" and "local" or "public")
+        end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_rule_button = CreateCompactMusicButton(self.music_root, "顺序播放", 76, 18)
+    self.music_rule_button:SetPosition(0, -21)
+    self.music_rule_button:SetHelpTextMessage("切换播放规则")
+    self.music_rule_button:SetOnClick(function()
+        if MusicAPI ~= nil then MusicAPI:CycleRule() end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_previous_button = CreateCompactMusicButton(self.music_root, "|<", 24, 18)
+    self.music_previous_button:SetPosition(-31, -42)
+    self.music_previous_button:SetHelpTextMessage("上一首")
+    self.music_previous_button:SetOnClick(function()
+        if MusicAPI ~= nil then MusicAPI:Previous() end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_pause_button = CreateCompactMusicButton(self.music_root, "||", 24, 18)
+    self.music_pause_button:SetPosition(0, -42)
+    self.music_pause_button:SetHelpTextMessage("暂停或继续")
+    self.music_pause_button:SetOnClick(function()
+        if MusicAPI ~= nil then
+            if MusicAPI:IsPlaying() then MusicAPI:Pause() else MusicAPI:Play() end
+        end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_next_button = CreateCompactMusicButton(self.music_root, ">|", 24, 18)
+    self.music_next_button:SetPosition(31, -42)
+    self.music_next_button:SetHelpTextMessage("下一首")
+    self.music_next_button:SetOnClick(function()
+        if MusicAPI ~= nil then MusicAPI:Next() end
+        self:RefreshMusicControls()
+    end)
+
+    self.music_track_button = self:AddChild(Text(HEADERFONT, 17, "", UICOLOURS.BROWN_DARK))
+    self.music_track_button:SetPosition(0, -260)
+    self.music_track_button:SetRegionSize(460, 30)
+    self.music_track_button:SetHAlign(ANCHOR_MIDDLE)
+    self.music_track_button:SetVAlign(ANCHOR_MIDDLE)
+    self:RefreshMusicControls()
+end
+
 function TaskPage:RefreshEquippedSkin()
     local equipped_skin = GetOwnerSkinName(self.owner)
     if equipped_skin ~= self.equipped_skin then
@@ -864,6 +1104,11 @@ function TaskPage:RefreshClientSettings()
     self.updating_client_settings = true
     for index, spinner in ipairs(self.priority_spinners or {}) do
         spinner:SetSelected(ClientSettings:GetRightClickPriority()[index])
+    end
+    if self.mini_alice_arrow_mode_button ~= nil then
+        local mode = ClientSettings:GetMiniAliceArrowMode()
+        self.mini_alice_arrow_mode_button:SetText(MiniAlice.GetArrowModeName(mode))
+        self.mini_alice_arrow_mode_button:SetHoverText(MiniAlice.GetArrowModeRule(mode))
     end
     self.updating_client_settings = nil
 end
@@ -912,6 +1157,17 @@ function TaskPage:RefreshProtocolRing(force)
     end
 end
 
+function TaskPage:OnMouseButton(button, down, x, y)
+    if TaskPage._base.OnMouseButton(self, button, down, x, y) then
+        return true
+    end
+    if self.music_list_open and not down then
+        self:CloseMusicList()
+        return true
+    end
+    return false
+end
+
 function TaskPage:OnUpdate(dt)
     if self.portrait ~= nil then
         self.portrait:EmoteUpdate(dt)
@@ -927,10 +1183,12 @@ function TaskPage:OnUpdate(dt)
     if self.refresh_elapsed >= .25 then
         self.refresh_elapsed = 0
         self:RefreshProtocolRing()
+        self:RefreshMusicControls()
     end
 end
 
 function TaskPage:OnRemoveEntity()
+    self:CloseMusicList()
     if self._client_settings_listener ~= nil then
         ClientSettings:Unsubscribe(self._client_settings_listener)
         self._client_settings_listener = nil

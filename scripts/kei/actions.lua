@@ -5,6 +5,8 @@ local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local PowerStat = require("kei/stats/power")
 local IntegrityStat = require("kei/stats/integrity")
 local SpDamageUtil = require("components/spdamageutil")
+local SlowSources = require("kei/slow_sources")
+local Enchantment = require("kei/integrations/enchantment")
 
 local function AddKeiActionHandler(action, state)
     AddStategraphActionHandler("wilson", ActionHandler(action, state))
@@ -428,16 +430,21 @@ local function SlowDaywalkerLeapTarget(target)
         return
     end
 
-    target.components.locomotor:SetExternalSpeedMultiplier(target, "kei_daywalker_leap_slow", TUNING.KEI_DAYWALKER_LEAP_SLOW_MULT or 0.1)
+    if not SlowSources.TryApply(
+        target,
+        "kei_daywalker_leap_slow",
+        target,
+        TUNING.KEI_DAYWALKER_LEAP_SLOW_MULT or 0.1
+    ) then
+        return
+    end
 
     if target._kei_daywalker_leap_slow_task ~= nil then
         target._kei_daywalker_leap_slow_task:Cancel()
     end
 
     target._kei_daywalker_leap_slow_task = target:DoTaskInTime(TUNING.KEI_DAYWALKER_LEAP_SLOW_DURATION or 3, function(inst)
-        if inst.components.locomotor ~= nil then
-            inst.components.locomotor:RemoveExternalSpeedMultiplier(inst, "kei_daywalker_leap_slow")
-        end
+        SlowSources.Release(inst, "kei_daywalker_leap_slow", inst)
         inst._kei_daywalker_leap_slow_task = nil
     end)
 end
@@ -1684,16 +1691,20 @@ local function AnalyzeEquipment(tool, target, doer)
 
     -- 只解析不可堆叠的可装备物品；容器类物品即使可检查也不生成协议。
     if target.components.container ~= nil then
-        return false
+        return false, false
     end
     if target.components.stackable ~= nil then
         return false, false
     end
     if target.components.equippable == nil then
-        return false
+        return false, false
     end
 
     local slot = target.components.equippable.equipslot
+    if slot == nil then
+        return false, false
+    end
+
     local inventoryitem = target.components.inventoryitem
     local data = {
         source = target.prefab,
@@ -1706,16 +1717,15 @@ local function AnalyzeEquipment(tool, target, doer)
         skin_name = GetTargetSkinName(target),
         skin_build = GetTargetSkinBuild(target),
         full_equipment = true,
+        enchantments = Enchantment.Capture(target),
     }
 
     -- 头部和身体装备提取护甲吸收率；手部装备提取武器、移速和平面伤害信息。
+    -- 装备栏扩展 mod 通常仍使用原版 equippable，只把 equipslot 改成自定义值。
+    -- 因此未知的非手部槽位统一按身体类装备解析，避免把具体槽位名称硬编码进来。
     if slot == EQUIPSLOTS.HEAD then
         data.kind = "analysis"
         data.slot = "head"
-        data.absorb = target.components.armor ~= nil and target.components.armor.absorb_percent or 0
-    elseif slot == EQUIPSLOTS.BODY then
-        data.kind = "analysis"
-        data.slot = "body"
         data.absorb = target.components.armor ~= nil and target.components.armor.absorb_percent or 0
     elseif slot == EQUIPSLOTS.HANDS then
         data.kind = "analysis"
@@ -1727,17 +1737,20 @@ local function AnalyzeEquipment(tool, target, doer)
         data.tool_actions = tooldata ~= nil and tooldata.actions or nil
         data.tool_tough = tooldata ~= nil and tooldata.tough or nil
     else
-        return false
+        -- BODY 以及 BELLY/NECK/BACK 等扩展槽都走护甲类协议的虚拟装备路径。
+        data.kind = "analysis"
+        data.slot = "body"
+        data.absorb = target.components.armor ~= nil and target.components.armor.absorb_percent or 0
     end
 
     local cd = SpawnPrefab("kei_analysis_cd")
     if cd == nil then
-        return false
+        return false, false
     end
     -- 解析结果写入新生成的 CD，协议槽组件会在背包中读取这些数据。
     if cd:SetAnalysisData(data) == false then
         cd:Remove()
-        return false
+        return false, false
     end
     if doer.components.inventory ~= nil then
         doer.components.inventory:GiveItem(cd, nil, doer:GetPosition())

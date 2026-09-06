@@ -1,6 +1,7 @@
 local ClientSettings = {}
 
 local SAVE_KEY = "tendou_kei_client_settings_v1"
+local DEFAULT_MINI_ALICE_ARROW_MODE = 1
 local DEFAULTS = {
     bindings = {
         flame = KEY_Z,
@@ -8,6 +9,7 @@ local DEFAULTS = {
         task_book = KEY_X,
     },
     right_click_priority = { "guard", "leap", "dash" },
+    mini_alice_arrow_mode = DEFAULT_MINI_ALICE_ARROW_MODE,
 }
 
 local KEY_NAMES = {
@@ -55,6 +57,7 @@ local function CopyDefaults()
             task_book = DEFAULTS.bindings.task_book,
         },
         right_click_priority = { "guard", "leap", "dash" },
+        mini_alice_arrow_mode = DEFAULTS.mini_alice_arrow_mode,
     }
 end
 
@@ -64,6 +67,11 @@ end
 
 local function IsValidKey(value)
     return type(value) == "number" and KEY_NAMES[value] ~= nil
+end
+
+local function IsValidMiniAliceArrowMode(value)
+    value = tonumber(value)
+    return value ~= nil and value >= 1 and value <= 4 and value == math.floor(value)
 end
 
 ClientSettings.data = CopyDefaults()
@@ -82,6 +90,12 @@ end
 
 function ClientSettings:GetRightClickPriority()
     return self.data.right_click_priority
+end
+
+function ClientSettings:GetMiniAliceArrowMode()
+    return IsValidMiniAliceArrowMode(self.data.mini_alice_arrow_mode)
+        and self.data.mini_alice_arrow_mode
+        or DEFAULTS.mini_alice_arrow_mode
 end
 
 function ClientSettings:NotifyChanged()
@@ -132,6 +146,28 @@ function ClientSettings:SetPrioritySlot(index, value)
         self:NotifyChanged()
     end
     return true
+end
+
+function ClientSettings:SetMiniAliceArrowMode(mode)
+    mode = tonumber(mode)
+    if not IsValidMiniAliceArrowMode(mode) then
+        return false
+    end
+
+    mode = math.floor(mode)
+    if self:GetMiniAliceArrowMode() == mode then
+        return true
+    end
+    self.data.mini_alice_arrow_mode = mode
+    self:Save()
+    self:NotifyChanged()
+    return true
+end
+
+function ClientSettings:CycleMiniAliceArrowMode()
+    local mode = self:GetMiniAliceArrowMode() % 4 + 1
+    self:SetMiniAliceArrowMode(mode)
+    return mode
 end
 
 function ClientSettings:BeginCapture(action, callback)
@@ -219,6 +255,9 @@ local function Load()
             else
                 seen[data.right_click_priority[index]] = true
             end
+        end
+        if IsValidMiniAliceArrowMode(saved.mini_alice_arrow_mode) then
+            data.mini_alice_arrow_mode = math.floor(saved.mini_alice_arrow_mode)
         end
         ClientSettings.data = data
         ClientSettings:NotifyChanged()

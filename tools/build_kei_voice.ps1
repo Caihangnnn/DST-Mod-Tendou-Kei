@@ -82,6 +82,31 @@ $mapping = @(
     @{ Name = "yawn"; Index = 86 }
 )
 
+# The hit reactions use an independent FEV/FSB pair. Keep the complete
+# reference slot order so the event indices in the reused FEV remain valid.
+$hitMapping = @(
+    @{ Name = "attacked_1"; Index = 42 },
+    @{ Name = "attacked_2"; Index = 43 },
+    @{ Name = "attacked_3"; Index = 51 },
+    @{ Name = "christmas_carol"; Index = 57 },
+    @{ Name = "death"; Index = 58 },
+    @{ Name = "do_emote"; Index = 85 },
+    @{ Name = "drown_in_water"; Index = 53 },
+    @{ Name = "feel_sleepy"; Index = 54 },
+    @{ Name = "ghost_1"; Index = 18 },
+    @{ Name = "ghost_2"; Index = 19 },
+    @{ Name = "ghost_3"; Index = 24 },
+    @{ Name = "ghost_4"; Index = 71 },
+    @{ Name = "ghost_5"; Index = 25 },
+    @{ Name = "pose"; Index = 55 },
+    @{ Name = "talk_1"; Index = 4 },
+    @{ Name = "talk_2"; Index = 10 },
+    @{ Name = "talk_3"; Index = 13 },
+    @{ Name = "talk_4"; Index = 16 },
+    @{ Name = "talk_5"; Index = 17 },
+    @{ Name = "yawn"; Index = 86 }
+)
+
 if (Test-Path -LiteralPath $tempRoot) {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
@@ -156,6 +181,68 @@ for ($i = 0; $i -le $fevBytes.Length - $oldNamespace.Length; $i++) {
 }
 [IO.File]::WriteAllBytes((Join-Path $soundRoot "tendou_kei_vc.fev"), $fevBytes)
 
+$hitTempRoot = Join-Path $tempRoot "hit"
+New-Item -ItemType Directory -Path $hitTempRoot -Force | Out-Null
+$hitListEntries = @()
+$hitIndividualSources = @(
+    @{ Name = "hit_1"; SampleName = "attacked_1"; Index = 42 },
+    @{ Name = "hit_2"; SampleName = "attacked_2"; Index = 43 }
+)
+foreach ($entry in $hitMapping) {
+    $source = $itemsByIndex[$entry.Index]
+    if ($source -eq $null) {
+        throw "Voice index $($entry.Index) is missing from manifest.json"
+    }
+    $sourcePath = Join-Path $extractionRoot $source.filename
+    $wavPath = Join-Path $hitTempRoot ($entry.Name + ".wav")
+    & $ffmpegPath -hide_banner -loglevel error -y -i $sourcePath -ac 1 -ar 44100 -c:a pcm_s16le $wavPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $wavPath -PathType Leaf)) {
+        throw "FFmpeg failed for hit-bank sample $($source.filename)"
+    }
+    $hitListEntries += ($entry.Name + ".wav")
+}
+
+foreach ($entry in $hitIndividualSources) {
+    $source = $itemsByIndex[$entry.Index]
+    $sourcePath = Join-Path $extractionRoot $source.filename
+    $wavPath = Join-Path $hitTempRoot ($entry.SampleName + ".wav")
+    $individualPath = Join-Path $individualRoot ($entry.Name + ".ogg")
+    & $ffmpegPath -hide_banner -loglevel error -y -i $wavPath -c:a libvorbis -q:a 6 $individualPath
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $individualPath -PathType Leaf)) {
+        throw "FFmpeg failed to export individual voice $($entry.Name)"
+    }
+}
+$hitListPath = Join-Path $hitTempRoot "kei_hit_sound.lst"
+$hitListEntries | Set-Content -LiteralPath $hitListPath -Encoding ascii
+$hitFsbPath = Join-Path $soundRoot "kei_hit_sound.fsb"
+Push-Location $hitTempRoot
+try {
+    & $fsbankexPath -format pcm -build_mode s -rebuild -o $hitFsbPath (Split-Path $hitListPath -Leaf)
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $hitFsbPath -PathType Leaf)) {
+        throw "FSBank failed to build $hitFsbPath"
+    }
+}
+finally {
+    Pop-Location
+}
+
+$hitFevBytes = [IO.File]::ReadAllBytes($templatePath)
+$hitNamespace = [Text.Encoding]::ASCII.GetBytes("kei_hit_sound")
+for ($i = 0; $i -le $hitFevBytes.Length - $oldNamespace.Length; $i++) {
+    $match = $true
+    for ($j = 0; $j -lt $oldNamespace.Length; $j++) {
+        if ($hitFevBytes[$i + $j] -ne $oldNamespace[$j]) {
+            $match = $false
+            break
+        }
+    }
+    if ($match) {
+        [Array]::Copy($hitNamespace, 0, $hitFevBytes, $i, $hitNamespace.Length)
+        $i += $oldNamespace.Length - 1
+    }
+}
+[IO.File]::WriteAllBytes((Join-Path $soundRoot "kei_hit_sound.fev"), $hitFevBytes)
+
 $sourceManifest = @{
     source = $manifest.source_page
     language = $manifest.language
@@ -165,6 +252,10 @@ $sourceManifest = @{
     individual_directory = "sound/kei_voice_individual"
     namespace = "tendou_kei_vc/tendou_kei_vc"
     mapping = $mapping
+    hit_bank = "sound/kei_hit_sound.fsb"
+    hit_fev = "sound/kei_hit_sound.fev"
+    hit_namespace = "kei_hit_sound/kei_hit_sound"
+    hit_mapping = $hitMapping
 }
 $sourceManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $soundRoot "kei_voice_manifest.json") -Encoding utf8
 
@@ -172,6 +263,9 @@ if ($PruneExtraction) {
     # Keep only the source files that are part of the successfully built bank.
     $requiredSourceNames = @("manifest.json")
     foreach ($entry in $mapping) {
+        $requiredSourceNames += $itemsByIndex[$entry.Index].filename
+    }
+    foreach ($entry in $hitMapping) {
         $requiredSourceNames += $itemsByIndex[$entry.Index].filename
     }
     Get-ChildItem -LiteralPath $extractionRoot -File | Where-Object {
@@ -182,3 +276,5 @@ if ($PruneExtraction) {
 
 Write-Host "Built $fsbPath"
 Write-Host "Built $(Join-Path $soundRoot 'tendou_kei_vc.fev')"
+Write-Host "Built $hitFsbPath"
+Write-Host "Built $(Join-Path $soundRoot 'kei_hit_sound.fev')"

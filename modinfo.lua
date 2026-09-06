@@ -11,7 +11,7 @@
 
 -- 模组在游戏列表中的基础信息。
 author = "StellarVoyage"
-version = "0.0.2"
+version = "0.0.10"
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 
@@ -45,6 +45,24 @@ configuration_options = {
             {
                 description = "消耗",
                 hover = "解析成功后消耗被解析的原装备。",
+                data = true,
+            },
+        },
+        default = false,
+    },
+    {
+        name = "KEI_ANALYSIS_RECORD_ENCHANT",
+        label = "解析装备是否附带附魔效果",
+        hover = "开启后，同时启用模组“附魔”时，解析装备会额外记录附魔效果，并在虚拟装备和信息框中显示或应用。",
+        options = {
+            {
+                description = "关闭",
+                hover = "解析装备时不记录附魔效果。",
+                data = false,
+            },
+            {
+                description = "开启",
+                hover = "解析装备时记录附魔效果，并在生成虚拟装备时恢复。",
                 data = true,
             },
         },
@@ -120,7 +138,7 @@ configuration_options = {
                 data = false,
             },
         },
-        default = true,
+        default = false,
     },
     {
         name = "KEI_PROTOCOL_SLOT_MAX",
@@ -151,34 +169,6 @@ configuration_options = {
             { description = "6", data = 6 },
         },
         default = 0,
-    },
-    {
-        name = "KEI_MINI_ALICE_ARROW_MODE",
-        label = "娇小爱丽丝箭头模式",
-        hover = "设置娇小爱丽丝两侧箭头的显示方式与翻页方式。",
-        options = {
-            {
-                description = "两侧箭头，不循环翻页",
-                hover = "显示左右两侧箭头，到达首页或尾页时禁用对应箭头。",
-                data = 1,
-            },
-            {
-                description = "两侧箭头并循环翻页",
-                hover = "显示左右两侧箭头，到达首页或尾页时循环到另一端。",
-                data = 2,
-            },
-            {
-                description = "启用左侧箭头并循环翻页",
-                hover = "只显示左侧箭头，在首页继续向左时循环到尾页。",
-                data = 3,
-            },
-            {
-                description = "启用右侧箭头并循环翻页",
-                hover = "只显示右侧箭头，在尾页继续向右时循环到首页。",
-                data = 4,
-            },
-        },
-        default = 1,
     },
     {
         name = "KEI_MINI_ALICE_MAX_PAGES",

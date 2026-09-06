@@ -1,6 +1,19 @@
 local KEI_RPC_NAMESPACE = "TendouKei"
 local ClientSettings = require("kei/client_settings")
 
+-- The engine can dispatch the disconnect callback after the world entity has
+-- already been removed during shard migration. The vanilla handler assumes
+-- TheWorld still exists, so safely ignore that late callback.
+local old_on_player_leave = GLOBAL.OnPlayerLeave
+if old_on_player_leave ~= nil then
+    GLOBAL.OnPlayerLeave = function(player_guid, expected, ...)
+        if GLOBAL.TheWorld == nil then
+            return
+        end
+        return old_on_player_leave(player_guid, expected, ...)
+    end
+end
+
  
 
 local function HasMutatedWargProtocol(player)

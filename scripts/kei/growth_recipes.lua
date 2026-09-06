@@ -61,7 +61,9 @@ function GrowthRecipes.GetExperienceCost(recname, experience, builder)
             or GrowthRecipes.ROTOR_SKILL_EXPERIENCE_COST,
             false
     elseif RotorUpgrades.IsUpgradeRecipe(recname) then
-        return TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST
+        local upgrade = RotorUpgrades.GetUpgradeForRecipe(recname)
+        return RotorUpgrades.GetExperienceCost(upgrade)
+            or TUNING.KEI_ROTOR_UPGRADE_EXPERIENCE_COST
             or GrowthRecipes.ROTOR_UPGRADE_EXPERIENCE_COST,
             false
     elseif AnalysisArmorUpgrade.IsRecipe(recname) then

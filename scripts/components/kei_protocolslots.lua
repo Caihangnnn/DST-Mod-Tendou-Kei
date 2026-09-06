@@ -1313,6 +1313,9 @@ function KeiProtocolSlots:GetProtocolSlotItems()
     local inventory = self.inst.components.inventory
     if inventory == nil then return items end
 
+    -- 相同装备的解析协议只保留最先出现的一份。
+    -- 协议槽按数字顺序遍历，因此第 1 格到第 N 格天然具有优先级。
+    local analysis_sources = {}
     for slot = 1, ProtocolSlotUnlocks.GetMaxSlots() do
         local container = inventory:GetItemInSlot(slot)
         if IsProtocolContainer(container) and container.components.container ~= nil then
@@ -1322,11 +1325,19 @@ function KeiProtocolSlots:GetProtocolSlotItems()
                 and data.kind == "combat"
                 and self:IsDeeplyImplanted(data.protocol)
                 and not IsProtocolStackable(data)
+            local duplicate_analysis = data ~= nil
+                and data.kind == "analysis"
+                and data.source ~= nil
+                and analysis_sources[data.source] == true
             if data ~= nil
                 and slot <= self.unlocked_slots
                 and not duplicate_implant
+                and not duplicate_analysis
                 and self:CanRun(data)
             then
+                if data.kind == "analysis" and data.source ~= nil then
+                    analysis_sources[data.source] = true
+                end
                 table.insert(items, {
                     item = item,
                     slot = slot,

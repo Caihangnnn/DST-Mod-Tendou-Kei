@@ -1,6 +1,7 @@
 -- 娇小爱丽丝的分页容量与槽位访问规则。
 
 local MiniAlice = {}
+local ClientSettings
 
 MiniAlice.SLOTS_PER_PAGE = 8
 MiniAlice.ARROW_MODE_BOTH = 1
@@ -42,7 +43,37 @@ function MiniAlice.GetMaxPages()
 end
 
 function MiniAlice.GetArrowMode()
-    return math.clamp(tonumber(TUNING.KEI_MINI_ALICE_ARROW_MODE) or MiniAlice.ARROW_MODE_BOTH, 1, 4)
+    if TheNet ~= nil and not TheNet:IsDedicated() then
+        ClientSettings = ClientSettings or require("kei/client_settings")
+        if ClientSettings.GetMiniAliceArrowMode ~= nil then
+            return math.clamp(ClientSettings:GetMiniAliceArrowMode(), 1, 4)
+        end
+    end
+    return MiniAlice.ARROW_MODE_BOTH
+end
+
+local ARROW_MODE_NAMES = {
+    [MiniAlice.ARROW_MODE_BOTH] = "模式一",
+    [MiniAlice.ARROW_MODE_BOTH_LOOP] = "模式二",
+    [MiniAlice.ARROW_MODE_LEFT_LOOP] = "模式三",
+    [MiniAlice.ARROW_MODE_RIGHT_LOOP] = "模式四",
+}
+
+local ARROW_MODE_RULES = {
+    [MiniAlice.ARROW_MODE_BOTH] = "显示左右两侧箭头，到达首页或尾页时禁用对应箭头。",
+    [MiniAlice.ARROW_MODE_BOTH_LOOP] = "显示左右两侧箭头，到达首页或尾页时循环到另一端。",
+    [MiniAlice.ARROW_MODE_LEFT_LOOP] = "只显示左侧箭头，在首页继续向左时循环到尾页。",
+    [MiniAlice.ARROW_MODE_RIGHT_LOOP] = "只显示右侧箭头，在尾页继续向右时循环到首页。",
+}
+
+function MiniAlice.GetArrowModeName(mode)
+    mode = math.clamp(tonumber(mode) or MiniAlice.GetArrowMode(), 1, 4)
+    return ARROW_MODE_NAMES[mode]
+end
+
+function MiniAlice.GetArrowModeRule(mode)
+    mode = math.clamp(tonumber(mode) or MiniAlice.GetArrowMode(), 1, 4)
+    return ARROW_MODE_RULES[mode]
 end
 
 function MiniAlice.HasLeftArrow()
@@ -148,6 +179,12 @@ end
 function MiniAlice.IsSlotAccessible(container, slot)
     if container == nil or slot == nil then
         return true
+    end
+
+    -- Container:OnLoad runs before the Alice item is attached to the
+    -- player's inventory, so the owner's unlocked-page count is unavailable.
+    if container._kei_mini_alice_loading then
+        return slot >= 1 and slot <= container:GetNumSlots()
     end
 
     local owner = GetContainerOwner(container)

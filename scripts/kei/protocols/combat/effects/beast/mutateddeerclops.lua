@@ -1,6 +1,6 @@
 -- 独眼晶体巨鹿协议：攻击后生成时缓圈，使范围内非友方单位时间流速减半。
 
-local KeiTimeScale = require("kei/time_scale")
+local SlowSources = require("kei/slow_sources")
 
 local MUTATEDDEERCLOPS_AURA_SLOW_KEY = "kei_mutateddeerclops_aura"
 local MUTATEDDEERCLOPS_AURA_FOLLOW_PERIOD = FRAMES
@@ -34,6 +34,11 @@ local function ApplySlow(slots, inst, target)
         return
     end
 
+    local slow = TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5
+    if not SlowSources.TryApply(target, MUTATEDDEERCLOPS_AURA_SLOW_KEY, inst, slow, slow) then
+        return
+    end
+
     local data = {}
     data.onremove = function()
         slots._kei_mutateddeerclops_slowed[target] = nil
@@ -41,11 +46,6 @@ local function ApplySlow(slots, inst, target)
     inst:ListenForEvent("onremove", data.onremove, target)
     slots._kei_mutateddeerclops_slowed[target] = data
 
-    if target.components.locomotor ~= nil then
-        target.components.locomotor:SetExternalSpeedMultiplier(
-            inst, MUTATEDDEERCLOPS_AURA_SLOW_KEY, TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
-    end
-    KeiTimeScale.Add(target, inst, TUNING.KEI_MUTATEDDEERCLOPS_AURA_SLOW_MULT or 0.5)
 end
 
 local function ClearSlow(slots, inst, target)
@@ -58,10 +58,7 @@ local function ClearSlow(slots, inst, target)
     inst:RemoveEventCallback("onremove", data.onremove, target)
 
     if target:IsValid() then
-        KeiTimeScale.Remove(target, inst)
-        if target.components.locomotor ~= nil then
-            target.components.locomotor:RemoveExternalSpeedMultiplier(inst, MUTATEDDEERCLOPS_AURA_SLOW_KEY)
-        end
+        SlowSources.Release(target, MUTATEDDEERCLOPS_AURA_SLOW_KEY, inst)
     end
 end
 

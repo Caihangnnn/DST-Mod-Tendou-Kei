@@ -4,6 +4,8 @@ local SPIDER_QUEEN_WEB_KEY = "kei_spiderqueen_web"
 local SPIDER_QUEEN_MUST_TAGS = { "_combat", "_health" }
 local SPIDER_QUEEN_EXCLUDE_TAGS = { "INLIMBO", "FX", "NOCLICK", "DECOR", "player", "playerghost", "flying", "companion" }
 
+local SlowSources = require("kei/slow_sources")
+
 local SpiderQueenEffect = {}
 
 local function HasSpiderHatEquipped(inst)
@@ -109,6 +111,11 @@ local function ApplySlow(slots, inst, target)
         return
     end
 
+    local slow = TUNING.KEI_SPIDERQUEEN_WEB_SLOW or 0.5
+    if not SlowSources.TryApply(target, SPIDER_QUEEN_WEB_KEY, inst, slow) then
+        return
+    end
+
     local data = {}
     data.onremove = function()
         slots._kei_spider_queen_slowed[target] = nil
@@ -116,10 +123,6 @@ local function ApplySlow(slots, inst, target)
     inst:ListenForEvent("onremove", data.onremove, target)
     slots._kei_spider_queen_slowed[target] = data
 
-    local slow = TUNING.KEI_SPIDERQUEEN_WEB_SLOW or 0.25
-    if target.components.locomotor ~= nil then
-        target.components.locomotor:SetExternalSpeedMultiplier(inst, SPIDER_QUEEN_WEB_KEY, slow)
-    end
 end
 
 local function ClearSlow(slots, inst, target)
@@ -131,9 +134,7 @@ local function ClearSlow(slots, inst, target)
     slots._kei_spider_queen_slowed[target] = nil
     inst:RemoveEventCallback("onremove", data.onremove, target)
 
-    if target:IsValid() and target.components.locomotor ~= nil then
-        target.components.locomotor:RemoveExternalSpeedMultiplier(inst, SPIDER_QUEEN_WEB_KEY)
-    end
+    SlowSources.Release(target, SPIDER_QUEEN_WEB_KEY, inst)
 end
 
 local function ClearAllSlows(slots, inst)

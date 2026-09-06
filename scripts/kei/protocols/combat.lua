@@ -39,7 +39,7 @@ AddRows({
     { "spider_spitter", "喷吐蜘蛛", "对敌方单位造成伤害时降低目标 50% 移速，持续 10 秒；重复造成伤害会刷新持续时间。", { implemented = true, source_prefab = "spider_spitter" } },
     { "spider_shattered", "破碎蜘蛛", "受到攻击时对攻击者造成 25 点伤害。", { implemented = true } },
     { "spider_healer", "护士蜘蛛", "可以受到护士蜘蛛治疗。", { implemented = true, source_prefab = "spider_healer" } },
-    { "spiderqueen", "蜘蛛女王", "角色附近视为蜘蛛网区域，减速范围内非友方单位 75%；不会被蜘蛛主动仇恨。", { tier = "special", implemented = true, source_prefab = "spiderqueen" } },
+    { "spiderqueen", "蜘蛛女王", "角色附近视为蜘蛛网区域，减速范围内非友方单位 50%；不会被蜘蛛主动仇恨。", { tier = "special", implemented = true, source_prefab = "spiderqueen" } },
 }, { category = "biome", family = "spider", implemented = false })
 
 AddRows({
@@ -83,11 +83,11 @@ AddRows({
     { "bearger", "熊獾高级", "攻击造成无衰减群体伤害。", { short_name = "熊獾", planned_update = true } },
     { "mutatedbearger", "装甲熊獾", "独立乘区攻击速度提高 30%。", { tier = "special", implemented = true } },
     { "dragonfly", "龙蝇高级", "攻击会点燃目标，每秒造成最大生命值 0.1% 的伤害，并免疫过热与火焰伤害。", { short_name = "龙蝇", implemented = true } },
-    { "moose", "麋鹿鹅高级", "免疫潮湿；获得漩涡技能，按潮湿度降低竞技场内玩家移速。", { short_name = "麋鹿鹅", implemented = true } },
+    { "moose", "麋鹿鹅高级", "免疫潮湿；攻击有概率生成旋风，对敌方单位造成伤害。", { short_name = "麋鹿鹅", implemented = true } },
     { "eyeofterror", "克眼高级", "获得右键冲刺能力，冲刺会伤害路径上的敌方单位。", { short_name = "克眼" } },
     { "daywalker", "梦魇疯猪高级", "右键跳劈到鼠标指定位置；造成 150 点加目标最大生命值 4% 的范围伤害，生成持续 3 秒的陷坑，并使目标 3 秒内移速降至 10%。", { short_name = "梦魇疯猪" } },
     { "daywalker2", "拾荒疯猪高级", "获得霸体，并获得 25% 免伤。", { short_name = "拾荒疯猪", implemented = true } },
-    { "lordfruitfly", "果蝇王高级", "移除普通攻击；获得技能“杂草的力量”，每 10 秒在自身位置种植一株随机且立即成熟的杂草。必忘我每 5 秒召唤 3 只杀人蜂；犁地草每 10 秒在随机玩家脚下种植巨大作物，将其顶飞并造成 20 点伤害后腐烂；刺针旋花在果蝇王受到玩家攻击时召唤尖刺。果蝇王召唤的小果蝇也会每 10 秒种植一株成熟杂草。", { short_name = "果蝇王", implemented = true } },
+    { "lordfruitfly", "果蝇王高级", "战斗协议和解析协议不再产生额外消耗。", { short_name = "果蝇王", implemented = true } },
     { "minotaur", "远古守卫者高级", "攻击有概率触发暗影囚笼与暗影触手。", { short_name = "远古守卫者", implemented = true } },
     { "vault_pillar_guard", "远古戍卫塔高级", "独立乘区攻击速度提高 20%；手持攻击距离为 1 的武器时，普通攻击变为旋转攻击。", { short_name = "远古戍卫塔", implemented = true } },
     { "wagboss_robot", "战争瓦器人", "攻击时对目标触发月能轨道打击，冷却 20 秒。", { tier = "special", implemented = true } },
@@ -96,18 +96,10 @@ AddRows({
     { "toadstool", "蟾蜍高级", "攻击有概率向目标脚下投掷睡袋，并免疫催眠。", { short_name = "蟾蜍", implemented = true } },
     { "antlion", "蚁狮高级", "免疫沙尘暴、月亮风暴；攻击有概率在目标脚下生成中心大沙刺和三枚小沙刺。", { short_name = "蚁狮" } },
     { "beequeen", "蜂后高级", "获得被动技能威压，受到攻击时释放恐惧光环。", { short_name = "蜂后", implemented = true } },
-    { "stalker_atrium", "织影者高级", "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50% 的额外伤害；获得技能“梦魇”，施法动作是嘶吼，冷却 30 秒，扣除竞技场内所有玩家全部 SAN，每扣除最大 SAN 的 20% 为一档并召唤一只暗影生物攻击对应玩家（爬行暗影 50%、尖嘴暗影 30%、鲨鱼暗影 20%）；玩家身上播放暗影仆从死亡特效，暗影生物生成时播放暗影传送出现特效。", { short_name = "织影者", implemented = true } },
+    { "stalker_atrium", "织影者高级", "数据稳定性为 0 时，战斗协议不再失效；攻击有 30% 概率触发影袭，造成本次伤害 50% 的额外伤害。", { short_name = "织影者", implemented = true } },
     { "alterguardian", "天体英雄高级", "电量为 0 时，解析协议不再失效；每 10 秒回复 10 点电量。", { short_name = "天体英雄", implemented = true } },
     { "alterguardian_phase4_lunarrift", "天体后裔", "天体宝珠环绕 Kei；攻击时宝珠加速旋转，并造成本次伤害 50% 的额外伤害。", { tier = "special", implemented = true } },
 }, { category = "beast", tier = "advanced", implemented = true })
-
-for _, row in ipairs(COMBAT_PROTOCOL_LIST) do
-    if row.protocol == "antlion" then
-        row.description = "在场时使竞技场内玩家处于沙尘暴状态；在周围 12 个单位处生成 6 个 200 点生命的沙堡，沙堡存在时自身不可侵犯并会击退攻击者；体型扩大为 2 倍，沙刺同时攻击所有竞技场玩家。"
-        row.description = row.description .. " 沙墙位置固定，冷却 30 秒；已有位置存在沙墙时跳过生成，沙墙不会自然摧毁。"
-        row.implemented = true
-    end
-end
 
 local COMBAT_PROTOCOLS = {}
 local COMBAT_PROTOCOL_PREFABS = {}

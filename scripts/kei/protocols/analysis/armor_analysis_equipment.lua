@@ -1,5 +1,6 @@
 local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
 local VirtualEquipment = require("kei/protocols/analysis/virtual_equipment")
+local Enchantment = require("kei/integrations/enchantment")
 
 local ArmorAnalysisEquipment = {}
 
@@ -8,8 +9,7 @@ local function HiddenEquipSlot(slot)
     return EQUIPSLOTS["KEI_PROTOCOL_" .. tostring(slot)]
 end
 
--- 根据当前已解锁协议槽进度计算护甲吸收缩放
--- 额外槽位越接近满解锁，虚拟护甲的吸收比例越接近原始值
+-- 根据护甲强化配方制作次数计算护甲吸收缩放：初始 50%，每次增加 10%。
 -- 将解析装备提供的护甲吸收率应用到虚拟护甲上
 -- 可使用协议数据中的 absorb 覆盖原护甲吸收，否则继承预制体自身的吸收率
 local function ApplyArmorAbsorb(virtual, data, absorb_scale)
@@ -125,9 +125,11 @@ function ArmorAnalysisEquipment.Apply(protocolslots, entry)
     end
 
     local current = protocolslots.virtual_equips[slot]
+    local enchantment_key = Enchantment.GetKey(data.enchantments)
     if current ~= nil
         and current:IsValid()
         and current.kei_source_prefab == data.source
+        and current.kei_enchantment_key == enchantment_key
         and inventory:GetEquippedItem(equipslot) == current
     then
         ApplyArmorAbsorb(current, data, AnalysisArmorUpgrade.GetAbsorbScale(protocolslots.inst))
@@ -143,7 +145,10 @@ function ArmorAnalysisEquipment.Apply(protocolslots, entry)
     end
 
     virtual.kei_source_prefab = data.source
+    virtual.kei_enchantment_key = enchantment_key
+    Enchantment.Apply(virtual, data.enchantments)
     CleanVirtualEquipment(virtual, equipslot)
+    Enchantment.InstallVirtualArmorCallbacks(virtual)
     ApplyArmorAbsorb(virtual, data, AnalysisArmorUpgrade.GetAbsorbScale(protocolslots.inst))
 
     inventory:Equip(virtual, nil, true)

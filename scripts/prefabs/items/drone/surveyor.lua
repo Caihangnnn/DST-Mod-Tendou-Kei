@@ -530,7 +530,7 @@ local function UpdateFollow(inst)
 end
 
 local function StartFollowing(inst, owner)
-    if not TheWorld.ismastersim or inst == nil or owner == nil then
+    if TheWorld == nil or not TheWorld.ismastersim or inst == nil or owner == nil then
         return false
     end
 
@@ -571,7 +571,7 @@ local function StopFollowing(inst)
 end
 
 local function OnPilotLocomote(inst, data)
-    if not TheWorld.ismastersim then
+    if TheWorld == nil or not TheWorld.ismastersim then
         return
     end
 
@@ -623,7 +623,7 @@ local function OnPilotLocomote(inst, data)
 end
 
 local function StopRotorMovement(inst)
-    if not TheWorld.ismastersim or inst == nil or not inst:IsValid() then
+    if TheWorld == nil or not TheWorld.ismastersim or inst == nil or not inst:IsValid() then
         return
     end
 
