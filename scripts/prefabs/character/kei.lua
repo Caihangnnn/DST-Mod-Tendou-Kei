@@ -6,6 +6,7 @@ local RookGuard = require("kei/protocols/combat/effects/biome/rook")
 local PowerStat = require("kei/stats/power")
 local StabilityStat = require("kei/stats/stability")
 local IntegrityStat = require("kei/stats/integrity")
+local Recovery = require("kei/stats/recovery")
 local KeiBackupBody = require("kei/growth/backup_body")
 local RotorSurveySkills = require("kei/drone/skills")
 local RotorSurveyRegistry = require("kei/drone/registry")
@@ -101,9 +102,23 @@ local function FindMiniAliceItem(inst)
     end
 end
 
-local function DropReplacedInventoryItem(inst, item)
+local function RelocateReplacedInventoryItem(inst, item)
     if item == nil then
-        return
+        return false
+    end
+
+    local inventory = inst ~= nil and inst.components ~= nil and inst.components.inventory or nil
+    if inventory ~= nil then
+        -- The Alice slot is reserved. Reinsert displaced items into another
+        -- inventory slot before falling back to dropping them on the ground.
+        for slot = 1, inventory.maxslots do
+            if slot ~= MINI_ALICE_SLOT
+                and inventory:GetItemInSlot(slot) == nil
+                and inventory:GiveItem(item, slot)
+            then
+                return true
+            end
+        end
     end
 
     item.Transform:SetPosition(inst.Transform:GetWorldPosition())
@@ -111,6 +126,7 @@ local function DropReplacedInventoryItem(inst, item)
         item.components.inventoryitem:OnDropped(true)
     end
     inst:PushEvent("dropitem", { item = item })
+    return false
 end
 
 local function EnsureMiniAliceItem(inst)
@@ -131,20 +147,22 @@ local function EnsureMiniAliceItem(inst)
         return
     end
 
+    local displaced = nil
     if icon ~= nil then
-        icon = inventory:RemoveItemBySlot(MINI_ALICE_SLOT)
-        DropReplacedInventoryItem(inst, icon)
+        displaced = inventory:RemoveItemBySlot(MINI_ALICE_SLOT)
     end
 
     icon = FindMiniAliceItem(inst)
     if icon == nil then
         icon = SpawnPrefab("kei_mini_alice")
         if icon == nil then
+            RelocateReplacedInventoryItem(inst, displaced)
             return
         end
     else
         icon = inventory:RemoveItem(icon, true)
         if icon == nil then
+            RelocateReplacedInventoryItem(inst, displaced)
             return
         end
     end
@@ -154,6 +172,10 @@ local function EnsureMiniAliceItem(inst)
     inventory.ignoresound = false
     if not inserted then
         inventory:GiveItem(icon, nil, inst:GetPosition())
+    end
+
+    if displaced ~= nil then
+        RelocateReplacedInventoryItem(inst, displaced)
     end
 end
 
@@ -982,7 +1004,7 @@ local function CreateDormantChargeNode(inst)
 
         local delta = math.min(max_power - hunger.current, (TUNING.KEI_DORMANT_BATTERY_CHARGE_RATE or 3) * 0.5)
         if delta > 0 then
-            hunger:DoDelta(delta, nil, true)
+            Recovery.ApplyHungerDelta(owner, delta, nil, true)
             if hunger.current > 0 then
                 CancelDormantZeroPowerExit(owner)
             end
@@ -1063,10 +1085,16 @@ local function DoDormantTick(inst)
     end
 
     if needs_stability then
-        inst.components.sanity:DoDelta(TUNING.KEI_DORMANT_STABILITY_REGEN or 3)
+        Recovery.ApplySanityDelta(inst, TUNING.KEI_DORMANT_STABILITY_REGEN or 3)
     end
     if needs_integrity then
-        health:DoDelta(TUNING.KEI_DORMANT_INTEGRITY_REGEN or 3, true, "kei_dormant", true)
+        Recovery.ApplyHealthDelta(
+            inst,
+            TUNING.KEI_DORMANT_INTEGRITY_REGEN or 3,
+            true,
+            "kei_dormant",
+            true
+        )
     end
 
     if (sanity ~= nil and sanity_before ~= nil and sanity.current > sanity_before)

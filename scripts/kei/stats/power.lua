@@ -1,3 +1,5 @@
+local Recovery = require("kei/stats/recovery")
+
 local Power = {}
 
 -- 基础电量最大值（饱食度）
@@ -32,7 +34,10 @@ end
 -- 食用电池回复电量（饱食度）
 function Power.ApplyBattery(inst)
     if inst.components.hunger ~= nil then
-        inst.components.hunger:DoDelta(Power.GetBatteryRestoreAmount(inst.components.hunger.max))
+        Recovery.ApplyHungerDelta(
+            inst,
+            Power.GetBatteryRestoreAmount(inst.components.hunger.max)
+        )
     end
 end
 

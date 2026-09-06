@@ -60,6 +60,9 @@ end
 
 AddClassPostConstruct("screens/playerhud", function(self)
     function self:OpenKeiTaskBookScreen()
+        if self.owner == nil or not self.owner:HasTag("kei") then
+            return false
+        end
         self:CloseKeiTaskBookScreen()
         self.kei_taskbookscreen = KeiTaskBookScreen(self.owner)
         self:OpenScreenUnderPause(self.kei_taskbookscreen)

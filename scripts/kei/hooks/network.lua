@@ -348,7 +348,7 @@ if not TheNet:IsDedicated() and TheInput ~= nil then
     ClientSettings:RegisterActionHandler("task_book", function()
         local player = ThePlayer
         local screen = TheFrontEnd ~= nil and TheFrontEnd:GetActiveScreen() or nil
-        if player ~= nil and player.HUD ~= nil then
+        if player ~= nil and player:HasTag("kei") and player.HUD ~= nil then
             local taskbook_screen = player.HUD.kei_taskbookscreen
             if taskbook_screen ~= nil and taskbook_screen.inst:IsValid() then
                 player.HUD:CloseKeiTaskBookScreen()
