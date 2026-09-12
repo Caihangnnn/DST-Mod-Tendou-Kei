@@ -25,6 +25,40 @@ function AntlionCommon.EnableStormImmunity(slots, inst, source)
     RefreshStormWatcher(inst)
 end
 
+-- 刷新 miasmawatcher，让瘴气移速惩罚立即重新计算。
+local function RefreshMiasmaWatcher(inst)
+    if inst.components ~= nil and inst.components.miasmawatcher ~= nil then
+        inst.components.miasmawatcher:UpdateMiasmaWalkSpeed()
+    end
+end
+
+-- 为角色添加一层瘴气减速免疫来源。
+-- 这里只处理移速惩罚，不会阻止 miasmadebuff 的持续伤害。
+function AntlionCommon.EnableMiasmaImmunity(slots, inst, source)
+    source = source or "antlion"
+    inst._kei_antlion_miasma_immunity_sources = inst._kei_antlion_miasma_immunity_sources or {}
+    if inst._kei_antlion_miasma_immunity_sources[source] then
+        RefreshMiasmaWatcher(inst)
+        return
+    end
+
+    inst._kei_antlion_miasma_immunity_sources[source] = true
+    RefreshMiasmaWatcher(inst)
+end
+
+-- 移除指定来源提供的瘴气减速免疫。
+function AntlionCommon.DisableMiasmaImmunity(slots, inst, source)
+    source = source or "antlion"
+    local sources = inst._kei_antlion_miasma_immunity_sources
+    if sources ~= nil then
+        sources[source] = nil
+        if not BeastCommon.HasAnySource(sources) then
+            inst._kei_antlion_miasma_immunity_sources = nil
+        end
+    end
+    RefreshMiasmaWatcher(inst)
+end
+
 -- 移除指定来源提供的沙尘暴免疫
 -- 只有当所有来源都清空后，角色才真正失去这项免疫效果
 function AntlionCommon.DisableStormImmunity(slots, inst, source)

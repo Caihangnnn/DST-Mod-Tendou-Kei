@@ -5,6 +5,7 @@ local RotorSurveySkills = require("kei/drone/skills")
 local KeiRotorSkills = Class(function(self, inst)
     self.inst = inst
     self.mask = RotorSurveySkills.DEFAULT_MASK
+    self.collect_harvest_unlocked = false
     self.survey_cooldowns = {}
     self:SyncNetValues()
 end)
@@ -13,6 +14,9 @@ function KeiRotorSkills:SyncNetValues()
     if self.inst._kei_rotor_skill_mask ~= nil then
         self.inst._kei_rotor_skill_mask:set(self.mask)
     end
+    if self.inst._kei_rotor_collect_harvest ~= nil then
+        self.inst._kei_rotor_collect_harvest:set(self.collect_harvest_unlocked == true)
+    end
 end
 
 function KeiRotorSkills:HasSkill(skill)
@@ -20,6 +24,20 @@ function KeiRotorSkills:HasSkill(skill)
 end
 
 function KeiRotorSkills:UnlockSkill(skill)
+    if skill == "collect_harvest" then
+        if not self:HasSkill("collect") then
+            return false, "KEI_ROTOR_SKILL_INVALID"
+        end
+        if self.collect_harvest_unlocked then
+            return false, "KEI_ROTOR_SKILL_ALREADY_UNLOCKED"
+        end
+
+        self.collect_harvest_unlocked = true
+        self:SyncNetValues()
+        self.inst:PushEvent("kei_rotor_skills_changed", { skill = skill })
+        return true
+    end
+
     local bit = RotorSurveySkills.SKILLS[skill]
     if bit == nil then
         return false, "KEI_ROTOR_SKILL_INVALID"
@@ -81,6 +99,7 @@ function KeiRotorSkills:OnSave()
 
     return {
         mask = self.mask,
+        collect_harvest_unlocked = self.collect_harvest_unlocked == true or nil,
         survey_cooldowns = survey_cooldowns,
     }
 end
@@ -93,6 +112,10 @@ function KeiRotorSkills:OnLoad(data)
     )
     -- The first skill is always available, including old saves.
     self.mask = self.mask - (self.mask % 2) + 1
+    self.collect_harvest_unlocked = data ~= nil
+        and data.collect_harvest_unlocked == true
+        and (self.mask % (RotorSurveySkills.SKILLS.collect * 2)) >= RotorSurveySkills.SKILLS.collect
+        or false
 
     self.survey_cooldowns = {}
     for protocol, remaining in pairs(data ~= nil and data.survey_cooldowns or {}) do

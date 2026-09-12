@@ -28,6 +28,30 @@ local function GetSlots(inst)
     return inst ~= nil and inst.components ~= nil and inst.components.kei_protocolslots or nil
 end
 
+-- 正常情况下发条战车总是通过 kei_protocolslots 管理共享霸体来源。
+-- 保留无组件回退时的所有权标记，避免回退路径误删其它 Mod 提供的同名标签。
+local function EnableFallbackImmunity(inst)
+    if not inst:HasTag("kei_stagger_immune") then
+        inst:AddTag("kei_stagger_immune")
+        inst._kei_rook_stagger_added_tag = true
+    end
+    if not inst:HasTag("kei_control_immune") then
+        inst:AddTag("kei_control_immune")
+        inst._kei_rook_control_added_tag = true
+    end
+end
+
+local function DisableFallbackImmunity(inst)
+    if inst._kei_rook_stagger_added_tag then
+        inst:RemoveTag("kei_stagger_immune")
+    end
+    if inst._kei_rook_control_added_tag then
+        inst:RemoveTag("kei_control_immune")
+    end
+    inst._kei_rook_stagger_added_tag = nil
+    inst._kei_rook_control_added_tag = nil
+end
+
 function RookEffect.HasProtocol(inst)
     local slots = GetSlots(inst)
     if slots ~= nil then
@@ -152,8 +176,7 @@ function RookEffect.BeginGuard(inst)
     if slots ~= nil then
         Daywalker2Common.EnableSharedImmunity(slots, inst, "rook")
     else
-        inst:AddTag("kei_stagger_immune")
-        inst:AddTag("kei_control_immune")
+        EnableFallbackImmunity(inst)
     end
     WrapInventoryApplyDamage(slots, inst)
     return true
@@ -186,8 +209,7 @@ function RookEffect.CancelGuard(inst, keep_cooldown)
     if slots ~= nil then
         Daywalker2Common.DisableSharedImmunity(slots, inst, "rook")
     else
-        inst:RemoveTag("kei_stagger_immune")
-        inst:RemoveTag("kei_control_immune")
+        DisableFallbackImmunity(inst)
     end
     if keep_cooldown ~= true then
         ClearCooldown(inst)

@@ -814,6 +814,51 @@ local function GiveUnwrappedItemToDoer(item, doer, pos)
     return false
 end
 
+local function ChooseGiftRewardPrefab(reward_prefabs, doer)
+    if doer == nil or doer.components == nil or doer.components.kei_taskbook == nil then
+        return reward_prefabs[math.random(#reward_prefabs)]
+    end
+
+    local taskbook = doer.components.kei_taskbook
+    if taskbook.ShouldPreferUnrecordedCombat == nil
+        or not taskbook:ShouldPreferUnrecordedCombat()
+    then
+        return reward_prefabs[math.random(#reward_prefabs)]
+    end
+
+    local unrecorded = {}
+    for _, prefab in ipairs(reward_prefabs) do
+        if not taskbook:IsCombatProtocolRecorded(prefab) then
+            table.insert(unrecorded, prefab)
+        end
+    end
+
+    local candidates = #unrecorded > 0 and unrecorded or reward_prefabs
+    local previous = taskbook._kei_last_preferred_combat_reward
+    if #candidates > 1 and previous ~= nil then
+        local without_previous = {}
+        for _, prefab in ipairs(candidates) do
+            if prefab ~= previous then
+                table.insert(without_previous, prefab)
+            end
+        end
+        if #without_previous > 0 then
+            candidates = without_previous
+        end
+    end
+
+    local selected = candidates[math.random(#candidates)]
+    taskbook._kei_last_preferred_combat_reward = selected
+    return selected
+end
+
+local function RerollGiftReward(component, reward_prefabs, doer)
+    -- WrapItems stores the generated item's serialized data. Clear the old
+    -- cache first so a reroll cannot leave the previous reward in itemdata.
+    component.itemdata = nil
+    component:WrapItems({ ChooseGiftRewardPrefab(reward_prefabs, doer) })
+end
+
 local function MakeRandomCDGift(name, display_name, visual_key, image, ground_anim, reward_prefabs)
     local visual = ITEM_VISUALS[visual_key]
     local assets = {
@@ -865,12 +910,12 @@ local function MakeRandomCDGift(name, display_name, visual_key, image, ground_an
         else
             inst.components.unwrappable.canbeunwrapped = false
         end
-        inst.components.unwrappable:SetOnUnwrappedFn(function(gift)
+        inst.components.unwrappable:SetOnUnwrappedFn(function(gift, pos, doer)
             local stackable = gift.components.stackable
             local stacksize = stackable ~= nil and stackable:StackSize() or 1
             if stacksize > 1 then
                 stackable:SetStackSize(stacksize - 1)
-                gift.components.unwrappable:WrapItems({ reward_prefabs[math.random(#reward_prefabs)] })
+                RerollGiftReward(gift.components.unwrappable, reward_prefabs, doer)
             else
                 gift:Remove()
             end
@@ -881,6 +926,14 @@ local function MakeRandomCDGift(name, display_name, visual_key, image, ground_an
         -- opening so stacked boxes produce the same number of CDs.
         local unwrappable = inst.components.unwrappable
         unwrappable.Unwrap = function(component, doer)
+            -- The reward is selected when the box is opened, because the
+            -- preference and recorded protocols belong to the opener.
+            if doer ~= nil and doer.components ~= nil
+                and doer.components.kei_taskbook ~= nil
+                and doer.components.kei_taskbook:ShouldPreferUnrecordedCombat()
+            then
+                RerollGiftReward(component, reward_prefabs, doer)
+            end
             local itemdata = component.itemdata
             local pos = component.inst:GetPosition()
             pos.y = 0

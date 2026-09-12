@@ -39,10 +39,12 @@ local function CleanVirtualEquipment(item, equipslot)
 
     if item.components.equippable ~= nil then
         VirtualEquipment.GuardBuildDiscount(item)
-        -- A virtual armor copy must not run arbitrary source-prefab equip
-        -- callbacks after its fueled/uses components have been removed.
-        item.components.equippable:SetOnEquip(nil)
-        item.components.equippable:SetOnUnequip(nil)
+        -- Keep source equip callbacks while build discount is enabled. Some
+        -- equipment applies its ingredient modifier from OnEquip.
+        if TUNING.KEI_VIRTUAL_EQUIPMENT_BUILD_DISCOUNT == false then
+            item.components.equippable:SetOnEquip(nil)
+            item.components.equippable:SetOnUnequip(nil)
+        end
         item.components.equippable.restrictedtag = nil
         item.components.equippable.equipslot = equipslot
         item.components.equippable:SetPreventUnequipping(true)
@@ -66,17 +68,10 @@ local function CleanVirtualEquipment(item, equipslot)
         item:RemoveComponent("repairable")
     end
 
-    if item.components.finiteuses ~= nil then
-        item:RemoveComponent("finiteuses")
-    end
+    -- Keep durability-related components available for source callbacks, but
+    -- freeze the virtual copy so its state cannot change.
+    VirtualEquipment.LockDurability(item)
 
-    if item.components.fueled ~= nil then
-        item:RemoveComponent("fueled")
-    end
-
-    if item.components.perishable ~= nil then
-        item:RemoveComponent("perishable")
-    end
 end
 
 -- 延迟移除虚拟护甲，避免在装备或卸下流程的回调链里直接删除实体

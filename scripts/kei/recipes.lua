@@ -632,3 +632,19 @@ AddRecipe2(
     }),
     filters
 )
+
+-- 无用 CD 回收：不消耗经验或其他材料，直接回收第一格协议槽中的
+-- 支持类型 CD，并按协议类别返还当前经验。
+AddRecipe2(
+    GrowthRecipes.PROTOCOL_CD_RECYCLE_RECIPE,
+    { fixed_experience_ingredient(0) },
+    TECH.NONE,
+    kei_config({
+        atlas = PROTOCOL_ATLAS,
+        image = PROTOCOL_ICON,
+        product = GrowthRecipes.PROTOCOL_CD_RECYCLE_RECIPE,
+        nounlock = true,
+        canbuild = GrowthRecipes.CanBuildProtocolCDRecycle,
+    }),
+    filters
+)

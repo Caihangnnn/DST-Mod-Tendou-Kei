@@ -46,13 +46,13 @@ local function EnableTargetFx(slots, inst)
 end
 
 local function DisableTargetFx(slots)
-    if slots._kei_wagboss_target_follow_task ~= nil then
-        slots._kei_wagboss_target_follow_task:Cancel()
-        slots._kei_wagboss_target_follow_task = nil
-    end
     if slots._kei_wagboss_target_ready_task ~= nil then
         slots._kei_wagboss_target_ready_task:Cancel()
         slots._kei_wagboss_target_ready_task = nil
+    end
+    if slots._kei_wagboss_target_follow_task ~= nil then
+        slots._kei_wagboss_target_follow_task:Cancel()
+        slots._kei_wagboss_target_follow_task = nil
     end
     if slots._kei_wagboss_target_fx ~= nil then
         if slots._kei_wagboss_target_fx:IsValid() then

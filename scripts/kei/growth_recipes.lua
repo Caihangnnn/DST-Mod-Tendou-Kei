@@ -5,6 +5,7 @@ local MiniAlice = require("kei/mini_alice")
 local RotorSurveySkills = require("kei/drone/skills")
 local RotorUpgrades = require("kei/drone/upgrades")
 local AnalysisArmorUpgrade = require("kei/analysis_armor_upgrade")
+local CombatProtocolDefs = require("kei/protocols/combat")
 
 local KEI_EXPERIENCE_INGREDIENT = "kei_experience"
 CHARACTER_INGREDIENT.KEI_EXPERIENCE = KEI_EXPERIENCE_INGREDIENT
@@ -31,6 +32,7 @@ local GrowthRecipes = {
     POTENTIAL_RECIPE = "kei_potential_activation",
     MINI_ALICE_PAGE_RECIPE = "kei_mini_alice_page_unlock",
     ANALYSIS_ARMOR_UPGRADE_RECIPE = AnalysisArmorUpgrade.RECIPE,
+    PROTOCOL_CD_RECYCLE_RECIPE = "kei_protocol_cd_recycle",
     ROTOR_SKILL_EXPERIENCE_COST = 1000,
     ROTOR_UPGRADE_EXPERIENCE_COST = 1000,
 }
@@ -151,10 +153,14 @@ function GrowthRecipes.HasEnoughExperienceAmount(builder, amount)
 end
 
 function GrowthRecipes.HasEnoughExperienceIngredient(builder, ingredient)
-    return GrowthRecipes.HasEnoughExperienceAmount(
-        builder,
-        GrowthRecipes.GetExperienceIngredientAmount(ingredient, builder)
-    )
+    local amount = GrowthRecipes.GetExperienceIngredientAmount(ingredient, builder)
+    -- A zero-cost experience ingredient is used by the CD recycle recipe.
+    -- Treat it as satisfied for ingredient validation without changing the
+    -- meaning of HasEnoughExperienceAmount(0) for other callers.
+    if amount <= 0 then
+        return builder ~= nil and builder:HasTag("kei")
+    end
+    return GrowthRecipes.HasEnoughExperienceAmount(builder, amount)
 end
 
 function GrowthRecipes.GetExperienceCurrent(builder)
@@ -233,7 +239,9 @@ function GrowthRecipes.CanBuildRotorSkill(recipe, builder)
     if skill == nil then
         return false, "KEI_ROTOR_SKILL_INVALID"
     end
-    if RotorSurveySkills.HasSkill(builder, skill) then
+    local skill_level = RotorSurveySkills.GetSkillLevel(builder, skill)
+    local max_level = skill == "collect" and 2 or 1
+    if skill_level >= max_level then
         return false, "KEI_ROTOR_SKILL_ALREADY_UNLOCKED"
     end
     if not GrowthRecipes.HasEnoughExperience(builder, recname) then
@@ -314,7 +322,11 @@ function GrowthRecipes.GetRotorSkillRecipeCount(recipe, builder)
         or recipe ~= nil and recipe.name
         or nil
     local skill = RotorSurveySkills.GetSkillForRecipe(recname)
-    return skill ~= nil and not RotorSurveySkills.HasSkill(builder, skill) and 1 or 0
+    if skill == nil then
+        return 0
+    end
+    local max_level = skill == "collect" and 2 or 1
+    return math.max(0, max_level - RotorSurveySkills.GetSkillLevel(builder, skill))
 end
 
 function GrowthRecipes.GetAnalysisArmorUpgradeRecipeCount(recipe, builder)
@@ -385,11 +397,108 @@ function GrowthRecipes.GetMiniAlicePageRecipeCount(recipe, builder)
     )
 end
 
+-- 协议槽中的 CD 不能通过普通配方材料系统表达，因此回收配方使用
+-- canbuild + DoBuild 直接读取第一格协议槽。客户端通过 prefab 映射补齐
+-- 服务端才会写入的 kei_protocol_data，以便配方按钮能够正确显示。
+local function GetBuilderEntity(builder)
+    return builder ~= nil and builder.inst or builder
+end
+
+local function GetFirstProtocolSlotItem(builder)
+    local owner = GetBuilderEntity(builder)
+    local inventory = owner ~= nil and owner.components ~= nil and owner.components.inventory or nil
+    if inventory == nil then
+        inventory = owner ~= nil and owner.replica ~= nil and owner.replica.inventory or nil
+    end
+    if inventory == nil or inventory.GetItemInSlot == nil then
+        return nil, nil, nil
+    end
+
+    local protocol_container = inventory:GetItemInSlot(1)
+    if protocol_container == nil or not protocol_container:HasTag("kei_protocol_slot") then
+        return nil, nil, nil
+    end
+
+    local container = protocol_container.components ~= nil and protocol_container.components.container or nil
+    if container == nil and protocol_container.replica ~= nil then
+        container = protocol_container.replica.container
+    end
+    if container == nil or container.GetItemInSlot == nil then
+        return nil, nil, nil
+    end
+
+    local item = container:GetItemInSlot(1)
+    if item == nil or not item:HasTag("kei_protocol_cd") then
+        return nil, nil, nil
+    end
+
+    local data = item.kei_protocol_data
+    if type(data) == "table" then
+        return item, data, container
+    end
+
+    -- Arbitrary Lua fields are not replicated to clients. Combat CD prefabs
+    -- are stable, so recover the same category/tier from the shared registry.
+    if item:HasTag("kei_basic_attribute_protocol") then
+        return item, { kind = "basic_attribute" }, container
+    end
+    if item:HasTag("kei_combat_protocol") then
+        local protocol = item.kei_combat_protocol
+            or CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS[item.prefab]
+        local def = protocol ~= nil and CombatProtocolDefs.COMBAT_PROTOCOLS[protocol] or nil
+        if def ~= nil then
+            return item, {
+                kind = "combat",
+                protocol = def.protocol,
+                category = def.category,
+                tier = def.tier,
+            }, container
+        end
+    end
+
+    return nil, nil, nil
+end
+
+local function GetProtocolCDRecycleReward(data)
+    if data == nil then
+        return 0
+    end
+    if data.kind == "basic_attribute" then
+        return 50
+    end
+    if data.kind ~= "combat" then
+        return 0
+    end
+    if data.category == "biome" then
+        return 100
+    end
+    if data.category == "beast" then
+        return data.tier == "basic" and 250 or 500
+    end
+    return 0
+end
+
+function GrowthRecipes.GetProtocolCDRecycleReward(builder)
+    local _, data = GetFirstProtocolSlotItem(builder)
+    return GetProtocolCDRecycleReward(data)
+end
+
+function GrowthRecipes.CanBuildProtocolCDRecycle(recipe, builder)
+    if not IsKeiBuilder(builder) then
+        return false
+    end
+    if GrowthRecipes.GetProtocolCDRecycleReward(builder) <= 0 then
+        return false, "KEI_PROTOCOL_CD_RECYCLE_NO_CD"
+    end
+    return true
+end
+
 function GrowthRecipes.IsGrowthRecipe(recname)
     return recname == GrowthRecipes.SLOT_UNLOCK_RECIPE
         or recname == GrowthRecipes.DEEP_IMPLANT_RECIPE
         or recname == GrowthRecipes.POTENTIAL_RECIPE
         or recname == GrowthRecipes.MINI_ALICE_PAGE_RECIPE
+        or recname == GrowthRecipes.PROTOCOL_CD_RECYCLE_RECIPE
         or AnalysisArmorUpgrade.IsRecipe(recname)
         or RotorSurveySkills.IsSkillRecipe(recname)
         or RotorUpgrades.IsUpgradeRecipe(recname)
@@ -456,7 +565,11 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
         if skills == nil then
             return false, "KEI_ROTOR_SKILL_INVALID"
         end
-        if skills:HasSkill(skill) then
+        local skill_to_unlock = skill
+        if skill == "collect" and skills:HasSkill("collect") then
+            skill_to_unlock = "collect_harvest"
+        end
+        if skills:HasSkill(skill_to_unlock) then
             return false, "KEI_ROTOR_SKILL_ALREADY_UNLOCKED"
         end
 
@@ -465,7 +578,7 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
             return false, spend_reason
         end
 
-        local unlocked, unlock_reason = skills:UnlockSkill(skill)
+        local unlocked, unlock_reason = skills:UnlockSkill(skill_to_unlock)
         if not unlocked then
             return false, unlock_reason
         end
@@ -523,6 +636,30 @@ function GrowthRecipes.DoBuild(builder, recname, pt, rotation, skin)
     end
     if slots == nil then
         return false, "KEI_EXPERIENCE_NOT_FULL"
+    end
+
+    if recname == GrowthRecipes.PROTOCOL_CD_RECYCLE_RECIPE then
+        local item, data, container = GetFirstProtocolSlotItem(inst)
+        local reward = GetProtocolCDRecycleReward(data)
+        if item == nil or container == nil or reward <= 0 then
+            return false, "KEI_PROTOCOL_CD_RECYCLE_NO_CD"
+        end
+        if experience == nil then
+            return false, "KEI_EXPERIENCE_NOT_ENOUGH"
+        end
+
+        local removed = container:RemoveItemBySlot(1, true)
+        if removed == nil then
+            return false, "KEI_PROTOCOL_CD_RECYCLE_NO_CD"
+        end
+        if removed:IsValid() then
+            removed:Remove()
+        end
+
+        experience:DoDelta(reward)
+        slots._protocol_state_dirty = true
+        slots:Refresh()
+        return true
     end
 
     if recname == GrowthRecipes.SLOT_UNLOCK_RECIPE then

@@ -58,9 +58,15 @@ function Daywalker2Common.EnableSharedImmunity(slots, inst, source)
     end
 
     slots._kei_shared_immunity_sources = slots._kei_shared_immunity_sources or {}
-    slots._kei_shared_immunity_sources[source] = true
-    inst:AddTag("kei_stagger_immune")
-    inst:AddTag("kei_control_immune")
+    BeastCommon.AddSource(slots._kei_shared_immunity_sources, source)
+    if not inst:HasTag("kei_stagger_immune") then
+        inst:AddTag("kei_stagger_immune")
+        slots._kei_stagger_added_tag = true
+    end
+    if not inst:HasTag("kei_control_immune") then
+        inst:AddTag("kei_control_immune")
+        slots._kei_control_added_tag = true
+    end
 end
 
 function Daywalker2Common.DisableSharedImmunity(slots, inst, source)
@@ -69,15 +75,18 @@ function Daywalker2Common.DisableSharedImmunity(slots, inst, source)
     end
 
     local sources = slots._kei_shared_immunity_sources
-    if sources ~= nil then
-        sources[source] = nil
-    end
-    if HasSharedImmunitySource(slots) then
+    if sources ~= nil and BeastCommon.RemoveSource(sources, source) then
         return
     end
 
-    inst:RemoveTag("kei_stagger_immune")
-    inst:RemoveTag("kei_control_immune")
+    if slots._kei_stagger_added_tag then
+        inst:RemoveTag("kei_stagger_immune")
+    end
+    if slots._kei_control_added_tag then
+        inst:RemoveTag("kei_control_immune")
+    end
+    slots._kei_stagger_added_tag = nil
+    slots._kei_control_added_tag = nil
     slots._kei_shared_immunity_sources = nil
 end
 

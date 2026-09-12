@@ -9,12 +9,13 @@ TaskBook.TASK_RARITIES = {
     [2] = { lifetime_days = 6, min_count = 3, max_count = 6, active_limit = 9 },
     [3] = { lifetime_days = 9, min_count = 1, max_count = 3, active_limit = 4 },
 }
-TaskBook.TASK_VERSION = 14
+TaskBook.TASK_VERSION = 15
 
 -- These prefabs are valid game entities but should never be selected as
 -- random task targets.
 TaskBook.TASK_TARGET_EXCLUSIONS = {
     crabking_cannontower = true,
+    stagehand = true,
 }
 
 -- Task targets define presentation and eligibility only. Their exchange loot
@@ -157,6 +158,7 @@ function TaskBook.GetEntries(inst)
             local entry = TaskBook.GetDefinition(kind, protocol)
             if entry ~= nil then
                 entry.implanted = implanted[id] == true
+                entry.recorded = true
                 table.insert(entries, entry)
             end
         end
@@ -165,6 +167,7 @@ function TaskBook.GetEntries(inst)
 end
 
 function TaskBook.GetAllEntries(inst)
+    local records = TaskBook.DecodeRecords(inst ~= nil and inst._kei_taskbook_records ~= nil and inst._kei_taskbook_records:value() or "")
     local implanted = TaskBook.DecodeRecords(inst ~= nil and inst._kei_taskbook_implanted ~= nil and inst._kei_taskbook_implanted:value() or "")
     local entries = {}
 
@@ -173,6 +176,7 @@ function TaskBook.GetAllEntries(inst)
             local entry = TaskBook.GetDefinition(kind, definition.protocol)
             if entry ~= nil then
                 entry.implanted = implanted[entry.id] == true
+                entry.recorded = records[entry.id] == true
                 table.insert(entries, entry)
             end
         end
@@ -449,11 +453,15 @@ local function DiscoverAllScrapbookTargets()
         end
     end
     for prefab, fallback_rarity in pairs(prefabs) do
-        local loot = TaskBook.GetTargetLoot(prefab)
-        if #loot >= 1 then
-            TaskBook.RegisterTaskTarget(prefab, GetRuntimeTargetRarity(prefab, fallback_rarity), loot)
-        else
+        if TaskBook.TASK_TARGET_EXCLUSIONS[prefab] then
             table.insert(ExcludedScrapbookTargets, prefab)
+        else
+            local loot = TaskBook.GetTargetLoot(prefab)
+            if #loot >= 1 then
+                TaskBook.RegisterTaskTarget(prefab, GetRuntimeTargetRarity(prefab, fallback_rarity), loot)
+            else
+                table.insert(ExcludedScrapbookTargets, prefab)
+            end
         end
     end
     table.sort(ExcludedScrapbookTargets)

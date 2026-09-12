@@ -1,4 +1,4 @@
--- Kei experience, daily gains, growth states, and save data.
+-- Kei experience, activity gains, growth states, and save data.
 
 local ProtocolSlotUnlocks = require("kei/protocol_slot_unlocks")
 
@@ -6,14 +6,22 @@ local AMPLIFICATION_DAMAGE_KEY = "kei_experience_amplification"
 local AMPLIFICATION_ABSORB_KEY = "kei_experience_amplification"
 
 local DAILY_RULES = {
-    gather = { amount = TUNING.KEI_EXPERIENCE_GATHER_AMOUNT, cap = TUNING.KEI_EXPERIENCE_GATHER_DAILY_CAP },
-    craft = { amount = TUNING.KEI_EXPERIENCE_CRAFT_AMOUNT, cap = TUNING.KEI_EXPERIENCE_CRAFT_DAILY_CAP },
-    work = { amount = TUNING.KEI_EXPERIENCE_WORK_AMOUNT, cap = TUNING.KEI_EXPERIENCE_WORK_DAILY_CAP },
+    gather = { amount = TUNING.KEI_EXPERIENCE_GATHER_AMOUNT, cap_per_survival_day = TUNING.KEI_EXPERIENCE_GATHER_CAP_PER_SURVIVAL_DAY },
+    craft = { amount = TUNING.KEI_EXPERIENCE_CRAFT_AMOUNT, cap_per_survival_day = TUNING.KEI_EXPERIENCE_CRAFT_CAP_PER_SURVIVAL_DAY },
+    work = { amount = TUNING.KEI_EXPERIENCE_WORK_AMOUNT, cap_per_survival_day = TUNING.KEI_EXPERIENCE_WORK_CAP_PER_SURVIVAL_DAY },
     eat = { amount = TUNING.KEI_EXPERIENCE_EAT_AMOUNT, cap = TUNING.KEI_EXPERIENCE_EAT_DAILY_CAP },
     sleep = { amount = TUNING.KEI_EXPERIENCE_SLEEP_AMOUNT, cap = TUNING.KEI_EXPERIENCE_SLEEP_DAILY_CAP },
-    capture = { amount = TUNING.KEI_EXPERIENCE_CAPTURE_AMOUNT, cap = TUNING.KEI_EXPERIENCE_CAPTURE_DAILY_CAP },
-    plant = { amount = TUNING.KEI_EXPERIENCE_PLANT_AMOUNT, cap = TUNING.KEI_EXPERIENCE_PLANT_DAILY_CAP },
+    capture = { amount = TUNING.KEI_EXPERIENCE_CAPTURE_AMOUNT, cap_per_survival_day = TUNING.KEI_EXPERIENCE_CAPTURE_CAP_PER_SURVIVAL_DAY },
+    plant = { amount = TUNING.KEI_EXPERIENCE_PLANT_AMOUNT, cap_per_survival_day = TUNING.KEI_EXPERIENCE_PLANT_CAP_PER_SURVIVAL_DAY },
     blueprint = { amount = TUNING.KEI_EXPERIENCE_BLUEPRINT_AMOUNT, cap = TUNING.KEI_EXPERIENCE_BLUEPRINT_DAILY_CAP },
+}
+
+local PROGRESSIVE_CATEGORIES = {
+    gather = true,
+    craft = true,
+    work = true,
+    capture = true,
+    plant = true,
 }
 
 local function Pack(...)
@@ -40,8 +48,13 @@ local KeiExperience = Class(function(self, inst)
     self.max = 0
     self.total = 0
     self.daily_gains = {}
+    self.progressive_gains = {}
     self.daily_combat_kills = {}
     self.current_cycle = GetCurrentCycle()
+    -- The progressive activity caps belong to this player, not to the world.
+    -- Store the world cycle on which this character first became active so a
+    -- late joiner does not inherit the world's full age.
+    self.survival_start_cycle = self.current_cycle
     self.potential_end_time = nil
     self._potential_task = nil
     self._combat_damage_depth = 0
@@ -126,6 +139,22 @@ function KeiExperience:IsFull()
     return self.max > 0 and self.current >= self.max
 end
 
+function KeiExperience:GetSurvivalDays()
+    -- The vanilla age component measures this character's own active survival
+    -- time, pauses while dead, and is restored with the player. This is more
+    -- accurate than deriving survival time from the world's cycle count.
+    local age = self.inst.components ~= nil and self.inst.components.age or nil
+    if age ~= nil and age.GetAgeInDays ~= nil then
+        return math.max(1, math.floor(tonumber(age:GetAgeInDays()) or 0))
+    end
+
+    -- Compatibility fallback for unusual custom player prefabs without the
+    -- vanilla age component. Normal Kei players always use the branch above.
+    local current_cycle = GetCurrentCycle()
+    local start_cycle = tonumber(self.survival_start_cycle) or current_cycle
+    return math.max(1, current_cycle - start_cycle)
+end
+
 function KeiExperience:DoDelta(amount)
     amount = tonumber(amount) or 0
     local old = self.current
@@ -157,18 +186,32 @@ end
 function KeiExperience:AddDailyExperience(category, amount, cap)
     local rule = DAILY_RULES[category]
     amount = amount or (rule ~= nil and rule.amount) or 0
-    cap = cap or (rule ~= nil and rule.cap) or 0
+    local progressive = rule ~= nil and rule.cap_per_survival_day ~= nil
+    if progressive then
+        -- The cap grows with this player's survival time and is never reset at
+        -- dawn. It does not use the world's total cycle count.
+        local cap_per_survival_day = tonumber(rule.cap_per_survival_day) or 0
+        cap = cap or cap_per_survival_day * self:GetSurvivalDays()
+    else
+        cap = cap or (rule ~= nil and rule.cap) or 0
+    end
     if amount <= 0 or cap <= 0 or self:IsFull() then
         return 0
     end
 
-    local gained_today = self.daily_gains[category] or 0
-    local allowed = math.min(amount, math.max(0, cap - gained_today))
+    local gained = progressive
+        and (self.progressive_gains[category] or 0)
+        or (self.daily_gains[category] or 0)
+    local allowed = math.min(amount, math.max(0, cap - gained))
     if allowed <= 0 then
         return 0
     end
 
-    self.daily_gains[category] = gained_today + allowed
+    if progressive then
+        self.progressive_gains[category] = gained + allowed
+    else
+        self.daily_gains[category] = gained + allowed
+    end
     return self:DoDelta(allowed)
 end
 
@@ -340,7 +383,9 @@ function KeiExperience:OnSave()
         current = self.current,
         total = self.total,
         current_cycle = self.current_cycle,
+        survival_start_cycle = self.survival_start_cycle,
         daily_gains = self.daily_gains,
+        progressive_gains = self.progressive_gains,
         daily_combat_kills = self.daily_combat_kills,
         potential_remaining = self:GetPotentialRemaining(),
     }
@@ -351,8 +396,19 @@ function KeiExperience:OnLoad(data)
     self.current = math.max(0, tonumber(data.current) or 0)
     self.total = math.max(0, tonumber(data.total) or self.current)
 
-    local saved_cycle = tonumber(data.current_cycle)
     local current_cycle = GetCurrentCycle()
+    self.survival_start_cycle = tonumber(data.survival_start_cycle) or current_cycle
+
+    self.progressive_gains = CopyNumberTable(data.progressive_gains)
+    -- Older saves only tracked the current day's gains. Preserve those values
+    -- as the best available starting point when upgrading to lifetime caps.
+    if data.progressive_gains == nil then
+        for category in pairs(PROGRESSIVE_CATEGORIES) do
+            self.progressive_gains[category] = tonumber(data.daily_gains ~= nil and data.daily_gains[category]) or 0
+        end
+    end
+
+    local saved_cycle = tonumber(data.current_cycle)
     if saved_cycle ~= nil and saved_cycle == current_cycle then
         self.daily_gains = CopyNumberTable(data.daily_gains)
         self.daily_combat_kills = CopyNumberTable(data.daily_combat_kills)

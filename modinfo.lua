@@ -11,7 +11,7 @@
 
 -- 模组在游戏列表中的基础信息。
 author = "StellarVoyage"
-version = "0.0.12"
+version = "0.0.24"
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 
@@ -135,6 +135,24 @@ configuration_options = {
             {
                 description = "关闭",
                 hover = "协议周期扣除资源时不播放资源下降音效。",
+                data = false,
+            },
+        },
+        default = false,
+    },
+    {
+        name = "KEI_PREFER_UNRECORDED_COMBAT",
+        label = "礼盒优先未记录协议",
+        hover = "开启后，拆开战斗协议礼盒时优先获取尚未记录的战斗协议。",
+        options = {
+            {
+                description = "开启",
+                hover = "战斗协议礼盒优先随机出尚未记录的战斗协议。",
+                data = true,
+            },
+            {
+                description = "关闭",
+                hover = "战斗协议礼盒完全随机选择战斗协议。",
                 data = false,
             },
         },

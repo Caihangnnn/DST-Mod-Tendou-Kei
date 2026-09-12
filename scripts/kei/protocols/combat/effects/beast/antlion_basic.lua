@@ -8,14 +8,17 @@ local SOURCE = "antlion_basic"
 function AntlionBasicEffect.Enable(slots, inst)
     if AntlionCommon.HasAdvanced(slots) then
         AntlionCommon.DisableStormImmunity(slots, inst, SOURCE)
+        AntlionCommon.DisableMiasmaImmunity(slots, inst, SOURCE)
         return
     end
     AntlionCommon.EnableStormImmunity(slots, inst, SOURCE)
+    AntlionCommon.EnableMiasmaImmunity(slots, inst, SOURCE)
 end
 
 -- 关闭协议效果，并清理启用时注册的持续能力。
 function AntlionBasicEffect.Disable(slots, inst)
     AntlionCommon.DisableStormImmunity(slots, inst, SOURCE)
+    AntlionCommon.DisableMiasmaImmunity(slots, inst, SOURCE)
 end
 
 return AntlionBasicEffect

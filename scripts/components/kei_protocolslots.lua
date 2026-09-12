@@ -8,6 +8,7 @@ local VirtualHandEquipment = require("kei/protocols/analysis/virtual_hand_equipm
 local HandAnalysisInheritance = require("kei/protocols/analysis/hand_analysis_inheritance")
 local ArmorAnalysisEquipment = require("kei/protocols/analysis/armor_analysis_equipment")
 local MiniAlice = require("kei/mini_alice")
+local BeastCommon = require("kei/protocols/combat/effects/beast/_beast_common")
 
 local LIFE_PROTOCOLS = LifeProtocolDefs.LIFE_PROTOCOLS
 local BASIC_ATTRIBUTE_PROTOCOLS = BasicAttributeProtocolDefs.BASIC_ATTRIBUTE_PROTOCOLS
@@ -45,6 +46,7 @@ local BASIC_DAMAGE_MODIFIER = "kei_basic_attribute_damage"
 local COMBAT_PROTOCOL_DAMAGE_MODIFIER = "kei_combat_protocol_damage"
 local BASIC_SPEED_MODIFIER = "kei_basic_attribute_speed"
 local BASIC_ABSORB_MODIFIER = "kei_basic_attribute_absorb"
+local DRAGONFLY_FIRE_IMMUNITY_MODIFIER = "kei_dragonfly_fire_immunity"
 local MINI_ALICE_ACTION_TAKEOUT = "takeout"
 local MINI_ALICE_ACTION_STORE = "store"
 local MINI_ALICE_ACTION_SORT = "sort"
@@ -1004,6 +1006,25 @@ local function AddBasicAttributeValue(target, data)
     target[data.attribute] = (target[data.attribute] or 0) + data.attribute_value
 end
 
+-- 深度植入的基础属性数据在早期版本中没有保存 kind 字段。统一在读档时
+-- 补齐该字段，确保旧存档也能被 Refresh 重新汇总并应用。
+local function NormalizeImplantedBasicAttributes(attributes)
+    if type(attributes) ~= "table" then
+        return {}
+    end
+
+    for _, data in ipairs(attributes) do
+        if type(data) == "table"
+            and data.kind == nil
+            and data.protocol ~= nil
+            and BASIC_ATTRIBUTE_PROTOCOLS[data.protocol] ~= nil
+        then
+            data.kind = "basic_attribute"
+        end
+    end
+    return attributes
+end
+
 function KeiProtocolSlots:GetPowerDrainMultiplier()
     local reduction = math.min(
         TUNING.KEI_BASIC_ATTRIBUTE_MAX_POWER_DRAIN_REDUCTION or 90,
@@ -1413,6 +1434,7 @@ function KeiProtocolSlots:DeepImplantFirst()
         self.implanted_combat_protocols[data.protocol] = true
     else
         table.insert(self.implanted_basic_attributes, {
+            kind = "basic_attribute",
             protocol = data.protocol,
             attribute = data.attribute,
             attribute_value = data.attribute_value,
@@ -1677,7 +1699,12 @@ function KeiProtocolSlots:ClearModifiers()
 
     if self.inst.components.health ~= nil then
         self.inst.components.health.externalabsorbmodifiers:RemoveModifier(self.inst, ANALYSIS_ARMOR_MODIFIER)
-        self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(self.inst)
+        -- 只清理龙蝇协议注册的 key，不能按 source 无条件清空其它 Mod
+        -- 可能挂在同一个角色实例上的火焰伤害修饰器。
+        self.inst.components.health.externalfiredamagemultipliers:RemoveModifier(
+            self.inst,
+            DRAGONFLY_FIRE_IMMUNITY_MODIFIER
+        )
         if self.inst.components.health.deltamodifierfn == self._kei_basic_attribute_deltamodifierfn then
             self.inst.components.health.deltamodifierfn = self._old_health_deltamodifierfn
         end
@@ -1686,6 +1713,38 @@ function KeiProtocolSlots:ClearModifiers()
     self._combat_damage_multipliers = {}
     RefreshCombatDamageMultiplier(self)
     self:ApplyBasicAttributes({})
+end
+
+----------------------------------------------------------------
+-- 持续效果查询 API
+----------------------------------------------------------------
+
+function KeiProtocolSlots:HasFreezeImmunity()
+    return BeastCommon.HasAnySource(self._kei_deerclops_freeze_sources)
+end
+
+function KeiProtocolSlots:HasOverheatImmunity()
+    return BeastCommon.HasAnySource(self._kei_dragonfly_sources)
+end
+
+function KeiProtocolSlots:HasStaggerImmunity()
+    return BeastCommon.HasAnySource(self._kei_shared_immunity_sources)
+end
+
+function KeiProtocolSlots:HasControlImmunity()
+    return BeastCommon.HasAnySource(self._kei_shared_immunity_sources)
+end
+
+function KeiProtocolSlots:HasMutatedBeargerAttackSpeed()
+    return BeastCommon.HasAnySource(self._kei_mutatedbearger_sources)
+end
+
+function KeiProtocolSlots:HasVaultPillarGuardSpeed()
+    return BeastCommon.HasAnySource(self._kei_vpg_speed_sources)
+end
+
+function KeiProtocolSlots:HasVaultPillarGuardSpin()
+    return BeastCommon.HasAnySource(self._kei_vpg_spin_sources)
 end
 
 function KeiProtocolSlots:DisableAllProtocols()
@@ -2056,7 +2115,9 @@ function KeiProtocolSlots:OnLoad(data)
         self.inst.components.kei_experience:RecalculateMax()
     end
     self.implanted_combat_protocols = data ~= nil and data.implanted_combat_protocols or {}
-    self.implanted_basic_attributes = data ~= nil and data.implanted_basic_attributes or {}
+    self.implanted_basic_attributes = NormalizeImplantedBasicAttributes(
+        data ~= nil and data.implanted_basic_attributes or {}
+    )
     self._implanted_effects_dirty = true
     self.permanent_life_recipes = data ~= nil and data.permanent_life_recipes or {}
     self:SyncUnlockedSlots()

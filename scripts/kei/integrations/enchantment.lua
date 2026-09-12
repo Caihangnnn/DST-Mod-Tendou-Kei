@@ -92,8 +92,8 @@ function Enchantment.Apply(inst, enchantments)
     return true
 end
 
--- Virtual armor deliberately clears source equip callbacks. Restore only the
--- enchantment callbacks so source-prefab behavior remains suppressed.
+    -- Preserve the source equipment callbacks, then add the enchantment callbacks.
+    -- This keeps effects such as virtual build discount functional.
 function Enchantment.InstallVirtualArmorCallbacks(inst)
     local component = GetComponent(inst)
     local equippable = inst ~= nil and inst.components ~= nil and inst.components.equippable or nil
@@ -101,12 +101,21 @@ function Enchantment.InstallVirtualArmorCallbacks(inst)
         return
     end
 
-    equippable:SetOnEquip(function(item, owner)
+    local source_on_equip = equippable.onequipfn
+    local source_on_unequip = equippable.onunequipfn
+
+    equippable:SetOnEquip(function(item, owner, from_ground)
+        if source_on_equip ~= nil then
+            source_on_equip(item, owner, from_ground)
+        end
         if owner ~= nil and owner:IsValid() and owner:HasTag("player") then
             component:HandleEquipBuffToPlayer(owner, true)
         end
     end)
     equippable:SetOnUnequip(function(item, owner)
+        if source_on_unequip ~= nil then
+            source_on_unequip(item, owner)
+        end
         if owner ~= nil and owner:IsValid() and owner:HasTag("player") then
             component:HandleEquipBuffToPlayer(owner, false)
         end

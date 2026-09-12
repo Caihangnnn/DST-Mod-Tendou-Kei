@@ -46,6 +46,12 @@ local ANALYSIS_BLACKLIST = {
     kei_rotor_survey_controller = true,
 }
 
+-- 需要兼容其他模组未加载的情况，因此这里只记录 prefab 名称，不主动
+-- SpawnPrefab 或查询其他模组的物品定义。
+local ANALYSIS_MOD_ITEM_BLACKLIST = {
+    tbat_eq_shake_cup = true,
+}
+
 local RECORDER_STATE = {
     idle = 0,
     recording = 1,
@@ -110,6 +116,13 @@ end
 
 local function IsKei(doer)
     return doer ~= nil and doer:HasTag("kei")
+end
+
+local function IsNonInteractiveFx(inst)
+    return inst ~= nil
+        and (inst:HasTag("FX")
+            or inst:HasTag("NOCLICK")
+            or inst:HasTag("DECOR"))
 end
 
  
@@ -656,7 +669,9 @@ local function IsBlankCDReadyForNewBinding(cd)
 end
 
 local function IsAnalysisBlacklisted(target)
-    return target ~= nil and ANALYSIS_BLACKLIST[target.prefab]
+    local prefab = target ~= nil and target.prefab or nil
+    return prefab ~= nil
+        and (ANALYSIS_BLACKLIST[prefab] == true or ANALYSIS_MOD_ITEM_BLACKLIST[prefab] == true)
 end
 
 local function IsPotentialAnalyzableEquipment(target)
@@ -1781,6 +1796,10 @@ local analyze_action = AddAction("KEI_ANALYZE_EQUIP", "解析装备", function(a
     return false
 end)
 analyze_action.mount_valid = true
+-- 解析工具对可解析装备的右键操作应优先于其他 Mod 常见的 GIVE、
+-- 喂食或自定义交互动作；否则这些动作可能在 USEITEM 排序时抢先执行。
+analyze_action.rmb = true
+analyze_action.priority = HIGH_ACTION_PRIORITY
 AddKeiActionHandler(ACTIONS.KEI_ANALYZE_EQUIP, "give")
 
 -- USEITEM：拿着某个物品点另一个目标时添加动作，例如 CD -> 记录仪、解析工具 -> 装备。
@@ -1814,7 +1833,7 @@ end)
 
 -- SCENE：空手右键记录仪，根据状态显示停止记录或收获数据。
 AddComponentAction("SCENE", "inspectable", function(inst, doer, actions, right)
-    if not right or not IsKei(doer) then
+    if not right or not IsKei(doer) or IsNonInteractiveFx(inst) then
         return
     end
 

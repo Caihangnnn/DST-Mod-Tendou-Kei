@@ -4,9 +4,6 @@
   "tags": [
     "all_clients_require_mod"
   ],
-  "ignore": [
-    "Design",
-    "Tendou_Kei_角色完整内容记录.docx"
-  ],
+  "ignore": [],
   "keep": []
 }

@@ -67,6 +67,17 @@ function KeiRotorPower:GetMaxPower()
     return self.max_power
 end
 
+-- OnLoad can run before the owner's rotor upgrades have been restored. Keep
+-- the serialized value separately so a refresh against the base capacity
+-- cannot permanently truncate a battery-expanded controller.
+function KeiRotorPower:GetLoadedPower()
+    return self._loaded_power
+end
+
+function KeiRotorPower:ClearLoadedPower()
+    self._loaded_power = nil
+end
+
 function KeiRotorPower:GetPercent()
     return self.max_power > 0 and self.power / self.max_power or 0
 end
@@ -136,6 +147,17 @@ function KeiRotorPower:Update(dt)
     end
 
     local owner = GetOwner(self.inst)
+    if self._loaded_power ~= nil then
+        -- The controller may tick before the owner and its upgrade levels are
+        -- restored. Let the binding path apply the serialized value first so
+        -- this tick cannot clamp it to the base capacity.
+        if owner ~= nil and self.inst.SetControllerOwner ~= nil then
+            self.inst:SetControllerOwner(owner)
+        end
+        if self._loaded_power ~= nil then
+            return
+        end
+    end
     self:RefreshMaxPower(owner)
     local equipped = self:IsEquipped()
     local rate = equipped
@@ -211,7 +233,14 @@ function KeiRotorPower:OnLoad(data)
         power = data.power or data.kei_rotor_power
     end
     if power ~= nil then
-        self:SetPower(power)
+        power = math.max(0, tonumber(power) or 0)
+        self._loaded_power = power
+        -- Keep the live value useful while the controller is waiting to be
+        -- associated with its owner, but do not clamp it to the initial
+        -- capacity yet. SetControllerOwner will apply the value after the
+        -- owner's upgrade levels are available.
+        self.power = power
+        self:SyncPerishable()
     end
 end
 

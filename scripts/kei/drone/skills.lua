@@ -15,6 +15,9 @@ local RotorSurveySkills = {
         -- pending_3 used this bit in older saves. Keep it as an alias so an
         -- old unlock also unlocks the replacement skill.
         collect = 1024,
+        -- The second collect recipe is a separate persistent flag because
+        -- all 16 bits of the legacy skill mask are already assigned.
+        collect_harvest = nil,
         friendly = 2048,
         fishing = 16384,
         nature = 32768,
@@ -61,8 +64,27 @@ function RotorSurveySkills.GetMask(inst)
 end
 
 function RotorSurveySkills.HasSkill(inst, skill)
+    if skill == "collect_harvest" then
+        local skills = inst ~= nil and inst.components ~= nil and inst.components["drone/skills"] or nil
+        if skills ~= nil then
+            return skills.collect_harvest_unlocked == true
+        end
+        return inst ~= nil
+            and inst._kei_rotor_collect_harvest ~= nil
+            and inst._kei_rotor_collect_harvest:value()
+    end
     local bit = RotorSurveySkills.SKILLS[skill]
     return bit ~= nil and (RotorSurveySkills.GetMask(inst) % (bit * 2)) >= bit
+end
+
+function RotorSurveySkills.GetSkillLevel(inst, skill)
+    if skill == "collect" then
+        if RotorSurveySkills.HasSkill(inst, "collect_harvest") then
+            return 2
+        end
+        return RotorSurveySkills.HasSkill(inst, "collect") and 1 or 0
+    end
+    return RotorSurveySkills.HasSkill(inst, skill) and 1 or 0
 end
 
 function RotorSurveySkills.IsSkillRecipe(recname)

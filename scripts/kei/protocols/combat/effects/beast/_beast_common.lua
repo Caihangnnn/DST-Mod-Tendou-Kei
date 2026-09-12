@@ -38,6 +38,28 @@ function BeastCommon.HasAnySource(sources)
     return false
 end
 
+-- 在来源表中登记一个来源。所有协议来源表都应使用幂等的添加/移除，
+-- 避免重复刷新时重复施加效果，或清理时误伤其它来源。
+function BeastCommon.AddSource(sources, source, value)
+    if sources == nil or source == nil then
+        return false
+    end
+    if sources[source] ~= nil then
+        return false
+    end
+    sources[source] = value == nil and true or value
+    return true
+end
+
+-- 移除指定来源，并返回移除后是否仍有其它来源。
+function BeastCommon.RemoveSource(sources, source)
+    if sources == nil or source == nil then
+        return false
+    end
+    sources[source] = nil
+    return BeastCommon.HasAnySource(sources)
+end
+
 -- 判断目标是否仍是可见且未死亡的生命体。
 function BeastCommon.IsVisibleLivingTarget(target)
     return target ~= nil

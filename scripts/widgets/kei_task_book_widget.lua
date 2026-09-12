@@ -243,6 +243,19 @@ local function CountOwnedPrefab(owner, prefab)
     for slot = 1, inventory:GetNumSlots() do Visit(inventory:GetItemInSlot(slot)) end
     Visit(inventory:GetActiveItem())
     Visit(inventory:GetEquippedItem(EQUIPSLOTS.BACK))
+
+    -- Match the server: inventory:GetOpenContainers only exposes containers
+    -- currently opened by this player.  Do not scan nearby/unopened chests.
+    for container_inst in pairs(inventory:GetOpenContainers() or {}) do
+        local container = container_inst ~= nil
+            and container_inst.replica ~= nil
+            and container_inst.replica.container
+            or nil
+        if container ~= nil and container:IsOpenedBy(owner) then
+            Visit(container_inst)
+        end
+    end
+
     return count
 end
 
@@ -1318,6 +1331,7 @@ function DataPage:BuildSpinners()
         { text = "蓝色", data = "blue" },
         { text = "金色", data = "gold" },
         { text = "紫色", data = "purple" },
+        { text = "已记录", data = "recorded" },
         { text = "已深度植入", data = "implanted" },
         }, function(data) self.filter_mode = data; self:RefreshEntries() end),
     }
@@ -1456,7 +1470,10 @@ end
 function DataPage:RefreshEntries()
     local entries, filtered = TaskBook.GetAllEntries(self.owner), {}
     for _, entry in ipairs(entries) do
-        if self.filter_mode == "all" or self.filter_mode == entry.rarity or (self.filter_mode == "implanted" and entry.implanted) then
+        if self.filter_mode == "all" or self.filter_mode == entry.rarity
+            or (self.filter_mode == "recorded" and entry.recorded)
+            or (self.filter_mode == "implanted" and entry.implanted)
+        then
             table.insert(filtered, entry)
         end
     end

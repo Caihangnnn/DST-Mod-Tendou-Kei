@@ -1,5 +1,17 @@
 local KeiTimeScale = require("kei/time_scale")
 
+local function GetProtocolSlots(inst)
+    return inst ~= nil and inst.components ~= nil and inst.components.kei_protocolslots or nil
+end
+
+local function HasKeiImmunity(inst, method, fallback_tag)
+    local slots = GetProtocolSlots(inst)
+    if slots ~= nil and slots[method] ~= nil then
+        return slots[method](slots)
+    end
+    return inst ~= nil and fallback_tag ~= nil and inst:HasTag(fallback_tag) or false
+end
+
 local function IsKeiVirtualStaffOnCooldown(inst)
     return inst ~= nil
         and inst:HasTag("kei")
@@ -55,7 +67,7 @@ local function AddKeiStaggerImmunityToStategraph(sg)
 
     local old_attacked_fn = sg.events.attacked.fn
     sg.events.attacked.fn = function(inst, data)
-        if inst:HasTag("kei_stagger_immune") then
+        if HasKeiImmunity(inst, "HasStaggerImmunity", "kei_stagger_immune") then
             return
         end
         return old_attacked_fn ~= nil and old_attacked_fn(inst, data) or nil
@@ -75,7 +87,7 @@ local function AddKeiControlImmunityToStategraph(sg)
         if event ~= nil and event.fn ~= nil then
             local old_fn = event.fn
             event.fn = function(inst, ...)
-                if inst:HasTag("kei_control_immune") then
+                if HasKeiImmunity(inst, "HasControlImmunity", "kei_control_immune") then
                     return
                 end
                 return old_fn(inst, ...)
@@ -93,10 +105,17 @@ local function GetKeiAttackSpeedMult(inst)
     end
 
     local mult = 1
-    if inst:HasTag("kei_attack_speed_boost") then
+    local slots = GetProtocolSlots(inst)
+    if (slots ~= nil and slots.HasMutatedBeargerAttackSpeed ~= nil
+        and slots:HasMutatedBeargerAttackSpeed())
+        or (slots == nil and inst:HasTag("kei_attack_speed_boost"))
+    then
         mult = mult * (TUNING.KEI_MUTATEDBEARGER_ATTACK_SPEED_MULT or 1)
     end
-    if inst:HasTag("kei_vault_pillar_guard_speed") then
+    if (slots ~= nil and slots.HasVaultPillarGuardSpeed ~= nil
+        and slots:HasVaultPillarGuardSpeed())
+        or (slots == nil and inst:HasTag("kei_vault_pillar_guard_speed"))
+    then
         mult = mult * (TUNING.KEI_VAULT_PILLAR_GUARD_ATTACK_SPEED_MULT or 1)
     end
     return mult > 1 and mult or 1
@@ -183,7 +202,7 @@ end
 
 local function ShouldUseKeiVaultPillarGuardSpinAttack(inst)
     if inst == nil
-        or not inst:HasTag("kei_vault_pillar_guard_spin")
+        or not HasKeiImmunity(inst, "HasVaultPillarGuardSpin", "kei_vault_pillar_guard_spin")
         or inst:HasTag("playerghost")
         or inst:HasTag("kei_dormant")
         or IsKeiRiding(inst)

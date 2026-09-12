@@ -205,7 +205,11 @@ end
 local function SetControllerOwner(inst, owner)
     local userid = owner ~= nil and owner.userid or nil
     local power = inst.components ~= nil and inst.components["drone/power"] or nil
-    local inherited_power = owner ~= nil and owner._kei_rotor_controller_power or nil
+    local loaded_power = power ~= nil and power.GetLoadedPower ~= nil
+        and power:GetLoadedPower()
+        or nil
+    local inherited_power = loaded_power
+        or (owner ~= nil and owner._kei_rotor_controller_power or nil)
 
     if inherited_power == nil and userid ~= nil then
         local previous = RotorSurveyRegistry.FindController(userid)
@@ -227,8 +231,20 @@ local function SetControllerOwner(inst, owner)
     RotorSurveyRegistry.RegisterController(inst, userid)
     if power ~= nil then
         power:RefreshMaxPower(owner)
+        if loaded_power ~= nil
+            and power.GetMaxPower ~= nil
+            and loaded_power > power:GetMaxPower()
+        then
+            -- The owner may still be loading the upgrade component. Keep the
+            -- serialized value pending so the next power tick can retry after
+            -- the expanded capacity becomes available.
+            return
+        end
         if inherited_power ~= nil then
             power:SetPower(inherited_power)
+            if loaded_power ~= nil and power.ClearLoadedPower ~= nil then
+                power:ClearLoadedPower()
+            end
         elseif owner ~= nil then
             owner._kei_rotor_controller_power = power:GetPower()
         end

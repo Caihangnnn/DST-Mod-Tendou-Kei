@@ -1,7 +1,9 @@
 local TaskBook = require("kei/task_book")
 local TaskSummon = require("kei/task_summon")
+local CombatProtocolDefs = require("kei/protocols/combat")
 
 local TASK_MILESTONE_GIFTS = {
+    -- count 是该颜色礼盒的重复奖励间隔，而不是一次性的绝对里程碑。
     { count = 5, prefab = "kei_blank_cd_random" },
     { count = 10, prefab = "kei_combat_cd_blue_random" },
     { count = 15, prefab = "kei_combat_cd_golden_random" },
@@ -66,6 +68,21 @@ function KeiTaskBook:GetOwnedItems()
     end
     CollectItems(inventory:GetActiveItem(), items, visited)
     CollectItems(inventory:GetEquippedItem(EQUIPSLOTS.BACK), items, visited)
+
+    -- The inventory component keeps the containers currently opened by this
+    -- player in opencontainers.  Only use this per-player list instead of
+    -- searching nearby containers, so unopened or another player's chests
+    -- cannot satisfy a task submission.
+    for container_inst in pairs(inventory.opencontainers or {}) do
+        local container = container_inst ~= nil
+            and container_inst.components ~= nil
+            and container_inst.components.container
+            or nil
+        if container ~= nil and container:IsOpenedBy(self.inst) then
+            CollectItems(container_inst, items, visited)
+        end
+    end
+
     return items
 end
 
@@ -139,15 +156,34 @@ function KeiTaskBook:GiveTaskMilestoneGifts()
     if inventory == nil then return end
 
     for _, milestone in ipairs(TASK_MILESTONE_GIFTS) do
-        if self.completed_task_count >= milestone.count
-            and not self.claimed_task_milestones[milestone.count]
-        then
-            local gift = SpawnPrefab(milestone.prefab)
-            if gift ~= nil then
-                inventory:GiveItem(gift, nil, self.inst:GetPosition())
-                self.claimed_task_milestones[milestone.count] = true
-            end
+        local interval = math.max(1, tonumber(milestone.count) or 1)
+        local earned = math.floor((self.completed_task_count or 0) / interval)
+        local claimed = self.claimed_task_milestones[milestone.count]
+        if claimed == nil then
+            -- Save serializers may restore numeric table keys as strings.
+            claimed = self.claimed_task_milestones[tostring(milestone.count)]
         end
+
+        -- 旧版本用 true 表示该颜色已经领取过一次；新格式记录已经领取
+        -- 的周期数。旧版本没有记录后续周期，因此从 1 个已领取周期
+        -- 开始，升级后会把已经达到但尚未发放的周期补齐。
+        if claimed == true then
+            claimed = 1
+        else
+            claimed = math.max(0, math.floor(tonumber(claimed) or 0))
+        end
+
+        while claimed < earned do
+            local gift = SpawnPrefab(milestone.prefab)
+            if gift == nil then
+                break
+            end
+            inventory:GiveItem(gift, nil, self.inst:GetPosition())
+            claimed = claimed + 1
+        end
+
+        self.claimed_task_milestones[milestone.count] = claimed
+        self.claimed_task_milestones[tostring(milestone.count)] = nil
     end
 end
 
@@ -535,6 +571,17 @@ function KeiTaskBook:MigrateTasks(version)
         end
         self.tasks = kept
     end
+    if version < 15 then
+        local kept = {}
+        for _, task in ipairs(self.tasks) do
+            if task.target_prefab ~= "stagehand" then
+                table.insert(kept, task)
+            else
+                changed = true
+            end
+        end
+        self.tasks = kept
+    end
     return changed
 end
 
@@ -562,6 +609,15 @@ function KeiTaskBook:MarkImplanted(data, prefab)
         self.inst:PushEvent("kei_taskbook_changed", { id = entry.id, implanted = true })
     end
     return changed
+end
+
+function KeiTaskBook:ShouldPreferUnrecordedCombat()
+    return TUNING.KEI_PREFER_UNRECORDED_COMBAT == true
+end
+
+function KeiTaskBook:IsCombatProtocolRecorded(prefab)
+    local protocol = CombatProtocolDefs.COMBAT_PROTOCOL_PREFABS[prefab]
+    return protocol ~= nil and self.records[TaskBook.MakeId("combat", protocol)] == true
 end
 
 function KeiTaskBook:OnSave()
@@ -600,6 +656,21 @@ function KeiTaskBook:OnLoad(data)
     self.last_blueprint_reward_day = tonumber(data ~= nil and data.last_blueprint_reward_day) or -1
     self.completed_task_count = math.max(0, tonumber(data ~= nil and data.completed_task_count) or 0)
     self.claimed_task_milestones = data ~= nil and data.claimed_task_milestones or {}
+    -- 兼容旧存档：旧格式的值是 boolean，只记录每种颜色是否发过一次；
+    -- 新格式记录已经领取的重复奖励周期数。旧的 true 对应第 1 个周期，
+    -- 后续已经达到但旧版本没有发放的周期会在下次提交时补发。
+    for _, milestone in ipairs(TASK_MILESTONE_GIFTS) do
+        local claimed = self.claimed_task_milestones[milestone.count]
+        if claimed == nil then
+            claimed = self.claimed_task_milestones[tostring(milestone.count)]
+        end
+        if claimed == true then
+            self.claimed_task_milestones[milestone.count] = 1
+        elseif claimed ~= nil then
+            self.claimed_task_milestones[milestone.count] = math.max(0, math.floor(tonumber(claimed) or 0))
+        end
+        self.claimed_task_milestones[tostring(milestone.count)] = nil
+    end
     local task_version = tonumber(data ~= nil and data.task_version) or 1
     self:MigrateTasks(task_version)
     self.task_version = TaskBook.TASK_VERSION

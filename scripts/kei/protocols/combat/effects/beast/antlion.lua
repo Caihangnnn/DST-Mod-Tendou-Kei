@@ -7,11 +7,13 @@ local SOURCE = "antlion"
 -- 启用协议效果，并注册该协议提供的持续能力。
 function AntlionEffect.Enable(slots, inst)
     AntlionCommon.EnableStormImmunity(slots, inst, SOURCE)
+    AntlionCommon.EnableMiasmaImmunity(slots, inst, SOURCE)
 end
 
 -- 关闭协议效果，并清理启用时注册的持续能力。
 function AntlionEffect.Disable(slots, inst)
     AntlionCommon.DisableStormImmunity(slots, inst, SOURCE)
+    AntlionCommon.DisableMiasmaImmunity(slots, inst, SOURCE)
 end
 
 -- 处理攻击命中事件，根据协议等级触发附加战斗效果。

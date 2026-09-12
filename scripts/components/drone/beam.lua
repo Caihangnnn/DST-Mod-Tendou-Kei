@@ -1,6 +1,7 @@
 -- 旋翼调查仪光束的服务器端效果。
 local SlowSources = require("kei/slow_sources")
 local MiniAlice = require("kei/mini_alice")
+local RotorSurveySkills = require("kei/drone/skills")
 local LifeProtocolDefs = require("kei/protocols/life")
 local RotorSurveyTargets = require("kei/drone/targets")
 
@@ -502,6 +503,51 @@ local function GetAccessibleAliceSlotLimit(container, owner)
     )
 end
 
+local function ForceGiveItemToMiniAlice(container, item, owner, src_pos)
+    if container == nil
+        or item == nil
+        or not item:IsValid()
+        or container.slots == nil
+    then
+        return false
+    end
+
+    local slot_limit = GetAccessibleAliceSlotLimit(container, owner)
+    for slot = 1, slot_limit do
+        local stored = container:GetItemInSlot(slot)
+        if stored ~= nil
+            and stored.components ~= nil
+            and stored.components.stackable ~= nil
+            and item.components ~= nil
+            and item.components.stackable ~= nil
+            and stored.components.stackable:CanStackWith(item)
+            and not stored.components.stackable:IsFull()
+        then
+            item = stored.components.stackable:Put(item, src_pos)
+            if item == nil or not item:IsValid() then
+                return true
+            end
+        end
+
+        if container:GetItemInSlot(slot) == nil
+            and item.components ~= nil
+            and item.components.inventoryitem ~= nil
+            and item.components.inventoryitem.cangoincontainer
+            and MiniAlice.IsSlotAccessible(container, slot)
+        then
+            container.slots[slot] = item
+            if item.components ~= nil and item.components.inventoryitem ~= nil then
+                item.components.inventoryitem:OnPutInInventory(container.inst)
+            end
+            if container.inst ~= nil then
+                container.inst:PushEvent("itemget", { slot = slot, item = item, src_pos = src_pos })
+            end
+            return true
+        end
+    end
+    return false
+end
+
 local function GiveItemToMiniAlice(container, item, owner, src_pos)
     if container == nil or item == nil or not item:IsValid() then
         return false
@@ -510,6 +556,24 @@ local function GiveItemToMiniAlice(container, item, owner, src_pos)
     local slot_limit = GetAccessibleAliceSlotLimit(container, owner)
     if slot_limit <= 0 then
         return false
+    end
+
+    -- Let the container choose its own slot first. This is important for
+    -- Mini Alice's custom Container:GiveItem hook and for infinite-stack
+    -- containers; a forced slot can be rejected even when another accessible
+    -- slot is available.
+    local initial_stack_size = item.components ~= nil
+        and item.components.stackable ~= nil
+        and item.components.stackable:StackSize()
+        or nil
+    if container:GiveItem(item, nil, src_pos, false)
+        and (not item:IsValid()
+            or item.components.inventoryitem.owner == container.inst
+            or (initial_stack_size ~= nil
+                and item.components.stackable ~= nil
+                and item.components.stackable:StackSize() < initial_stack_size))
+    then
+        return true
     end
 
     local collected = false
@@ -544,7 +608,9 @@ local function GiveItemToMiniAlice(container, item, owner, src_pos)
                 put_item = split_item
             end
 
-            if container:GiveItem(put_item, stack_slot, src_pos, false) then
+            if container:GiveItem(put_item, stack_slot, src_pos, false)
+                or ForceGiveItemToMiniAlice(container, put_item, owner, src_pos)
+            then
                 collected = true
             else
                 if split_item ~= nil and split_item:IsValid() then
@@ -568,7 +634,9 @@ local function GiveItemToMiniAlice(container, item, owner, src_pos)
                 return collected
             end
 
-            if container:GiveItem(item, empty_slot, src_pos, false) then
+            if container:GiveItem(item, empty_slot, src_pos, false)
+                or ForceGiveItemToMiniAlice(container, item, owner, src_pos)
+            then
                 return true
             end
             return collected
@@ -730,6 +798,167 @@ local function CollectGroundItem(container, item, owner)
     return collected
 end
 
+local function IsHarvestableCrop(item)
+    if not IsValid(item)
+        or item:HasTag("withered")
+        or item.is_oversized
+    then
+        return false
+    end
+
+    local pickable = item.components ~= nil and item.components.pickable or nil
+    if pickable ~= nil and pickable.CanBePicked ~= nil then
+        return pickable:CanBePicked()
+            and pickable.caninteractwith ~= false
+            and (pickable.IsStuck == nil or not pickable:IsStuck())
+    end
+
+    local harvestable = item.components ~= nil and item.components.harvestable or nil
+    if harvestable ~= nil and harvestable.CanBeHarvested ~= nil then
+        return harvestable:CanBeHarvested()
+    end
+
+    local crop = item.components ~= nil and item.components.crop or nil
+    return crop ~= nil
+        and crop.IsReadyForHarvest ~= nil
+        and crop:IsReadyForHarvest()
+end
+
+local function DropHarvestedItem(item, x, y, z)
+    if item == nil or not item:IsValid() then
+        return
+    end
+
+    item.Transform:SetPosition(x, y, z)
+    if item.components ~= nil and item.components.inventoryitem ~= nil then
+        item.components.inventoryitem:OnDropped(true)
+    end
+end
+
+local function CreateHarvestPicker(container, owner, x, y, z)
+    -- Pickable/harvestable components give products to picker.components.inventory.
+    -- Passing nil (the old implementation) makes ordinary grass and saplings
+    -- produce nothing, so provide a small picker adapter that redirects every
+    -- generated item to Mini Alice instead of the player's normal inventory.
+    local picker = {}
+    picker._kei_harvest_loot = {}
+    -- Keep the adapter compatible with hooks that identify a real picker
+    -- before applying bonuses (for example growth/botanist.lua).
+    picker.IsValid = function()
+        return owner ~= nil and owner:IsValid()
+    end
+    picker.IsInLimbo = function()
+        return owner == nil or owner:IsInLimbo()
+    end
+    local owner_components = owner ~= nil and owner.components or nil
+    picker.components = {
+        inventory = {
+            GiveItem = function(_, item)
+                if item == nil or not item:IsValid() then
+                    return false
+                end
+                -- Do not insert from inside Pickable/Harvestable callbacks.
+                -- Several mods wrap Inventory:GiveItem and expect a real
+                -- inventory owner; cache the product and flush it after the
+                -- vanilla harvest call has completely finished.
+                table.insert(picker._kei_harvest_loot, item)
+                return true
+            end,
+        },
+        -- Forward the owner state used by botanist and vanilla luck-aware
+        -- harvest callbacks while keeping inventory writes redirected above.
+        kei_experience = owner_components ~= nil and owner_components.kei_experience or nil,
+        luckuser = owner_components ~= nil and owner_components.luckuser or nil,
+    }
+    picker._kei_experience_total = owner ~= nil and owner._kei_experience_total or nil
+    picker.PushEvent = function() end
+    picker.HasTag = function(_, tag)
+        return owner ~= nil and owner.HasTag ~= nil and owner:HasTag(tag) or false
+    end
+    return picker
+end
+
+local function CollectHarvestLoot(container, owner, picker, loot, x, y, z)
+    local seen = {}
+    local collected = false
+
+    local function CollectItem(item)
+        if item == nil or not item:IsValid() or seen[item] then
+            return
+        end
+        seen[item] = true
+        if GiveItemToMiniAlice(container, item, owner, Vector3(x, y, z)) then
+            collected = true
+        else
+            -- Keep the product if Alice is full or a container hook rejects it.
+            DropHarvestedItem(item, x, y, z)
+        end
+    end
+
+    for _, item in ipairs(picker ~= nil and picker._kei_harvest_loot or {}) do
+        CollectItem(item)
+    end
+
+    if type(loot) == "table" then
+        for _, item in ipairs(loot) do
+            CollectItem(item)
+        end
+    else
+        CollectItem(loot)
+    end
+
+    return collected
+end
+
+local function HarvestCrop(container, item, owner)
+    if not IsHarvestableCrop(item) then
+        return false
+    end
+
+    local x, y, z = item.Transform:GetWorldPosition()
+    local picker = CreateHarvestPicker(container, owner, x, y, z)
+    local pickable = item.components ~= nil and item.components.pickable or nil
+    if pickable ~= nil and pickable.Pick ~= nil then
+        local old_droppicked = pickable.droppicked
+        -- Bushes and some modded plants otherwise spawn products directly on
+        -- the ground and return no loot table for the picker to receive.
+        if old_droppicked then
+            pickable.droppicked = false
+        end
+        local success, loot = pickable:Pick(picker)
+        if old_droppicked then
+            pickable.droppicked = old_droppicked
+        end
+        if success then
+            CollectHarvestLoot(container, owner, picker, loot, x, y, z)
+            SpawnCollectEffect(x, y, z)
+            return true
+        end
+    end
+
+    local harvestable = item.components ~= nil and item.components.harvestable or nil
+    if harvestable ~= nil and harvestable.Harvest ~= nil then
+        local success, loot = harvestable:Harvest(picker)
+        if success then
+            CollectHarvestLoot(container, owner, picker, loot, x, y, z)
+            SpawnCollectEffect(x, y, z)
+            return true
+        end
+    end
+
+    local crop = item.components ~= nil and item.components.crop or nil
+    if crop ~= nil and crop.Harvest ~= nil then
+        local success, loot = crop:Harvest(picker)
+        if success then
+            CollectHarvestLoot(container, owner, picker, loot, x, y, z)
+            SpawnCollectEffect(x, y, z)
+            return true
+        end
+    end
+
+    return false
+end
+
 function KeiRotorBeam:_UpdateCollect()
     local radius = TUNING.KEI_ROTOR_BEAM_RADIUS or 8
     local container = MiniAlice.GetContainer(self.owner)
@@ -737,9 +966,12 @@ function KeiRotorBeam:_UpdateCollect()
         return
     end
 
+    local can_harvest_crops = RotorSurveySkills.GetSkillLevel(self.owner, "collect") >= 2
     for _, item in ipairs(FindEntitiesInRange(self.drone, radius, nil, COLLECT_CANT_TAGS)) do
         if IsInRange(self.drone, item, radius) then
-            if IsCollectibleOversized(item) then
+            if can_harvest_crops and HarvestCrop(container, item, self.owner) then
+                -- The crop handler already collected the generated product.
+            elseif IsCollectibleOversized(item) then
                 CollectOversizedVeggie(container, item, self.owner)
             else
                 CollectGroundItem(container, item, self.owner)

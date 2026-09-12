@@ -219,54 +219,6 @@ local function OnKeiRespawnedFromGhost(inst)
     ScheduleOpenMiniAlice(inst, 0.1)
 end
 
-local function RecordTaskBookItemTree(taskbook, item, visited)
-    if item == nil or visited[item] then
-        return
-    end
-
-    visited[item] = true
-    taskbook:RecordProtocolItem(item)
-
-    local container = item.components ~= nil and item.components.container or nil
-    if container ~= nil then
-        for slot = 1, container:GetNumSlots() do
-            RecordTaskBookItemTree(taskbook, container:GetItemInSlot(slot), visited)
-        end
-    end
-end
-
-local function RecordExistingTaskBookData(inst)
-    if inst == nil or inst.components == nil then
-        return
-    end
-
-    local taskbook = inst.components.kei_taskbook
-    local inventory = inst.components.inventory
-    if taskbook == nil or inventory == nil then
-        return
-    end
-
-    local visited = {}
-    for _, item in pairs(inventory.itemslots) do
-        RecordTaskBookItemTree(taskbook, item, visited)
-    end
-    for _, item in pairs(inventory.equipslots) do
-        RecordTaskBookItemTree(taskbook, item, visited)
-    end
-    RecordTaskBookItemTree(taskbook, inventory:GetActiveItem(), visited)
-end
-
-local function ScheduleTaskBookRecordScan(inst)
-    if inst._kei_taskbook_record_task ~= nil then
-        return
-    end
-
-    inst._kei_taskbook_record_task = inst:DoTaskInTime(0, function(owner)
-        owner._kei_taskbook_record_task = nil
-        RecordExistingTaskBookData(owner)
-    end)
-end
-
 local function EnsureRotorSurveyController(inst)
     if not TheWorld.ismastersim
         or inst == nil
@@ -672,6 +624,7 @@ local function common_postinit(inst)
     inst._kei_mini_alice_pages = net_smallbyte(inst.GUID, "kei.mini_alice_pages", "kei_mini_alice_pages_dirty")
     inst._kei_analysis_armor_upgrade_level = net_smallbyte(inst.GUID, "kei.analysis_armor_upgrade_level", "kei_analysis_armor_upgrade_dirty")
     inst._kei_rotor_skill_mask = net_ushortint(inst.GUID, "kei.rotor_skill_mask", "kei_rotor_skills_dirty")
+    inst._kei_rotor_collect_harvest = net_bool(inst.GUID, "kei.rotor_collect_harvest", "kei_rotor_skills_dirty")
     inst._kei_rotor_upgrade_signal = net_smallbyte(inst.GUID, "kei.rotor_upgrade_signal", "kei_rotor_upgrades_dirty")
     inst._kei_rotor_upgrade_mobility = net_smallbyte(inst.GUID, "kei.rotor_upgrade_mobility", "kei_rotor_upgrades_dirty")
     inst._kei_rotor_upgrade_battery = net_smallbyte(inst.GUID, "kei.rotor_upgrade_battery", "kei_rotor_upgrades_dirty")
@@ -948,15 +901,36 @@ local function IsDormantBatteryUsable(inst, battery)
     return battery:GetDistanceSqToInst(inst) <= range * range
 end
 
+local function GetDormantBatteryChargeMultiplier(battery)
+    -- Winona's high battery is the gem-powered generator. Keep the default
+    -- multiplier for the ordinary battery and for compatible generators from
+    -- other mods, so they retain the existing charging rate.
+    return battery ~= nil
+        and (battery.prefab == "winona_battery_high" or battery:HasTag("gemsocket"))
+        and (TUNING.KEI_DORMANT_GEM_BATTERY_CHARGE_MULTIPLIER or 2)
+        or 1
+end
+
 local function FindDormantChargeBattery(inst)
     local x, y, z = inst.Transform:GetWorldPosition()
     local range = TUNING.WINONA_BATTERY_RANGE or 16
+    local selected = nil
+    local selected_multiplier = 1
     local batteries = TheSim:FindEntities(x, y, z, range, { "engineeringbattery" }, { "INLIMBO", "burnt" })
     for _, battery in ipairs(batteries) do
         if IsDormantBatteryUsable(inst, battery) then
-            return battery
+            local multiplier = GetDormantBatteryChargeMultiplier(battery)
+            -- Select the highest available source. This makes a gem battery
+            -- override ordinary generators when both are in range, while
+            -- still falling back to an ordinary generator if the gem battery
+            -- becomes empty, overloaded, disconnected, or out of range.
+            if selected == nil or multiplier > selected_multiplier then
+                selected = battery
+                selected_multiplier = multiplier
+            end
         end
     end
+    return selected, selected_multiplier
 end
 
 local function CreateDormantChargeNode(inst)
@@ -977,6 +951,7 @@ local function CreateDormantChargeNode(inst)
 
     node:AddComponent("powerload")
     node.components.powerload:SetLoad(3)
+    node.kei_dormant_charge_multiplier = 1
 
     node.kei_owner = inst
     node.AddBatteryPower = function(node)
@@ -1002,7 +977,11 @@ local function CreateDormantChargeNode(inst)
             return
         end
 
-        local delta = math.min(max_power - hunger.current, (TUNING.KEI_DORMANT_BATTERY_CHARGE_RATE or 3) * 0.5)
+        local multiplier = node.kei_dormant_charge_multiplier or 1
+        local delta = math.min(
+            max_power - hunger.current,
+            (TUNING.KEI_DORMANT_BATTERY_CHARGE_RATE or 3) * multiplier * 0.5
+        )
         if delta > 0 then
             Recovery.ApplyHungerDelta(owner, delta, nil, true)
             if hunger.current > 0 then
@@ -1025,10 +1004,10 @@ local function UpdateDormantBatteryCharge(inst)
         return false
     end
 
-    local battery = inst.kei_dormant_charge_battery
-    if not IsDormantBatteryUsable(inst, battery) then
-        battery = FindDormantChargeBattery(inst)
-    end
+    -- Re-scan every dormant tick so a higher-quality generator can take over
+    -- immediately when it enters the range, and the lower-quality source can
+    -- resume when the gem generator is no longer usable.
+    local battery, multiplier = FindDormantChargeBattery(inst)
     if battery == nil then
         StopDormantBatteryCharge(inst)
         return false
@@ -1039,6 +1018,7 @@ local function UpdateDormantBatteryCharge(inst)
         node = CreateDormantChargeNode(inst)
     end
     node.Transform:SetPosition(inst.Transform:GetWorldPosition())
+    node.kei_dormant_charge_multiplier = multiplier
 
     if inst.kei_dormant_charge_battery ~= battery or node.components.circuitnode.numnodes <= 0 then
         node.components.circuitnode:Disconnect()
@@ -1305,7 +1285,6 @@ local function OnLoad(inst, data)
                 taskbook:MarkImplanted({ kind = "basic_attribute", protocol = protocol_data.protocol })
             end
         end
-        RecordExistingTaskBookData(inst)
     end)
 
     ScheduleOpenMiniAlice(inst, 0.1)
@@ -1352,19 +1331,6 @@ local function master_postinit(inst)
         end
     end)
 
-    local function OnTaskBookItemChanged(_, data)
-        if data ~= nil and data.item ~= nil then
-            inst.components.kei_taskbook:RecordProtocolItem(data.item)
-        end
-        ScheduleTaskBookRecordScan(inst)
-    end
-
-    -- 容器在角色持有时会将收物事件转发为 gotnewitem；itemget 仅能覆盖角色本体背包。
-    inst:ListenForEvent("itemget", OnTaskBookItemChanged)
-    inst:ListenForEvent("gotnewitem", OnTaskBookItemChanged)
-    inst:ListenForEvent("newactiveitem", OnTaskBookItemChanged)
-    inst:ListenForEvent("equip", OnTaskBookItemChanged)
-
     PatchKeiCurseImmunity(inst)
 
     inst.StartKeiDormant = StartKeiDormant
@@ -1382,7 +1348,6 @@ local function master_postinit(inst)
     inst:ListenForEvent("onremove", RemoveKeiPersonalLight)
 
     KeiBackupBody.ConfigurePlayer(inst)
-    inst:DoTaskInTime(.1, RecordExistingTaskBookData)
     ScheduleOpenMiniAlice(inst, 0.1)
     inst:DoTaskInTime(0, EnsureRotorSurveyController)
 

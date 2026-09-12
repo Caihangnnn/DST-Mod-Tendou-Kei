@@ -16,25 +16,23 @@ end
 function VaultPillarGuardCommon.EnableSpinAttack(slots, inst, source)
     source = source or "vault_pillar_guard"
     slots._kei_vpg_spin_sources = slots._kei_vpg_spin_sources or {}
-    if slots._kei_vpg_spin_sources[source] then
-        return
-    end
-    if not BeastCommon.HasAnySource(slots._kei_vpg_spin_sources) then
+    if not inst:HasTag(TAG_SPIN) then
         inst:AddTag(TAG_SPIN)
+        slots._kei_vpg_spin_added_tag = true
     end
-    slots._kei_vpg_spin_sources[source] = true
+    BeastCommon.AddSource(slots._kei_vpg_spin_sources, source)
 end
 
 function VaultPillarGuardCommon.DisableSpinAttack(slots, inst, source)
     source = source or "vault_pillar_guard"
     local sources = slots._kei_vpg_spin_sources
-    if sources ~= nil then
-        sources[source] = nil
-    end
-    if BeastCommon.HasAnySource(sources) then
+    if sources ~= nil and BeastCommon.RemoveSource(sources, source) then
         return
     end
-    inst:RemoveTag(TAG_SPIN)
+    if slots._kei_vpg_spin_added_tag then
+        inst:RemoveTag(TAG_SPIN)
+    end
+    slots._kei_vpg_spin_added_tag = nil
     slots._kei_vpg_spin_sources = nil
 end
 
@@ -43,25 +41,23 @@ end
 function VaultPillarGuardCommon.EnableAttackSpeed(slots, inst, source)
     source = source or "vault_pillar_guard"
     slots._kei_vpg_speed_sources = slots._kei_vpg_speed_sources or {}
-    if slots._kei_vpg_speed_sources[source] then
-        return
-    end
-    if not BeastCommon.HasAnySource(slots._kei_vpg_speed_sources) then
+    if not inst:HasTag(TAG_SPEED) then
         inst:AddTag(TAG_SPEED)
+        slots._kei_vpg_speed_added_tag = true
     end
-    slots._kei_vpg_speed_sources[source] = true
+    BeastCommon.AddSource(slots._kei_vpg_speed_sources, source)
 end
 
 function VaultPillarGuardCommon.DisableAttackSpeed(slots, inst, source)
     source = source or "vault_pillar_guard"
     local sources = slots._kei_vpg_speed_sources
-    if sources ~= nil then
-        sources[source] = nil
-    end
-    if BeastCommon.HasAnySource(sources) then
+    if sources ~= nil and BeastCommon.RemoveSource(sources, source) then
         return
     end
-    inst:RemoveTag(TAG_SPEED)
+    if slots._kei_vpg_speed_added_tag then
+        inst:RemoveTag(TAG_SPEED)
+    end
+    slots._kei_vpg_speed_added_tag = nil
     slots._kei_vpg_speed_sources = nil
 end
 
