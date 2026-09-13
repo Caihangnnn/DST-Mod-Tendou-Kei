@@ -11,7 +11,7 @@
 
 -- 模组在游戏列表中的基础信息。
 author = "StellarVoyage"
-version = "0.0.24"
+version = "0.0.26"
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 
@@ -66,7 +66,7 @@ configuration_options = {
                 data = true,
             },
         },
-        default = false,
+        default = true,
     },
     {
         name = "KEI_ANALYSIS_USE_EQUIPMENT_VISUAL",
@@ -219,6 +219,6 @@ configuration_options = {
                 data = false,
             },
         },
-        default = true,
+        default = false,
     },
 }
