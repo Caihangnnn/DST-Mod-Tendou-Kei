@@ -11,7 +11,7 @@
 
 -- 模组在游戏列表中的基础信息。
 author = "StellarVoyage"
-version = "0.0.26"
+version = "0.0.27"
 name = "Tendou Kei"
 description = "First playable code pass for Tendou Kei."
 
